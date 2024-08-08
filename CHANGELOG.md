@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.2.10] - 2024-07-10
 ### Added
+- Add FirstRunAt to StartWorkflowOptions (#1360)
 - Revert "Handle panics while polling for tasks (#1352)" (#1357)
 - Remove coveralls integration (#1354)
 - Change registry Apis signature to return info interface (#1355)
