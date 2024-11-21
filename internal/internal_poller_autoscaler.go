@@ -53,7 +53,7 @@ type (
 		isDryRun     bool
 		cooldownTime time.Duration
 		logger       *zap.Logger
-		permit       worker.Permit // resizable semaphore to control number of concurrent pollers
+		permit       worker.Permit
 		ctx          context.Context
 		cancel       context.CancelFunc
 		wg           *sync.WaitGroup // graceful stop
