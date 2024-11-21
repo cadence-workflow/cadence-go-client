@@ -26,11 +26,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marusama/semaphore/v2"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
 	"go.uber.org/cadence/internal/common/autoscaler"
+	"go.uber.org/cadence/internal/worker"
 )
 
 // defaultPollerScalerCooldownInSeconds
@@ -53,7 +53,7 @@ type (
 		isDryRun     bool
 		cooldownTime time.Duration
 		logger       *zap.Logger
-		sem          semaphore.Semaphore // resizable semaphore to control number of concurrent pollers
+		permit       worker.Permit // resizable semaphore to control number of concurrent pollers
 		ctx          context.Context
 		cancel       context.CancelFunc
 		wg           *sync.WaitGroup // graceful stop
@@ -91,7 +91,7 @@ func newPollerScaler(
 		isDryRun:             options.DryRun,
 		cooldownTime:         options.Cooldown,
 		logger:               logger,
-		sem:                  semaphore.New(options.InitCount),
+		permit:               worker.NewPermit(options.InitCount),
 		wg:                   &sync.WaitGroup{},
 		ctx:                  ctx,
 		cancel:               cancel,
@@ -109,17 +109,17 @@ func newPollerScaler(
 
 // Acquire concurrent poll quota
 func (p *pollerAutoScaler) Acquire(resource autoscaler.ResourceUnit) error {
-	return p.sem.Acquire(p.ctx, int(resource))
+	return p.permit.Acquire(p.ctx, int(resource))
 }
 
 // Release concurrent poll quota
 func (p *pollerAutoScaler) Release(resource autoscaler.ResourceUnit) {
-	p.sem.Release(int(resource))
+	p.permit.Release(int(resource))
 }
 
 // GetCurrent poll quota
 func (p *pollerAutoScaler) GetCurrent() autoscaler.ResourceUnit {
-	return autoscaler.ResourceUnit(p.sem.GetLimit())
+	return autoscaler.ResourceUnit(p.permit.Quota())
 }
 
 // Start an auto-scaler go routine and returns a done to stop it
@@ -133,7 +133,7 @@ func (p *pollerAutoScaler) Start() {
 			case <-p.ctx.Done():
 				return
 			case <-time.After(p.cooldownTime):
-				currentResource := autoscaler.ResourceUnit(p.sem.GetLimit())
+				currentResource := autoscaler.ResourceUnit(p.permit.Quota())
 				currentUsages, err := p.pollerUsageEstimator.Estimate()
 				if err != nil {
 					logger.Warnw("poller autoscaler skip due to estimator error", "error", err)
@@ -146,7 +146,7 @@ func (p *pollerAutoScaler) Start() {
 					"recommend", uint64(proposedResource),
 					"isDryRun", p.isDryRun)
 				if !p.isDryRun {
-					p.sem.SetLimit(int(proposedResource))
+					p.permit.SetQuota(int(proposedResource))
 				}
 				p.pollerUsageEstimator.Reset()
 
