@@ -38,7 +38,7 @@ type DynamicParams struct {
 // Permit is an adaptive
 type Permit interface {
 	Acquire(context.Context, int) error
-	AcquireChan() <-chan struct{}
+	AcquireChan(context.Context) <-chan struct{}
 	Quota() int
 	SetQuota(int)
 	Count() int
@@ -63,10 +63,10 @@ func (p *permit) Acquire(ctx context.Context, count int) error {
 }
 
 // AcquireChan returns a permit ready channel. It's closed then permit is acquired
-func (p *permit) AcquireChan() <-chan struct{} {
+func (p *permit) AcquireChan(ctx context.Context) <-chan struct{} {
 	ch := make(chan struct{})
 	go func() {
-		if err := p.sem.Acquire(nil, 1); err != nil { // nil context indicates no need to exit on context done
+		if err := p.sem.Acquire(ctx, 1); err != nil {
 			close(ch)
 			return
 		}

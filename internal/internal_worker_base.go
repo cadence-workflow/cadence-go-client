@@ -252,7 +252,7 @@ func (bw *baseWorker) runPoller() {
 		select {
 		case <-bw.shutdownCh:
 			return
-		case <-bw.dynamic.TaskPermit.AcquireChan(): // don't poll unless there is a task permit
+		case <-bw.dynamic.TaskPermit.AcquireChan(bw.limiterContext): // don't poll unless there is a task permit
 			// TODO move to a centralized place inside the worker
 			// emit metrics on concurrent task permit quota and current task permit count
 			// NOTE task permit doesn't mean there is a task running, it still needs to poll until it gets a task to process
