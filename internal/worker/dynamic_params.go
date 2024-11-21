@@ -31,7 +31,8 @@ var _ Permit = (*permit)(nil)
 
 // Synchronization contains synchronization primitives for dynamic configuration.
 type DynamicParams struct {
-	TaskPermit Permit
+	PollerPermit Permit // controls concurrency of pollers
+	TaskPermit   Permit // controlls concurrency of task processings
 }
 
 // Permit is an adaptive

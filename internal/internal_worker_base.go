@@ -168,24 +168,29 @@ func createPollRetryPolicy() backoff.RetryPolicy {
 func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope tally.Scope, sessionTokenBucket *sessionTokenBucket) *baseWorker {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	dynamic := &worker.DynamicParams{
+		PollerPermit: worker.NewPermit(options.pollerCount),
+		TaskPermit:   worker.NewPermit(options.maxConcurrentTask),
+	}
+
 	var pollerAS *pollerAutoScaler
 	if pollerOptions := options.pollerAutoScaler; pollerOptions.Enabled {
+		dynamic.PollerPermit = worker.NewPermit(pollerOptions.InitCount)
 		pollerAS = newPollerScaler(
 			pollerOptions,
 			logger,
+			dynamic.PollerPermit,
 		)
 	}
 
 	bw := &baseWorker{
-		options:      options,
-		shutdownCh:   make(chan struct{}),
-		taskLimiter:  rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
-		retrier:      backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
-		logger:       logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType}),
-		metricsScope: tagScope(metricsScope, tagWorkerType, options.workerType),
-		dynamic: &worker.DynamicParams{
-			TaskPermit: worker.NewPermit(options.maxConcurrentTask),
-		},
+		options:              options,
+		shutdownCh:           make(chan struct{}),
+		taskLimiter:          rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
+		retrier:              backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
+		logger:               logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType}),
+		metricsScope:         tagScope(metricsScope, tagWorkerType, options.workerType),
+		dynamic:              dynamic,
 		pollerAutoScaler:     pollerAS,
 		taskQueueCh:          make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
 		limiterContext:       ctx,

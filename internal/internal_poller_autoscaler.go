@@ -82,6 +82,7 @@ type (
 func newPollerScaler(
 	options pollerAutoScalerOptions,
 	logger *zap.Logger,
+	permit worker.Permit,
 	hooks ...func()) *pollerAutoScaler {
 	if !options.Enabled {
 		return nil
@@ -91,7 +92,7 @@ func newPollerScaler(
 		isDryRun:             options.DryRun,
 		cooldownTime:         options.Cooldown,
 		logger:               logger,
-		permit:               worker.NewPermit(options.InitCount),
+		permit:               permit,
 		wg:                   &sync.WaitGroup{},
 		ctx:                  ctx,
 		cancel:               cancel,
