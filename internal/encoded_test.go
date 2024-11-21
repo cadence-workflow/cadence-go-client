@@ -80,6 +80,13 @@ func TestDefaultDataConverter(t *testing.T) {
 		r3 := testDataConverterFunction(t, dc, f3, []byte(""))
 		require.Equal(t, r3, "nil-result")
 	})
+	t.Run("nil-resp", func(t *testing.T) {
+		t.Parallel()
+
+		var ret []struct{}
+		require.NoError(t, dc.FromData([]byte(""), []interface{}{&ret}))
+		require.Nil(t, ret)
+	})
 }
 
 // testDataConverter implements encoded.DataConverter using gob
