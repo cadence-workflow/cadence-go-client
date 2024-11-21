@@ -1522,45 +1522,7 @@ func (b EncodedValue) HasValue() bool {
 	return b.value != nil
 }
 
-// SideEffect executes the provided function once, records its result into the workflow history. The recorded result on
-// history will be returned without executing the provided function during replay. This guarantees the deterministic
-// requirement for workflow as the exact same result will be returned in replay.
-// Common use case is to run some short non-deterministic code in workflow, like getting random number or new UUID.
-// The only way to fail SideEffect is to panic which causes decision task failure. The decision task after timeout is
-// rescheduled and re-executed giving SideEffect another chance to succeed.
-//
-// Caution: do not use SideEffect to modify closures. Always retrieve result from SideEffect's encoded return value.
-// For example this code is BROKEN:
-//
-//	// Bad example:
-//	var random int
-//	workflow.SideEffect(func(ctx workflow.Context) interface{} {
-//	       random = rand.Intn(100)
-//	       return nil
-//	})
-//	// random will always be 0 in replay, thus this code is non-deterministic
-//	if random < 50 {
-//	       ....
-//	} else {
-//	       ....
-//	}
-//
-// On replay the provided function is not executed, the random will always be 0, and the workflow could takes a
-// different path breaking the determinism.
-//
-// Here is the correct way to use SideEffect:
-//
-//	// Good example:
-//	encodedRandom := SideEffect(func(ctx workflow.Context) interface{} {
-//	      return rand.Intn(100)
-//	})
-//	var random int
-//	encodedRandom.Get(&random)
-//	if random < 50 {
-//	       ....
-//	} else {
-//	       ....
-//	}
+// SideEffect docs are in the public API to prevent duplication: [go.uber.org/cadence/workflow.SideEffect]
 func SideEffect(ctx Context, f func(ctx Context) interface{}) Value {
 	i := getWorkflowInterceptor(ctx)
 	return i.SideEffect(ctx, f)
@@ -1584,22 +1546,7 @@ func (wc *workflowEnvironmentInterceptor) SideEffect(ctx Context, f func(ctx Con
 	return encoded
 }
 
-// MutableSideEffect executes the provided function once, then it looks up the history for the value with the given id.
-// If there is no existing value, then it records the function result as a value with the given id on history;
-// otherwise, it compares whether the existing value from history has changed from the new function result by calling the
-// provided equals function. If they are equal, it returns the value without recording a new one in history;
-//
-//	otherwise, it records the new value with the same id on history.
-//
-// Caution: do not use MutableSideEffect to modify closures. Always retrieve result from MutableSideEffect's encoded
-// return value.
-//
-// The difference between MutableSideEffect() and SideEffect() is that every new SideEffect() call in non-replay will
-// result in a new marker being recorded on history. However, MutableSideEffect() only records a new marker if the value
-// changed. During replay, MutableSideEffect() will not execute the function again, but it will return the exact same
-// value as it was returning during the non-replay run.
-//
-// One good use case of MutableSideEffect() is to access dynamically changing config without breaking determinism.
+// MutableSideEffect docs are in the public API to prevent duplication: [go.uber.org/cadence/workflow.MutableSideEffect]
 func MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, equals func(a, b interface{}) bool) Value {
 	i := getWorkflowInterceptor(ctx)
 	return i.MutableSideEffect(ctx, id, f, equals)
