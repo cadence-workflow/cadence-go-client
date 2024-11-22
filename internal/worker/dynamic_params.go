@@ -23,6 +23,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/marusama/semaphore/v2"
 )
@@ -38,7 +39,7 @@ type DynamicParams struct {
 // Permit is an adaptive
 type Permit interface {
 	Acquire(context.Context, int) error
-	AcquireChan(context.Context) <-chan struct{}
+	AcquireChan(context.Context, *sync.WaitGroup) <-chan struct{}
 	Quota() int
 	SetQuota(int)
 	Count() int
@@ -63,15 +64,19 @@ func (p *permit) Acquire(ctx context.Context, count int) error {
 }
 
 // AcquireChan returns a permit ready channel. It's closed then permit is acquired
-func (p *permit) AcquireChan(ctx context.Context) <-chan struct{} {
+func (p *permit) AcquireChan(ctx context.Context, wg *sync.WaitGroup) <-chan struct{} {
 	ch := make(chan struct{})
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := p.sem.Acquire(ctx, 1); err != nil {
 			close(ch)
 			return
 		}
-		ch <- struct{}{}
-		close(ch)
+		select { // try to send to channel, but don't block if listener is gone
+		case ch <- struct{}{}:
+		default:
+		}
 	}()
 	return ch
 }
