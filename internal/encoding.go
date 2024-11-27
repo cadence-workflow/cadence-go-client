@@ -64,6 +64,9 @@ func (g jsonEncoding) Unmarshal(data []byte, objs []interface{}) error {
 	dec.UseNumber()
 	for i, obj := range objs {
 		if err := dec.Decode(obj); err != nil {
+			if err == io.EOF {
+				continue
+			}
 			return fmt.Errorf(
 				"unable to decode argument: %d, %v, with json error: %v", i, reflect.TypeOf(obj), err)
 		}
