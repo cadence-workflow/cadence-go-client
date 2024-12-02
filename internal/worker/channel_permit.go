@@ -18,17 +18,53 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package autoscaler
+package worker
 
-// AutoScaler collects data and estimate usage
-type (
-	AutoScaler interface {
-		Estimator
-		// GetCurrent ResourceUnit of resource
-		GetCurrent() ResourceUnit
-		// Start starts the autoscaler go routine that scales the ResourceUnit according to Estimator
-		Start()
-		// Stop stops the autoscaler if started or do nothing if not yet started
-		Stop()
-	}
+import (
+	"context"
+	"fmt"
 )
+
+type channelPermit struct {
+	channel chan struct{}
+}
+
+// NewChannelPermit creates a static permit that's not resizable
+func NewChannelPermit(count int) ChannelPermit {
+	channel := make(chan struct{}, count)
+	for i := 0; i < count; i++ {
+		channel <- struct{}{}
+	}
+	return &channelPermit{channel: channel}
+}
+
+func (p *channelPermit) Acquire(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("failed to acquire permit before context is done")
+	case p.channel <- struct{}{}:
+		return nil
+	}
+}
+
+// AcquireChan returns a permit ready channel
+func (p *channelPermit) GetChan() <-chan struct{} {
+	return p.channel
+}
+
+func (p *channelPermit) Release() {
+	p.channel <- struct{}{}
+}
+
+// Count returns the number of permits available
+func (p *channelPermit) Count() int {
+	return len(p.channel)
+}
+
+func (p *channelPermit) Quota() int {
+	return cap(p.channel)
+}
+
+// SetQuota on static permit doesn't take effect
+func (p *channelPermit) SetQuota(_ int) {
+}

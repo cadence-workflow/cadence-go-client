@@ -18,17 +18,46 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package autoscaler
+package worker
 
-// AutoScaler collects data and estimate usage
-type (
-	AutoScaler interface {
-		Estimator
-		// GetCurrent ResourceUnit of resource
-		GetCurrent() ResourceUnit
-		// Start starts the autoscaler go routine that scales the ResourceUnit according to Estimator
-		Start()
-		// Stop stops the autoscaler if started or do nothing if not yet started
-		Stop()
-	}
+import (
+	"context"
+	"fmt"
+
+	"github.com/marusama/semaphore/v2"
 )
+
+type resizablePermit struct {
+	sem semaphore.Semaphore
+}
+
+// NewResizablePermit creates a dynamic permit that's resizable
+func NewResizablePermit(initCount int) *resizablePermit {
+	return &resizablePermit{sem: semaphore.New(initCount)}
+}
+
+// Acquire is blocking until a permit is acquired or returns error after context is done
+// Remember to call Release(count) to release the permit after usage
+func (p *resizablePermit) Acquire(ctx context.Context) error {
+	if err := p.sem.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("failed to acquire permit before context is done: %w", err)
+	}
+	return nil
+}
+
+func (p *resizablePermit) Release() {
+	p.sem.Release(1)
+}
+
+func (p *resizablePermit) Quota() int {
+	return p.sem.GetLimit()
+}
+
+func (p *resizablePermit) SetQuota(c int) {
+	p.sem.SetLimit(c)
+}
+
+// Count returns the number of permits available
+func (p *resizablePermit) Count() int {
+	return p.sem.GetCount()
+}

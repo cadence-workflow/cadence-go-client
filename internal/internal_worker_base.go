@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"go.uber.org/cadence/internal/common/debug"
+	"go.uber.org/cadence/internal/worker"
 
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
@@ -141,7 +142,7 @@ type (
 		logger               *zap.Logger
 		metricsScope         tally.Scope
 
-		pollerRequestCh    chan struct{}
+		concurrency        *worker.ConcurrencyLimit
 		pollerAutoScaler   *pollerAutoScaler
 		taskQueueCh        chan interface{}
 		sessionTokenBucket *sessionTokenBucket
@@ -167,11 +168,18 @@ func createPollRetryPolicy() backoff.RetryPolicy {
 func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope tally.Scope, sessionTokenBucket *sessionTokenBucket) *baseWorker {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	concurrency := &worker.ConcurrencyLimit{
+		PollerPermit: worker.NewResizablePermit(options.pollerCount),
+		TaskPermit:   worker.NewChannelPermit(options.maxConcurrentTask),
+	}
+
 	var pollerAS *pollerAutoScaler
 	if pollerOptions := options.pollerAutoScaler; pollerOptions.Enabled {
+		concurrency.PollerPermit = worker.NewResizablePermit(pollerOptions.InitCount)
 		pollerAS = newPollerScaler(
 			pollerOptions,
 			logger,
+			concurrency.PollerPermit,
 		)
 	}
 
@@ -182,7 +190,7 @@ func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope t
 		retrier:              backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
 		logger:               logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType}),
 		metricsScope:         tagScope(metricsScope, tagWorkerType, options.workerType),
-		pollerRequestCh:      make(chan struct{}, options.maxConcurrentTask),
+		concurrency:          concurrency,
 		pollerAutoScaler:     pollerAS,
 		taskQueueCh:          make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
 		limiterContext:       ctx,
@@ -244,11 +252,13 @@ func (bw *baseWorker) runPoller() {
 		select {
 		case <-bw.shutdownCh:
 			return
-		case <-bw.pollerRequestCh:
-			bw.metricsScope.Gauge(metrics.ConcurrentTaskQuota).Update(float64(cap(bw.pollerRequestCh)))
-			// This metric is used to monitor how many poll requests have been allocated
-			// and can be used to approximate number of concurrent task running (not pinpoint accurate)
-			bw.metricsScope.Gauge(metrics.PollerRequestBufferUsage).Update(float64(cap(bw.pollerRequestCh) - len(bw.pollerRequestCh)))
+		case <-bw.concurrency.TaskPermit.GetChan(): // don't poll unless there is a task permit
+			// TODO move to a centralized place inside the worker
+			// emit metrics on concurrent task permit quota and current task permit count
+			// NOTE task permit doesn't mean there is a task running, it still needs to poll until it gets a task to process
+			// thus the metrics is only an estimated value of how many tasks are running concurrently
+			bw.metricsScope.Gauge(metrics.ConcurrentTaskQuota).Update(float64(bw.concurrency.TaskPermit.Quota()))
+			bw.metricsScope.Gauge(metrics.PollerRequestBufferUsage).Update(float64(bw.concurrency.TaskPermit.Count()))
 			if bw.sessionTokenBucket != nil {
 				bw.sessionTokenBucket.waitForAvailableToken()
 			}
@@ -259,10 +269,6 @@ func (bw *baseWorker) runPoller() {
 
 func (bw *baseWorker) runTaskDispatcher() {
 	defer bw.shutdownWG.Done()
-
-	for i := 0; i < bw.options.maxConcurrentTask; i++ {
-		bw.pollerRequestCh <- struct{}{}
-	}
 
 	for {
 		// wait for new task or shutdown
@@ -294,10 +300,10 @@ func (bw *baseWorker) pollTask() {
 	var task interface{}
 
 	if bw.pollerAutoScaler != nil {
-		if pErr := bw.pollerAutoScaler.Acquire(1); pErr == nil {
-			defer bw.pollerAutoScaler.Release(1)
+		if pErr := bw.concurrency.PollerPermit.Acquire(bw.limiterContext); pErr == nil {
+			defer bw.concurrency.PollerPermit.Release()
 		} else {
-			bw.logger.Warn("poller auto scaler acquire error", zap.Error(pErr))
+			bw.logger.Warn("poller permit acquire error", zap.Error(pErr))
 		}
 	}
 
@@ -333,7 +339,7 @@ func (bw *baseWorker) pollTask() {
 		case <-bw.shutdownCh:
 		}
 	} else {
-		bw.pollerRequestCh <- struct{}{} // poll failed, trigger a new poll
+		bw.concurrency.TaskPermit.Release() // poll failed, trigger a new poll by returning a task permit
 	}
 }
 
@@ -368,7 +374,7 @@ func (bw *baseWorker) processTask(task interface{}) {
 		}
 
 		if isPolledTask {
-			bw.pollerRequestCh <- struct{}{}
+			bw.concurrency.TaskPermit.Release() // task processed, trigger a new poll by returning a task permit
 		}
 	}()
 	err := bw.options.taskWorker.ProcessTask(task)
