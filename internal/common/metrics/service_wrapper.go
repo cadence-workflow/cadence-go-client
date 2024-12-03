@@ -85,6 +85,7 @@ const (
 	scopeNameDescribeTaskList                      = CadenceMetricsPrefix + "DescribeTaskList"
 	scopeNameRespondQueryTaskCompleted             = CadenceMetricsPrefix + "RespondQueryTaskCompleted"
 	scopeNameDescribeWorkflowExecution             = CadenceMetricsPrefix + "DescribeWorkflowExecution"
+	scopeNameDiagnoseWorkflowExecution             = CadenceMetricsPrefix + "DiagnoseWorkflowExecution"
 	scopeNameResetStickyTaskList                   = CadenceMetricsPrefix + "ResetStickyTaskList"
 	scopeNameGetSearchAttributes                   = CadenceMetricsPrefix + "GetSearchAttributes"
 	scopeNameListTaskListPartitions                = CadenceMetricsPrefix + "ListTaskListPartitions"
@@ -160,6 +161,13 @@ func (w *workflowServiceMetricsWrapper) DescribeDomain(ctx context.Context, requ
 func (w *workflowServiceMetricsWrapper) DescribeWorkflowExecution(ctx context.Context, request *shared.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DescribeWorkflowExecutionResponse, error) {
 	scope := w.getOperationScope(scopeNameDescribeWorkflowExecution)
 	result, err := w.service.DescribeWorkflowExecution(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	scope := w.getOperationScope(scopeNameDiagnoseWorkflowExecution)
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }

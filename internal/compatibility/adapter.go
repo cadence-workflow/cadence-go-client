@@ -74,6 +74,11 @@ func (a thrift2protoAdapter) DescribeWorkflowExecution(ctx context.Context, requ
 	return thrift.DescribeWorkflowExecutionResponse(response), thrift.Error(err)
 }
 
+func (a thrift2protoAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.workflow.DiagnoseWorkflowExecution(ctx, proto.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return thrift.DiagnoseWorkflowExecutionResponse(response), thrift.Error(err)
+}
+
 func (a thrift2protoAdapter) GetClusterInfo(ctx context.Context, opts ...yarpc.CallOption) (*shared.ClusterInfo, error) {
 	response, err := a.workflow.GetClusterInfo(ctx, &apiv1.GetClusterInfoRequest{}, opts...)
 	return thrift.GetClusterInfoResponse(response), thrift.Error(err)
@@ -327,6 +332,10 @@ func (a workflowAPIthriftAdapter) TerminateWorkflowExecution(ctx context.Context
 func (a workflowAPIthriftAdapter) DescribeWorkflowExecution(ctx context.Context, request *apiv1.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*apiv1.DescribeWorkflowExecutionResponse, error) {
 	response, err := a.service.DescribeWorkflowExecution(ctx, thrift.DescribeWorkflowExecutionRequest(request), opts...)
 	return proto.DescribeWorkflowExecutionResponse(response), proto.Error(err)
+}
+func (a workflowAPIthriftAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *apiv1.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*apiv1.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.service.DiagnoseWorkflowExecution(ctx, thrift.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return proto.DiagnoseWorkflowExecutionResponse(response), proto.Error(err)
 }
 func (a workflowAPIthriftAdapter) QueryWorkflow(ctx context.Context, request *apiv1.QueryWorkflowRequest, opts ...yarpc.CallOption) (*apiv1.QueryWorkflowResponse, error) {
 	response, err := a.service.QueryWorkflow(ctx, thrift.QueryWorkflowRequest(request), opts...)

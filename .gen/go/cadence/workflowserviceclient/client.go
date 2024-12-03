@@ -68,6 +68,12 @@ type Interface interface {
 		opts ...yarpc.CallOption,
 	) (*shared.DescribeWorkflowExecutionResponse, error)
 
+	DiagnoseWorkflowExecution(
+		ctx context.Context,
+		DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.DiagnoseWorkflowExecutionResponse, error)
+
 	GetClusterInfo(
 		ctx context.Context,
 		opts ...yarpc.CallOption,
@@ -431,6 +437,29 @@ func (c client) DescribeWorkflowExecution(
 	}
 
 	success, err = cadence.WorkflowService_DescribeWorkflowExecution_Helper.UnwrapResponse(&result)
+	return
+}
+
+func (c client) DiagnoseWorkflowExecution(
+	ctx context.Context,
+	_DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.DiagnoseWorkflowExecutionResponse, err error) {
+
+	args := cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.Args(_DiagnoseRequest)
+
+	var body wire.Value
+	body, err = c.c.Call(ctx, args, opts...)
+	if err != nil {
+		return
+	}
+
+	var result cadence.WorkflowService_DiagnoseWorkflowExecution_Result
+	if err = result.FromWire(body); err != nil {
+		return
+	}
+
+	success, err = cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.UnwrapResponse(&result)
 	return
 }
 

@@ -62,6 +62,11 @@ type Interface interface {
 		DescribeRequest *shared.DescribeWorkflowExecutionRequest,
 	) (*shared.DescribeWorkflowExecutionResponse, error)
 
+	DiagnoseWorkflowExecution(
+		ctx context.Context,
+		DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+	) (*shared.DiagnoseWorkflowExecutionResponse, error)
+
 	GetClusterInfo(
 		ctx context.Context,
 	) (*shared.ClusterInfo, error)
@@ -314,6 +319,17 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 					Unary: thrift.UnaryHandler(h.DescribeWorkflowExecution),
 				},
 				Signature:    "DescribeWorkflowExecution(DescribeRequest *shared.DescribeWorkflowExecutionRequest) (*shared.DescribeWorkflowExecutionResponse)",
+				ThriftModule: cadence.ThriftModule,
+			},
+
+			thrift.Method{
+				Name: "DiagnoseWorkflowExecution",
+				HandlerSpec: thrift.HandlerSpec{
+
+					Type:  transport.Unary,
+					Unary: thrift.UnaryHandler(h.DiagnoseWorkflowExecution),
+				},
+				Signature:    "DiagnoseWorkflowExecution(DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest) (*shared.DiagnoseWorkflowExecutionResponse)",
 				ThriftModule: cadence.ThriftModule,
 			},
 
@@ -737,7 +753,7 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 		},
 	}
 
-	procedures := make([]transport.Procedure, 0, 43)
+	procedures := make([]transport.Procedure, 0, 44)
 	procedures = append(procedures, thrift.BuildProcedures(service, opts...)...)
 	return procedures
 }
@@ -879,6 +895,36 @@ func (h handler) DescribeWorkflowExecution(ctx context.Context, body wire.Value)
 
 	hadError := appErr != nil
 	result, err := cadence.WorkflowService_DescribeWorkflowExecution_Helper.WrapResponse(success, appErr)
+
+	var response thrift.Response
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+
+	return response, err
+}
+
+func (h handler) DiagnoseWorkflowExecution(ctx context.Context, body wire.Value) (thrift.Response, error) {
+	var args cadence.WorkflowService_DiagnoseWorkflowExecution_Args
+	if err := args.FromWire(body); err != nil {
+		return thrift.Response{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode Thrift request for service 'WorkflowService' procedure 'DiagnoseWorkflowExecution': %w", err)
+	}
+
+	success, appErr := h.impl.DiagnoseWorkflowExecution(ctx, args.DiagnoseRequest)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.WrapResponse(success, appErr)
 
 	var response thrift.Response
 	if err == nil {

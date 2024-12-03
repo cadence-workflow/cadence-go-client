@@ -89,6 +89,16 @@ func DescribeWorkflowExecutionResponse(t *shared.DescribeWorkflowExecutionRespon
 	}
 }
 
+func DiagnoseWorkflowExecutionResponse(t *shared.DiagnoseWorkflowExecutionResponse) *apiv1.DiagnoseWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      t.GetDomain(),
+		DiagnosticWorkflowExecution: WorkflowExecution(t.DiagnosticWorkflowExecution),
+	}
+}
+
 func GetClusterInfoResponse(t *shared.ClusterInfo) *apiv1.GetClusterInfoResponse {
 	if t == nil {
 		return nil

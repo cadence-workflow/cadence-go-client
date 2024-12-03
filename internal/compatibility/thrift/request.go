@@ -82,6 +82,17 @@ func DescribeWorkflowExecutionRequest(t *apiv1.DescribeWorkflowExecutionRequest)
 	}
 }
 
+func DiagnoseWorkflowExecutionRequest(t *apiv1.DiagnoseWorkflowExecutionRequest) *shared.DiagnoseWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &shared.DiagnoseWorkflowExecutionRequest{
+		Domain:            &t.Domain,
+		WorkflowExecution: WorkflowExecution(t.WorkflowExecution),
+		Identity:          &t.Identity,
+	}
+}
+
 func GetWorkflowExecutionHistoryRequest(t *apiv1.GetWorkflowExecutionHistoryRequest) *shared.GetWorkflowExecutionHistoryRequest {
 	if t == nil {
 		return nil

@@ -113,6 +113,16 @@ func (w *workflowServiceAuthWrapper) DescribeWorkflowExecution(ctx context.Conte
 	return result, err
 }
 
+func (w *workflowServiceAuthWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
+	return result, err
+}
+
 func (w *workflowServiceAuthWrapper) GetWorkflowExecutionHistory(ctx context.Context, request *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) (*shared.GetWorkflowExecutionHistoryResponse, error) {
 	tokenHeader, err := w.getYarpcJWTHeader()
 	if err != nil {

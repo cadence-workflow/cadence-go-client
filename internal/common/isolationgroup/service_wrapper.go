@@ -73,6 +73,12 @@ func (w *workflowServiceIsolationGroupWrapper) DescribeWorkflowExecution(ctx con
 	return result, err
 }
 
+func (w *workflowServiceIsolationGroupWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
+	return result, err
+}
+
 func (w *workflowServiceIsolationGroupWrapper) GetWorkflowExecutionHistory(ctx context.Context, request *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) (*shared.GetWorkflowExecutionHistoryResponse, error) {
 	opts = append(opts, w.getIsolationGroupIdentifier())
 	result, err := w.service.GetWorkflowExecutionHistory(ctx, request, opts...)

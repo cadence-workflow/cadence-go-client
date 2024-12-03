@@ -217,6 +217,16 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionResponse(thrift.DescribeWorkflowExecutionResponse(item)))
 	}
 }
+func TestDiagnoseWorkflowExecutionRequest(t *testing.T) {
+	for _, item := range []*apiv1.DiagnoseWorkflowExecutionRequest{nil, {}, &testdata.DiagnoseWorkflowExecutionRequest} {
+		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionRequest(thrift.DiagnoseWorkflowExecutionRequest(item)))
+	}
+}
+func TestDiagnoseWorkflowExecutionResponse(t *testing.T) {
+	for _, item := range []*apiv1.DiagnoseWorkflowExecutionResponse{nil, {}, &testdata.DiagnoseWorkflowExecutionResponse} {
+		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionResponse(thrift.DiagnoseWorkflowExecutionResponse(item)))
+	}
+}
 func TestExternalWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ExternalWorkflowExecutionCancelRequestedEventAttributes{nil, {}, &testdata.ExternalWorkflowExecutionCancelRequestedEventAttributes} {
 		assert.Equal(t, item, proto.ExternalWorkflowExecutionCancelRequestedEventAttributes(thrift.ExternalWorkflowExecutionCancelRequestedEventAttributes(item)))

@@ -140,6 +140,22 @@ func (s *serviceWrapperSuite) TestDescribeWorkflowExecutionInvalidToken() {
 	s.EqualError(err, "error")
 }
 
+func (s *serviceWrapperSuite) TestDiagnoseWorkflowExecutionValidToken() {
+	s.Service.EXPECT().DiagnoseWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DiagnoseWorkflowExecution(ctx, &shared.DiagnoseWorkflowExecutionRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestDiagnoseWorkflowExecutionInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DiagnoseWorkflowExecution(ctx, &shared.DiagnoseWorkflowExecutionRequest{})
+	s.EqualError(err, "error")
+}
+
 func (s *serviceWrapperSuite) TestGetWorkflowExecutionHistoryValidToken() {
 	s.Service.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)

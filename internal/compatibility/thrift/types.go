@@ -41,6 +41,13 @@ func Payload(p *apiv1.Payload) []byte {
 	return p.Data
 }
 
+func Domain(domain string) *string {
+	if domain == "" {
+		return nil
+	}
+	return &domain
+}
+
 func FailureReason(failure *apiv1.Failure) *string {
 	if failure == nil {
 		return nil
@@ -85,6 +92,16 @@ func ActivityType(t *apiv1.ActivityType) *shared.ActivityType {
 	}
 	return &shared.ActivityType{
 		Name: &t.Name,
+	}
+}
+
+func AutoConfigHint(t *apiv1.AutoConfigHint) *shared.AutoConfigHint {
+	if t == nil {
+		return nil
+	}
+	return &shared.AutoConfigHint{
+		EnableAutoConfig:   &t.EnableAutoConfig,
+		PollerWaitTimeInMs: &t.PollerWaitTimeInMs,
 	}
 }
 

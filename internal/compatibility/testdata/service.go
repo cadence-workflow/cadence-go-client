@@ -382,6 +382,15 @@ var (
 		PendingChildren:        PendingChildExecutionInfoArray,
 		PendingDecision:        &PendingDecisionInfo,
 	}
+	DiagnoseWorkflowExecutionRequest = apiv1.DiagnoseWorkflowExecutionRequest{
+		Domain:            DomainName,
+		WorkflowExecution: &WorkflowExecution,
+		Identity:          Identity,
+	}
+	DiagnoseWorkflowExecutionResponse = apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      DomainName,
+		DiagnosticWorkflowExecution: &WorkflowExecution,
+	}
 	QueryWorkflowRequest = apiv1.QueryWorkflowRequest{
 		Domain:                DomainName,
 		WorkflowExecution:     &WorkflowExecution,

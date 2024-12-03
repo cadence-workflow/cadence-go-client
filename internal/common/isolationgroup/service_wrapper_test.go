@@ -86,6 +86,15 @@ func TestAPICalls(t *testing.T) {
 			},
 			expectedResponse: &shared.DescribeWorkflowExecutionResponse{},
 		},
+		"DiagnoseWorkflowExecution": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.DiagnoseWorkflowExecution(ctx, &shared.DiagnoseWorkflowExecutionRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().DiagnoseWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.DiagnoseWorkflowExecutionResponse{}, nil)
+			},
+			expectedResponse: &shared.DiagnoseWorkflowExecutionResponse{},
+		},
 		"ListOpenWorkflowExecutions": {
 			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
 				return sw.ListOpenWorkflowExecutions(ctx, &shared.ListOpenWorkflowExecutionsRequest{})

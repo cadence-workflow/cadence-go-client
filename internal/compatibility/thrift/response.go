@@ -89,6 +89,16 @@ func DescribeWorkflowExecutionResponse(t *apiv1.DescribeWorkflowExecutionRespons
 	}
 }
 
+func DiagnoseWorkflowExecutionResponse(t *apiv1.DiagnoseWorkflowExecutionResponse) *shared.DiagnoseWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.DiagnoseWorkflowExecutionResponse{
+		Domain:                      Domain(t.Domain),
+		DiagnosticWorkflowExecution: WorkflowExecution(t.DiagnosticWorkflowExecution),
+	}
+}
+
 func GetClusterInfoResponse(t *apiv1.GetClusterInfoResponse) *shared.ClusterInfo {
 	if t == nil {
 		return nil
@@ -200,6 +210,7 @@ func PollForActivityTaskResponse(t *apiv1.PollForActivityTaskResponse) *shared.P
 		WorkflowType:                    WorkflowType(t.WorkflowType),
 		WorkflowDomain:                  &t.WorkflowDomain,
 		Header:                          Header(t.Header),
+		AutoConfigHint:                  AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -224,6 +235,7 @@ func PollForDecisionTaskResponse(t *apiv1.PollForDecisionTaskResponse) *shared.P
 		Queries:                   WorkflowQueryMap(t.Queries),
 		NextEventId:               &t.NextEventId,
 		TotalHistoryBytes:         &t.TotalHistoryBytes,
+		AutoConfigHint:            AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
