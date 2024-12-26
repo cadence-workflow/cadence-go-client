@@ -1057,7 +1057,18 @@ func getRetryBackoffWithNowTime(p *RetryPolicy, attempt int32, errReason string,
 		return noRetryBackoff
 	}
 
-	if p.MaximumAttempts > 0 && attempt > p.MaximumAttempts-1 {
+	if p.MaximumAttempts > 0 && attempt >= p.MaximumAttempts-1 {
+		// >=max-1 matches server behavior, which treats all this somewhat oddly, but it has been consistent for a long time.
+		// basically:
+		// - attempts means *retry attempts*, as it's only relevant for retries
+		// - max attempts means *total executions*, counting the first and all retries
+		// so e.g. max=3 means 3 calls, with attempt counts 0, 1, 2.
+		//
+		// first==0 makes the backoff interval below convenient (no coefficient),
+		// otherwise this feels confusing and it contributes to RetryPolicy's ambiguities,
+		// as some things apply to the *policy* (expiration, attempts displayed) and some to all executions (max attempts).
+		//
+		// we may be able to change this with a completely new API, but for now it must not change for backwards compat.
 		return noRetryBackoff // max attempt reached
 	}
 
