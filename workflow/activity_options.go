@@ -118,6 +118,6 @@ func WithWaitForCancellation(ctx Context, wait bool) Context {
 // WithRetryPolicy makes a copy of the current context and update
 // the RetryPolicy field in its activity options. An empty activity
 // options will be created if it does not exist in the original context.
-func WithRetryPolicy(ctx Context, retryPolicy RetryPolicy) Context {
+func WithRetryPolicy(ctx Context, retryPolicy *RetryPolicy) Context {
 	return internal.WithRetryPolicy(ctx, retryPolicy)
 }

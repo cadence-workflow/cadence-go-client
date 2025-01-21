@@ -99,6 +99,17 @@ func (w *Workflows) ActivityRetryOptionsChange(ctx workflow.Context) ([]string, 
 	return []string{"fail", "fail"}, nil
 }
 
+func (w *Workflows) ActivityRetryOptionsRemove(ctx workflow.Context) ([]string, error) {
+	opts := w.defaultActivityOptionsWithRetry()
+	ctx = workflow.WithActivityOptions(ctx, opts)
+	ctx = workflow.WithRetryPolicy(ctx, nil)
+	err := workflow.ExecuteActivity(ctx, "Fail").Get(ctx, nil)
+	if err == nil {
+		return nil, fmt.Errorf("expected activity to fail but succeeded")
+	}
+	return []string{"fail"}, nil
+}
+
 func (w *Workflows) ActivityRetryOnTimeout(ctx workflow.Context, timeoutType shared.TimeoutType) ([]string, error) {
 	opts := w.defaultActivityOptionsWithRetry()
 	switch timeoutType {
@@ -625,6 +636,7 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.ActivityAutoHeartbeat)
 	worker.RegisterWorkflow(w.ActivityRetryOnTimeout)
 	worker.RegisterWorkflow(w.ActivityRetryOptionsChange)
+	worker.RegisterWorkflow(w.ActivityRetryOptionsRemove)
 	worker.RegisterWorkflow(w.ContinueAsNew)
 	worker.RegisterWorkflow(w.ContinueAsNewWithOptions)
 	worker.RegisterWorkflow(w.IDReusePolicy)
