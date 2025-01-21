@@ -1839,9 +1839,9 @@ func WithWaitForCancellation(ctx Context, wait bool) Context {
 }
 
 // WithRetryPolicy adds retry policy to the copy of the context
-func WithRetryPolicy(ctx Context, retryPolicy RetryPolicy) Context {
+func WithRetryPolicy(ctx Context, retryPolicy *RetryPolicy) Context {
 	ctx1 := setActivityParametersIfNotExist(ctx)
-	getActivityOptions(ctx1).RetryPolicy = convertRetryPolicy(&retryPolicy)
+	getActivityOptions(ctx1).RetryPolicy = convertRetryPolicy(retryPolicy)
 	return ctx1
 }
 

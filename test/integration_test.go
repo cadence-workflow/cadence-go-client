@@ -205,6 +205,13 @@ func (ts *IntegrationTestSuite) TestActivityRetryOptionsChange() {
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
+func (ts *IntegrationTestSuite) TestActivityRetryOptionsRemove() {
+	var expected []string
+	err := ts.executeWorkflow("test-activity-retry-options-remove", ts.workflows.ActivityRetryOptionsRemove, &expected)
+	ts.NoError(err)
+	ts.EqualValues(expected, ts.activities.invoked())
+}
+
 func (ts *IntegrationTestSuite) TestActivityRetryOnStartToCloseTimeout() {
 	var expected []string
 	err := ts.executeWorkflow(
