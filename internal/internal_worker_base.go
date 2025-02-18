@@ -332,7 +332,7 @@ func (bw *baseWorker) pollTask() {
 			bw.retrier.Failed()
 		} else {
 			bw.retrier.Succeeded()
-			if t, ok :=task.(autoConfigHintAwareTask); bw.concurrencyAutoScaler != nil && ok {
+			if t, ok := task.(autoConfigHintAwareTask); bw.concurrencyAutoScaler != nil && ok {
 				bw.concurrencyAutoScaler.ProcessPollerHint(t.getAutoConfigHint())
 			}
 		}
