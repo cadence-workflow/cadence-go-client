@@ -26,19 +26,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
+	"os"
+
 	"github.com/golang/mock/gomock"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
 	"go.uber.org/cadence/internal/common/serializer"
-	"go.uber.org/zap"
-	"io/ioutil"
-	"math"
 )
 
 const (
@@ -118,10 +121,62 @@ func (r *WorkflowReplayer) RegisterWorkflowWithOptions(w interface{}, options Re
 	r.registry.RegisterWorkflowWithOptions(w, options)
 }
 
+// RegisterActivity registers an activity function for this replayer
+func (r *WorkflowReplayer) RegisterActivity(a interface{}) {
+	r.registry.RegisterActivity(a)
+}
+
+// RegisterActivityWithOptions registers an activity function for this replayer with custom options, e.g. an explicit name.
+func (r *WorkflowReplayer) RegisterActivityWithOptions(a interface{}, options RegisterActivityOptions) {
+	r.registry.RegisterActivityWithOptions(a, options)
+}
+
+// GetRegisteredWorkflows retrieves the registered workflows on the replayer
+func (r *WorkflowReplayer) GetRegisteredWorkflows() []RegistryWorkflowInfo {
+	workflows := r.registry.GetRegisteredWorkflows()
+	var result []RegistryWorkflowInfo
+	for _, wf := range workflows {
+		result = append(result, wf)
+	}
+	return result
+}
+
+// GetRegisteredActivities retrieves the registered activities on the replayer
+func (r *WorkflowReplayer) GetRegisteredActivities() []RegistryActivityInfo {
+	activities := r.registry.getRegisteredActivities()
+	var result []RegistryActivityInfo
+	for _, a := range activities {
+		result = append(result, a)
+	}
+	return result
+}
+
 // ReplayWorkflowHistory executes a single decision task for the given history.
 // Use for testing backwards compatibility of code changes and troubleshooting workflows in a debugger.
 // The logger is an optional parameter. Defaults to the noop logger.
 func (r *WorkflowReplayer) ReplayWorkflowHistory(logger *zap.Logger, history *shared.History) error {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
+	testReporter := logger.Sugar()
+	controller := gomock.NewController(testReporter)
+	service := workflowservicetest.NewMockClient(controller)
+
+	return r.replayWorkflowHistory(logger, service, replayDomainName, nil, history, nil)
+}
+
+func (r *WorkflowReplayer) ReplayWorkflowHistoryFromJSON(logger *zap.Logger, reader io.Reader) error {
+	return r.ReplayPartialWorkflowHistoryFromJSON(logger, reader, 0)
+}
+
+func (r *WorkflowReplayer) ReplayPartialWorkflowHistoryFromJSON(logger *zap.Logger, reader io.Reader, lastEventID int64) error {
+	history, err := extractHistoryFromReader(reader, lastEventID)
+
+	if err != nil {
+		return err
+	}
+
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -145,21 +200,14 @@ func (r *WorkflowReplayer) ReplayWorkflowHistoryFromJSONFile(logger *zap.Logger,
 // Use for testing backwards compatibility of code changes and troubleshooting workflows in a debugger.
 // The logger is an optional parameter. Defaults to the noop logger.
 func (r *WorkflowReplayer) ReplayPartialWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName string, lastEventID int64) error {
-	history, err := extractHistoryFromFile(jsonfileName, lastEventID)
-
+	file, err := os.Open(jsonfileName)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not open file: %w", err)
 	}
-
-	if logger == nil {
-		logger = zap.NewNop()
-	}
-
-	testReporter := logger.Sugar()
-	controller := gomock.NewController(testReporter)
-	service := workflowservicetest.NewMockClient(controller)
-
-	return r.replayWorkflowHistory(logger, service, replayDomainName, nil, history, nil)
+	defer func() {
+		_ = file.Close()
+	}()
+	return r.ReplayPartialWorkflowHistoryFromJSON(logger, file, lastEventID)
 }
 
 // ReplayWorkflowExecution replays workflow execution loading it from Cadence service.
@@ -295,10 +343,10 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 		return err
 	}
 
-	if last.GetEventType() != shared.EventTypeWorkflowExecutionCompleted && last.GetEventType() != shared.EventTypeWorkflowExecutionContinuedAsNew {
+	//Technically speaking we do not need extra validations for the continue as new cases as they are equivalent to that case getting completed.
+	if last.GetEventType() != shared.EventTypeWorkflowExecutionCompleted {
 		return nil
 	}
-
 	// TODO: the following result will not be executed if nextPageToken is not nil, which is probably fine as the actual workflow task
 	// processing logic does not have such check. If we want to always execute this check for closed workflows, we need to dump the
 	// entire history before starting the replay as otherwise we can't get the last event here.
@@ -307,14 +355,6 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 		completeReq, ok := resp.(*shared.RespondDecisionTaskCompletedRequest)
 		if ok {
 			for _, d := range completeReq.Decisions {
-				if d.GetDecisionType() == shared.DecisionTypeContinueAsNewWorkflowExecution &&
-					last.GetEventType() == shared.EventTypeWorkflowExecutionContinuedAsNew {
-					inputA := d.ContinueAsNewWorkflowExecutionDecisionAttributes.Input
-					inputB := last.WorkflowExecutionContinuedAsNewEventAttributes.Input
-					if bytes.Compare(inputA, inputB) == 0 {
-						return nil
-					}
-				}
 				if d.GetDecisionType() == shared.DecisionTypeCompleteWorkflowExecution &&
 					last.GetEventType() == shared.EventTypeWorkflowExecutionCompleted {
 					resultA := last.WorkflowExecutionCompletedEventAttributes.Result
@@ -323,30 +363,23 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 						return nil
 					}
 				}
-				if d.GetDecisionType() == shared.DecisionTypeCompleteWorkflowExecution &&
-					last.GetEventType() == shared.EventTypeWorkflowExecutionContinuedAsNew {
-					// for cron and retry workflow, decision will be completed workflow and
-					// and server side will convert it to a continue as new event.
-					// there's nothing to compare here
-					return nil
-				}
 			}
 		}
 	}
 	return fmt.Errorf("replay workflow doesn't return the same result as the last event, resp: %v, last: %v", resp, last)
 }
 
-func extractHistoryFromFile(jsonfileName string, lastEventID int64) (*shared.History, error) {
-	raw, err := ioutil.ReadFile(jsonfileName)
+func extractHistoryFromReader(r io.Reader, lastEventID int64) (*shared.History, error) {
+	raw, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
 
 	var deserializedEvents []*shared.HistoryEvent
 	err = json.Unmarshal(raw, &deserializedEvents)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid json contents: %w", err)
 	}
 
 	if lastEventID <= 0 {

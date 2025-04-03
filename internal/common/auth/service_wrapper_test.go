@@ -22,15 +22,15 @@ package auth
 
 import (
 	"fmt"
-	"github.com/uber/tchannel-go/thrift"
-	"go.uber.org/cadence/.gen/go/shared"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
-
 	"github.com/stretchr/testify/suite"
+	"github.com/uber/tchannel-go/thrift"
+
+	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
+	"go.uber.org/cadence/.gen/go/shared"
 )
 
 type (
@@ -137,6 +137,22 @@ func (s *serviceWrapperSuite) TestDescribeWorkflowExecutionInvalidToken() {
 	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
 	ctx, _ := thrift.NewContext(time.Minute)
 	_, err := sw.DescribeWorkflowExecution(ctx, &shared.DescribeWorkflowExecutionRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestDiagnoseWorkflowExecutionValidToken() {
+	s.Service.EXPECT().DiagnoseWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DiagnoseWorkflowExecution(ctx, &shared.DiagnoseWorkflowExecutionRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestDiagnoseWorkflowExecutionInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DiagnoseWorkflowExecution(ctx, &shared.DiagnoseWorkflowExecutionRequest{})
 	s.EqualError(err, "error")
 }
 
@@ -508,6 +524,22 @@ func (s *serviceWrapperSuite) TestSignalWithStartWorkflowExecutionInvalidToken()
 	s.EqualError(err, "error")
 }
 
+func (s *serviceWrapperSuite) TestSignalWithStartWorkflowExecutionAsyncToken() {
+	s.Service.EXPECT().SignalWithStartWorkflowExecutionAsync(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.SignalWithStartWorkflowExecutionAsync(ctx, &shared.SignalWithStartWorkflowExecutionAsyncRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestSignalWithStartWorkflowExecutionAsyncInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.SignalWithStartWorkflowExecutionAsync(ctx, &shared.SignalWithStartWorkflowExecutionAsyncRequest{})
+	s.EqualError(err, "error")
+}
+
 func (s *serviceWrapperSuite) TestStartWorkflowExecutionToken() {
 	s.Service.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
@@ -521,6 +553,22 @@ func (s *serviceWrapperSuite) TestStartWorkflowExecutionInvalidToken() {
 	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
 	ctx, _ := thrift.NewContext(time.Minute)
 	_, err := sw.StartWorkflowExecution(ctx, &shared.StartWorkflowExecutionRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestStartWorkflowExecutionAsyncToken() {
+	s.Service.EXPECT().StartWorkflowExecutionAsync(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.StartWorkflowExecutionAsync(ctx, &shared.StartWorkflowExecutionAsyncRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestStartWorkflowExecutionAsyncInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.StartWorkflowExecutionAsync(ctx, &shared.StartWorkflowExecutionAsyncRequest{})
 	s.EqualError(err, "error")
 }
 

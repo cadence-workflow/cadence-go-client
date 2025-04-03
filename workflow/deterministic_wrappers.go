@@ -117,8 +117,29 @@ func NewFuture(ctx Context) (Future, Settable) {
 	return internal.NewFuture(ctx)
 }
 
-// Now returns the current time when the decision is started or replayed.
-// The workflow needs to use this Now() to get the wall clock time instead of the Go lang library one.
+// Now returns the time that the current decision task was started.
+// Workflows need to base any behavior off this time, rather than `time.Now()`, because `time.Now()` will change during
+// future replays.
+//
+// Because it is based on the decision task start time (not the scheduled time), this means it is nearly identical to
+// `time.Now()`, with roughly only RPC delay difference, clock skew, etc.
+// However, because it is stable during a decision task, operations like this will not work like a normal `time.Time`:
+//
+//	before := workflow.Now(ctx)
+//	somethingComputationallyExpensive() // no activities, i.e. non-blocking, takes 1 second to compute
+//	after := workflow.Now(ctx)
+//	elapsed := after.Sub(before) // this will be 0
+//
+// It will however show the elapsed time spent waiting for an activity and any decision task delays, because there will
+// be a new decision task for the second `workflow.Now(ctx)` call:
+//
+//	before := workflow.Now(ctx)
+//	workflow.ExecuteActivity(...).Get(ctx, nil) // takes 1 second to schedule, run, and schedule the new decision task
+//	after := workflow.Now(ctx)
+//	elapsed := after.Sub(before) // this will be 1 second or more (depending on when the decision task started).
+//
+// Some actions may also advance `workflow.Now(ctx)` to a new time, e.g. local activities update the time when they
+// complete.  Generally speaking this occurs when there is a recorded event, as that event has a recorded time.
 func Now(ctx Context) time.Time {
 	return internal.Now(ctx)
 }

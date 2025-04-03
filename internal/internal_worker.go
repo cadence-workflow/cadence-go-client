@@ -36,19 +36,25 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"go.uber.org/cadence/internal/common/debug"
+
+	"go.uber.org/cadence/internal/common/isolationgroup"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/auth"
 	"go.uber.org/cadence/internal/common/backoff"
 	"go.uber.org/cadence/internal/common/metrics"
 	"go.uber.org/cadence/internal/common/util"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var startVersionMetric sync.Once
@@ -158,6 +164,9 @@ func newWorkflowWorker(
 }
 
 func ensureRequiredParams(params *workerExecutionParameters) {
+	if params.Tracer == nil {
+		params.Tracer = opentracing.NoopTracer{}
+	}
 	if params.Identity == "" {
 		params.Identity = getWorkerIdentity(params.TaskList)
 	}
@@ -181,6 +190,14 @@ func ensureRequiredParams(params *workerExecutionParameters) {
 	}
 	if params.UserContext == nil {
 		params.UserContext = context.Background()
+	}
+	if params.WorkerStats.PollerTracker == nil {
+		params.WorkerStats.PollerTracker = debug.NewNoopPollerTracker()
+		params.Logger.Debug("No PollerTracker configured for WorkerStats option. Will use the default.")
+	}
+	if params.WorkerStats.ActivityTracker == nil {
+		params.WorkerStats.ActivityTracker = debug.NewNoopActivityTracker()
+		params.Logger.Debug("No ActivityTracker configured for WorkerStats option. Will use the default.")
 	}
 }
 
@@ -276,7 +293,9 @@ func newWorkflowTaskWorkerInternal(
 		taskWorker:        poller,
 		identity:          params.Identity,
 		workerType:        "DecisionWorker",
-		shutdownTimeout:   params.WorkerStopTimeout},
+		shutdownTimeout:   params.WorkerStopTimeout,
+		pollerTracker:     params.WorkerStats.PollerTracker,
+	},
 		params.Logger,
 		params.MetricsScope,
 		nil,
@@ -299,7 +318,9 @@ func newWorkflowTaskWorkerInternal(
 		taskWorker:        localActivityTaskPoller,
 		identity:          params.Identity,
 		workerType:        "LocalActivityWorker",
-		shutdownTimeout:   params.WorkerStopTimeout},
+		shutdownTimeout:   params.WorkerStopTimeout,
+		pollerTracker:     params.WorkerStats.PollerTracker,
+	},
 		params.Logger,
 		params.MetricsScope,
 		nil,
@@ -474,7 +495,10 @@ func newActivityTaskWorker(
 			identity:          workerParams.Identity,
 			workerType:        workerType,
 			shutdownTimeout:   workerParams.WorkerStopTimeout,
-			userContextCancel: workerParams.UserContextCancel},
+			userContextCancel: workerParams.UserContextCancel,
+			pollerTracker:     workerParams.WorkerStats.PollerTracker,
+		},
+
 		workerParams.Logger,
 		workerParams.MetricsScope,
 		sessionTokenBucket,
@@ -644,6 +668,7 @@ func decodeAndAssignValue(dc DataConverter, from interface{}, toValuePtr interfa
 type workflowExecutor struct {
 	workflowType string
 	fn           interface{}
+	path         string
 }
 
 func (we *workflowExecutor) Execute(ctx Context, input []byte) ([]byte, error) {
@@ -668,15 +693,27 @@ func (we *workflowExecutor) Execute(ctx Context, input []byte) ([]byte, error) {
 	return serializeResults(we.fn, results, dataConverter)
 }
 
+func (we *workflowExecutor) WorkflowType() WorkflowType {
+	return WorkflowType{
+		Name: we.workflowType,
+		Path: we.path,
+	}
+}
+
+func (we *workflowExecutor) GetFunction() interface{} {
+	return we.fn
+}
+
 // Wrapper to execute activity functions.
 type activityExecutor struct {
 	name    string
 	fn      interface{}
 	options RegisterActivityOptions
+	path    string
 }
 
 func (ae *activityExecutor) ActivityType() ActivityType {
-	return ActivityType{Name: ae.name}
+	return ActivityType{Name: ae.name, Path: ae.path}
 }
 
 func (ae *activityExecutor) GetFunction() interface{} {
@@ -765,6 +802,27 @@ type aggregatedWorker struct {
 	shadowWorker                    *shadowWorker
 	logger                          *zap.Logger
 	registry                        *registry
+	workerstats                     debug.WorkerStats
+}
+
+var _ debug.Debugger = &aggregatedWorker{}
+
+func (aw *aggregatedWorker) GetRegisteredWorkflows() []RegistryWorkflowInfo {
+	workflows := aw.registry.GetRegisteredWorkflows()
+	var result []RegistryWorkflowInfo
+	for _, wf := range workflows {
+		result = append(result, wf)
+	}
+	return result
+}
+
+func (aw *aggregatedWorker) GetRegisteredActivities() []RegistryActivityInfo {
+	activities := aw.registry.getRegisteredActivities()
+	var result []RegistryActivityInfo
+	for _, a := range activities {
+		result = append(result, a)
+	}
+	return result
 }
 
 func (aw *aggregatedWorker) RegisterWorkflow(w interface{}) {
@@ -784,7 +842,7 @@ func (aw *aggregatedWorker) RegisterActivityWithOptions(a interface{}, options R
 }
 
 func (aw *aggregatedWorker) Start() error {
-	if err := initBinaryChecksum(); err != nil {
+	if _, err := initBinaryChecksum(); err != nil {
 		return fmt.Errorf("failed to get executable checksum: %v", err)
 	}
 
@@ -866,38 +924,33 @@ func (aw *aggregatedWorker) Start() error {
 	return nil
 }
 
-var binaryChecksum string
+var binaryChecksum atomic.Value
 var binaryChecksumLock sync.Mutex
 
 // SetBinaryChecksum set binary checksum
 func SetBinaryChecksum(checksum string) {
+	binaryChecksum.Store(checksum)
+}
+
+func initBinaryChecksum() (string, error) {
+	// initBinaryChecksum may be called multiple times concurrently during worker startup.
+	// To avoid reading and hashing the contents of the binary multiple times acquire mutex here.
 	binaryChecksumLock.Lock()
 	defer binaryChecksumLock.Unlock()
 
-	binaryChecksum = checksum
-}
-
-func initBinaryChecksum() error {
-	binaryChecksumLock.Lock()
-	defer binaryChecksumLock.Unlock()
-
-	return initBinaryChecksumLocked()
-}
-
-// callers MUST hold binaryChecksumLock before calling
-func initBinaryChecksumLocked() error {
-	if len(binaryChecksum) > 0 {
-		return nil
+	// check if binaryChecksum already set/initialized.
+	if bcsVal, ok := binaryChecksum.Load().(string); ok {
+		return bcsVal, nil
 	}
 
 	exec, err := os.Executable()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	f, err := os.Open(exec)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = f.Close() // error is unimportant as it is read-only
@@ -905,27 +958,28 @@ func initBinaryChecksumLocked() error {
 
 	h := md5.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return err
+		return "", err
 	}
 
 	checksum := h.Sum(nil)
-	binaryChecksum = hex.EncodeToString(checksum[:])
+	bcsVal := hex.EncodeToString(checksum[:])
+	binaryChecksum.Store(bcsVal)
 
-	return nil
+	return bcsVal, err
 }
 
 func getBinaryChecksum() string {
-	binaryChecksumLock.Lock()
-	defer binaryChecksumLock.Unlock()
-
-	if len(binaryChecksum) == 0 {
-		err := initBinaryChecksumLocked()
-		if err != nil {
-			panic(err)
-		}
+	bcsVal, ok := binaryChecksum.Load().(string)
+	if ok {
+		return bcsVal
 	}
 
-	return binaryChecksum
+	bcsVal, err := initBinaryChecksum()
+	if err != nil {
+		panic(err)
+	}
+
+	return bcsVal
 }
 
 func (aw *aggregatedWorker) Run() error {
@@ -957,6 +1011,10 @@ func (aw *aggregatedWorker) Stop() {
 	aw.logger.Info("Stopped Worker")
 }
 
+func (aw *aggregatedWorker) GetWorkerStats() debug.WorkerStats {
+	return aw.workerstats
+}
+
 // AggregatedWorker returns an instance to manage the workers. Use defaultConcurrentPollRoutineSize (which is 2) as
 // poller size. The typical RTT (round-trip time) is below 1ms within data center. And the poll API latency is about 5ms.
 // With 2 poller, we could achieve around 300~400 RPS.
@@ -965,8 +1023,12 @@ func newAggregatedWorker(
 	domain string,
 	taskList string,
 	options WorkerOptions,
-) (worker *aggregatedWorker) {
-	wOptions := augmentWorkerOptions(options)
+) (worker *aggregatedWorker, err error) {
+	wOptions := AugmentWorkerOptions(options)
+	if err := options.Validate(); err != nil {
+		return nil, fmt.Errorf("worker options validation error: %w", err)
+	}
+
 	ctx := wOptions.BackgroundActivityContext
 	if ctx == nil {
 		ctx = context.Background()
@@ -990,6 +1052,9 @@ func newAggregatedWorker(
 	logger := workerParams.Logger
 	if options.Authorization != nil {
 		service = auth.NewWorkflowServiceWrapper(service, options.Authorization)
+	}
+	if options.IsolationGroup != "" {
+		service = isolationgroup.NewWorkflowServiceWrapper(service, options.IsolationGroup)
 	}
 	service = metrics.NewWorkflowServiceWrapper(service, workerParams.MetricsScope)
 	processTestTags(&wOptions, &workerParams)
@@ -1033,7 +1098,7 @@ func newAggregatedWorker(
 	var workflowWorker *workflowWorker
 	if !wOptions.DisableWorkflowWorker {
 		testTags := getTestTags(wOptions.BackgroundActivityContext)
-		if testTags != nil && len(testTags) > 0 {
+		if len(testTags) > 0 {
 			workflowWorker = newWorkflowWorkerWithPressurePoints(
 				service,
 				domain,
@@ -1092,7 +1157,8 @@ func newAggregatedWorker(
 		shadowWorker:                    shadowWorker,
 		logger:                          logger,
 		registry:                        registry,
-	}
+		workerstats:                     workerParams.WorkerStats,
+	}, nil
 }
 
 // tagScope with one or multiple tags, like
@@ -1184,7 +1250,7 @@ func getReadOnlyChannel(c chan struct{}) <-chan struct{} {
 	return c
 }
 
-func augmentWorkerOptions(options WorkerOptions) WorkerOptions {
+func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 	if options.MaxConcurrentActivityExecutionSize == 0 {
 		options.MaxConcurrentActivityExecutionSize = defaultMaxConcurrentActivityExecutionSize
 	}
@@ -1222,10 +1288,10 @@ func augmentWorkerOptions(options WorkerOptions) WorkerOptions {
 		options.MaxConcurrentSessionExecutionSize = defaultMaxConcurrentSessionExecutionSize
 	}
 	if options.MinConcurrentActivityTaskPollers == 0 {
-		options.MinConcurrentActivityTaskPollers = defaultMinConcurrentPollerSize
+		options.MinConcurrentActivityTaskPollers = defaultMinConcurrentActivityPollerSize
 	}
 	if options.MinConcurrentDecisionTaskPollers == 0 {
-		options.MinConcurrentDecisionTaskPollers = defaultMinConcurrentPollerSize
+		options.MinConcurrentDecisionTaskPollers = defaultMinConcurrentDecisionPollerSize
 	}
 	if options.PollerAutoScalerCooldown == 0 {
 		options.PollerAutoScalerCooldown = defaultPollerAutoScalerCooldown

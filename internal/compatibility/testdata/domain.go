@@ -24,6 +24,7 @@ import (
 	"time"
 
 	gogo "github.com/gogo/protobuf/types"
+
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 

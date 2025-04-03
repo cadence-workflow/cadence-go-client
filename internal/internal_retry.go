@@ -123,3 +123,7 @@ func isServiceTransientError(err error) bool {
 	// and all other `error` types
 	return true
 }
+
+func retryWhileTransientError(ctx context.Context, fn func() error) error {
+	return backoff.Retry(ctx, fn, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
+}

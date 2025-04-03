@@ -27,6 +27,8 @@ import (
 	"go.uber.org/cadence/internal/common/util"
 )
 
+//go:generate mockery --name Value --output ../mocks --boilerplate-file ../LICENSE
+
 type (
 	// Value is used to encapsulate/extract encoded value from workflow/activity.
 	Value interface {

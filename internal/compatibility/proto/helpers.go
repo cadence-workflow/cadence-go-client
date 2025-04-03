@@ -24,6 +24,7 @@ import (
 	"time"
 
 	gogo "github.com/gogo/protobuf/types"
+
 	"go.uber.org/cadence/internal/common"
 )
 

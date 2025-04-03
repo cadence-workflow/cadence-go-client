@@ -33,7 +33,7 @@ BIN := $(BUILD)/bin
 #
 # this can _likely_ remain a major version, as fmt output does not tend to change in minor versions,
 # which will allow findstring to match any minor version.
-EXPECTED_GO_VERSION := go1.19
+EXPECTED_GO_VERSION := go1.21
 CURRENT_GO_VERSION := $(shell go version)
 ifeq (,$(findstring $(EXPECTED_GO_VERSION),$(CURRENT_GO_VERSION)))
 # if you are seeing this warning: consider using https://github.com/travis-ci/gimme to pin your version
@@ -50,11 +50,11 @@ endif
 # ====================================
 
 # note that vars that do not yet exist are empty, so stick to BUILD/BIN and probably nothing else.
-$(BUILD)/lint: $(BUILD)/fmt $(BUILD)/dummy # lint will fail if fmt or dummy fails, so run them first
-$(BUILD)/dummy: $(BUILD)/fmt # do a build after fmt-ing
+$(BUILD)/lint: $(BUILD)/fmt # lint will fail if fmt (more generally, build) fails, so run it first
 $(BUILD)/fmt: $(BUILD)/copyright # formatting must occur only after all other go-file-modifications are done
 $(BUILD)/copyright: $(BUILD)/codegen # must add copyright to generated code
-$(BUILD)/codegen: $(BUILD)/thrift # thrift is currently the only codegen, but this way it's easier to extend
+$(BUILD)/codegen: $(BUILD)/thrift $(BUILD)/generate
+$(BUILD)/generate: $(BUILD)/thrift # go generate broadly requires compile-able code, which needs thrift
 $(BUILD)/thrift: $(BUILD)/go_mod_check
 $(BUILD)/go_mod_check: | $(BUILD) $(BIN)
 
@@ -142,8 +142,11 @@ $(BIN)/thriftrw: internal/tools/go.mod
 $(BIN)/thriftrw-plugin-yarpc: internal/tools/go.mod
 	$(call go_build_tool,go.uber.org/yarpc/encoding/thrift/thriftrw-plugin-yarpc)
 
-$(BIN)/golint: internal/tools/go.mod
-	$(call go_build_tool,golang.org/x/lint/golint)
+$(BIN)/goimports: internal/tools/go.mod
+	$(call go_build_tool,golang.org/x/tools/cmd/goimports)
+
+$(BIN)/revive: internal/tools/go.mod
+	$(call go_build_tool,github.com/mgechev/revive)
 
 $(BIN)/staticcheck: internal/tools/go.mod
 	$(call go_build_tool,honnef.co/go/tools/cmd/staticcheck)
@@ -154,13 +157,12 @@ $(BIN)/errcheck: internal/tools/go.mod
 $(BIN)/goveralls: internal/tools/go.mod
 	$(call go_build_tool,github.com/mattn/goveralls)
 
-# copyright header checker/writer.  only requires stdlib, so no other dependencies are needed.
-$(BIN)/copyright: internal/cmd/tools/copyright/licensegen.go
-	go build -mod=readonly -o $@ ./internal/cmd/tools/copyright/licensegen.go
+$(BIN)/mockery: internal/tools/go.mod
+	$(call go_build_tool,github.com/vektra/mockery/v2,mockery)
 
-# dummy binary that ensures most/all packages build, without needing to wait for tests.
-$(BUILD)/dummy: $(ALL_SRC) $(BUILD)/go_mod_check
-	go build -mod=readonly -o $@ internal/cmd/dummy/dummy.go
+# copyright header checker/writer.  only requires stdlib, so no other dependencies are needed.
+$(BIN)/copyright: internal/tools/licensegen.go
+	go build -mod=readonly -o $@ ./internal/tools/licensegen.go
 
 # ensures mod files are in sync for critical packages
 $(BUILD)/go_mod_check: go.mod internal/tools/go.mod
@@ -182,7 +184,7 @@ $(if $(wildcard THRIFT_FILES),,$(error idls/ submodule must exist, or build will
 endef
 
 # codegen is done when thrift is done (it's just a naming-convenience, $(BUILD)/thrift would be fine too)
-$(BUILD)/codegen: $(BUILD)/thrift | $(BUILD)
+$(BUILD)/codegen: | $(BUILD)
 	$Q touch $@
 
 THRIFT_FILES := idls/thrift/cadence.thrift idls/thrift/shadower.thrift
@@ -213,31 +215,22 @@ $(THRIFT_GEN): $(THRIFT_FILES) $(BIN)/thriftrw $(BIN)/thriftrw-plugin-yarpc
 		$(subst $(BUILD),idls/thrift,$@)
 	$Q touch $@
 
+# mockery is quite noisy so it's worth being kinda precise with the files.
+# as long as the //go:generate line is in the file that defines the thing to mock, this will auto-discover it.
+# if we build any fancier generators, like the server's wrappers, this might need adjusting / switch to completely manual.
+$(BUILD)/generate: $(shell grep --files-with-matches -E '^//go:generate' $(ALL_SRC)) $(BIN)/mockery
+	$Q $(BIN_PATH) go generate ./...
+	$Q touch $@
+
 # ====================================
 # other intermediates
 # ====================================
 
-# golint fails to report many lint failures if it is only given a single file
-# to work on at a time, and it can't handle multiple packages at once, *and*
-# we can't exclude files from its checks, so for best results we need to give
-# it a whitelist of every file in every package that we want linted, per package.
-#
-# so lint + this golint func works like:
-# - iterate over all lintable dirs (outputs "./folder/")
-# - find .go files in a dir (via wildcard, so not recursively)
-# - filter to only files in LINT_SRC
-# - if it's not empty, run golint against the list
-define lint_if_present
-test -n "$1" && $(BIN)/golint -set_exit_status $1
-endef
-
-# TODO: replace this with revive, like the server.
-# keep in sync with `lint`
-$(BUILD)/lint: $(BIN)/golint $(ALL_SRC)
-	$Q $(foreach pkg, \
-		$(sort $(dir $(LINT_SRC))), \
-		$(call lint_if_present,$(filter $(wildcard $(pkg)*.go),$(LINT_SRC))) || ERR=1; \
-	) test -z "$$ERR"; touch $@; exit $$ERR
+# note that LINT_SRC is fairly fake as a prerequisite.
+# it's a coarse "you probably don't need to re-lint" filter, nothing more.
+$(BUILD)/lint: $(LINT_SRC) $(BIN)/revive | $(BUILD)
+	$Q $(BIN)/revive -config revive.toml -exclude './vendor/...' -exclude './.gen/...' -formatter stylish ./...
+	$Q touch $@
 
 # fmt and copyright are mutually cyclic with their inputs, so if a copyright header is modified:
 # - copyright -> makes changes
@@ -253,11 +246,10 @@ $(BUILD)/lint: $(BIN)/golint $(ALL_SRC)
 MAYBE_TOUCH_COPYRIGHT=
 
 # TODO: switch to goimports, so we can pin the version
-$(BUILD)/fmt: $(ALL_SRC)
-	$Q echo "gofmt..."
+$(BUILD)/fmt: $(ALL_SRC) $(BIN)/goimports
+	$Q echo "goimports..."
 	$Q # use FRESH_ALL_SRC so it won't miss any generated files produced earlier
-	$Q gofmt -w $(ALL_SRC)
-	$Q # ideally, mimic server: $(BIN)/goimports -local "go.uber.org/cadence" -w $(FRESH_ALL_SRC)
+	$Q $(BIN)/goimports -local "go.uber.org/cadence" -w $(FRESH_ALL_SRC)
 	$Q touch $@
 	$Q $(MAYBE_TOUCH_COPYRIGHT)
 
@@ -274,22 +266,28 @@ $(BUILD)/copyright: $(ALL_SRC) $(BIN)/copyright
 # this way the effort is shared with future `make` runs.
 # ====================================
 
+# "re-make" a target by deleting and re-building book-keeping target(s).
+# the + is necessary for parallelism flags to be propagated
+define remake
+$Q rm -f $(addprefix $(BUILD)/,$(1))
+$Q +$(MAKE) --no-print-directory $(addprefix $(BUILD)/,$(1))
+endef
+
 .PHONY: build
-build: $(BUILD)/dummy ## ensure all packages build
+build: $(BUILD)/fmt ## ensure all packages build
+	go build ./...
+	$Q # caution: some errors are reported on stdout for some reason
+	go test -exec true ./... >/dev/null
 
 .PHONY: lint
-# useful to actually re-run to get output again, as the intermediate will not be run unless necessary.
-# dummy is used only because it occurs before $(BUILD)/lint, fmt would likely be sufficient too.
-# keep in sync with `$(BUILD)/lint`
-lint: $(BUILD)/dummy $(BIN)/golint ## (re)run golint
-	$Q $(foreach pkg, \
-		$(sort $(dir $(LINT_SRC))), \
-		$(call lint_if_present,$(filter $(wildcard $(pkg)*.go),$(LINT_SRC))) || ERR=1; \
-	) test -z "$$ERR"; touch $(BUILD)/lint; exit $$ERR
+# useful to actually re-run to get output again.
+# reuse the intermediates for simplicity and consistency.
+lint: ## (re)run the linter
+	$(call remake,lint)
 
 .PHONY: fmt
-# intentionally not re-making, gofmt is slow and it's clear when it's unnecessary
-fmt: $(BUILD)/fmt ## run gofmt
+# intentionally not re-making, it's clear when it's unnecessary
+fmt: $(BUILD)/fmt ## run goimports
 
 .PHONY: copyright
 # not identical to the intermediate target, but does provide the same codegen (or more).
@@ -305,8 +303,17 @@ staticcheck: $(BIN)/staticcheck $(BUILD)/fmt ## (re)run staticcheck
 errcheck: $(BIN)/errcheck $(BUILD)/fmt ## (re)run errcheck
 	$(BIN)/errcheck ./...
 
+.PHONY: generate
+generate: ## run go-generate (build, lint, fmt, tests all do this for you if needed)
+	$(call remake,generate)
+
+.PHONY: tidy
+tidy:
+	go mod tidy
+	cd internal/tools; go mod tidy
+
 .PHONY: all
-all: $(BUILD)/lint ## refresh codegen, lint, and ensure the dummy binary builds, if necessary
+all: $(BUILD)/lint ## refresh codegen, lint, and ensure everything builds, whatever is necessary
 
 .PHONY: clean
 clean:
@@ -364,29 +371,29 @@ INTEG_GRPC_COVER_FILE := $(COVER_ROOT)/integ_test_grpc_cover.out
 
 UT_DIRS := $(filter-out $(INTEG_TEST_ROOT)%, $(sort $(dir $(filter %_test.go,$(ALL_SRC)))))
 
-.PHONY: unit_test integ_test_sticky_off integ_test_sticky_on integ_test_grpc cover cover_ci
+.PHONY: unit_test integ_test_sticky_off integ_test_sticky_on integ_test_grpc cover
 test: unit_test integ_test_sticky_off integ_test_sticky_on ## run all tests (requires a running cadence instance)
 
-unit_test: $(ALL_SRC) ## run all unit tests
+unit_test: $(BUILD)/fmt ## run all unit tests
 	$Q mkdir -p $(COVER_ROOT)
 	$Q echo "mode: atomic" > $(UT_COVER_FILE)
-	$Q failed=0; \
+	$Q FAIL=""; \
 	for dir in $(UT_DIRS); do \
 		mkdir -p $(COVER_ROOT)/"$$dir"; \
-		go test "$$dir" $(TEST_ARG) -coverprofile=$(COVER_ROOT)/"$$dir"/cover.out || failed=1; \
+		go test "$$dir" $(TEST_ARG) -coverprofile=$(COVER_ROOT)/"$$dir"/cover.out || FAIL="$$FAIL $$dir"; \
 		cat $(COVER_ROOT)/"$$dir"/cover.out | grep -v "mode: atomic" >> $(UT_COVER_FILE); \
-	done; \
-	exit $$failed
+	done; test -z "$$FAIL" || (echo "Failed packages; $$FAIL"; exit 1)
+	cat $(UT_COVER_FILE) > .build/cover.out;
 
-integ_test_sticky_off: $(ALL_SRC)
+integ_test_sticky_off: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=true go test $(TEST_ARG) ./test -coverprofile=$(INTEG_STICKY_OFF_COVER_FILE) -coverpkg=./...
 
-integ_test_sticky_on: $(ALL_SRC)
+integ_test_sticky_on: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=false go test $(TEST_ARG) ./test -coverprofile=$(INTEG_STICKY_ON_COVER_FILE) -coverpkg=./...
 
-integ_test_grpc: $(ALL_SRC)
+integ_test_grpc: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=false go test $(TEST_ARG) ./test -coverprofile=$(INTEG_GRPC_COVER_FILE) -coverpkg=./...
 
@@ -404,6 +411,3 @@ coverage_report: $(COVER_ROOT)/cover.out
 
 cover: $(COVER_ROOT)/cover.out
 	go tool cover -html=$(COVER_ROOT)/cover.out;
-
-cover_ci: $(COVER_ROOT)/cover.out $(BIN)/goveralls
-	$(BIN)/goveralls -coverprofile=$(COVER_ROOT)/cover.out -service=buildkite || echo -e "\x1b[31mCoveralls failed\x1b[m";

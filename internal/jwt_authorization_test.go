@@ -21,59 +21,42 @@
 package internal
 
 import (
-	"encoding/json"
-	"io/ioutil"
+	"os"
 	"testing"
 
-	"github.com/cristalhq/jwt/v3"
-	"github.com/stretchr/testify/suite"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/assert"
+
 	"go.uber.org/cadence/internal/common/auth"
 	"go.uber.org/cadence/internal/common/util"
 )
 
-type (
-	jwtAuthSuite struct {
-		suite.Suite
-		key []byte
-	}
-)
-
-func TestJWTAuthSuite(t *testing.T) {
-	suite.Run(t, new(jwtAuthSuite))
-}
-
-func (s *jwtAuthSuite) SetupTest() {
-	var err error
-	s.key, err = ioutil.ReadFile("./common/auth/credentials/keytest")
-	s.NoError(err)
-}
-
-func (s *jwtAuthSuite) TearDownTest() {
-}
-
-func (s *jwtAuthSuite) TestCorrectTokenCreation() {
-	authorizer := NewAdminJwtAuthorizationProvider(s.key)
+func TestCorrectTokenCreation(t *testing.T) {
+	key, err := os.ReadFile("./common/auth/credentials/keytest")
+	assert.NoError(t, err)
+	authorizer := NewAdminJwtAuthorizationProvider(key)
 	authToken, err := authorizer.GetAuthToken()
-	s.NoError(err)
+	assert.NoError(t, err)
 
-	// Decrypting token, it should be enough to make sure authtoken is not empty, this is one steap ahead of that
-	publicKeyStr, err := ioutil.ReadFile("./common/auth/credentials/keytest.pub")
-	s.NoError(err)
+	// Decrypting token, it should be enough to make sure authtoken is not empty, this is one step ahead of that
+	publicKeyStr, err := os.ReadFile("./common/auth/credentials/keytest.pub")
+	assert.NoError(t, err)
 	publicKey, err := util.LoadRSAPublicKey(publicKeyStr)
-	s.NoError(err)
-	verifier, err := jwt.NewVerifierRS(jwt.RS256, publicKey)
-	s.NoError(err)
-	token, err := jwt.ParseAndVerifyString(string(authToken), verifier)
-	s.NoError(err)
+	assert.NoError(t, err)
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Name}))
 	var claims auth.JWTClaims
-	_ = json.Unmarshal(token.RawClaims(), &claims)
-	s.Equal(claims.Admin, true)
-	s.Equal(claims.Groups, "")
-	s.Equal(claims.TTL, int64(60*10))
-}
 
-func (s *jwtAuthSuite) TestIncorrectPrivateKeyForTokenCreation() {
+	_, err = parser.ParseWithClaims(string(authToken), &claims, func(token *jwt.Token) (interface{}, error) {
+		return publicKey, nil
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, true, claims.Admin)
+	assert.Equal(t, "", claims.Groups)
+	assert.Equal(t, int64(60*10), claims.TTL)
+}
+func TestIncorrectPrivateKeyForTokenCreation(t *testing.T) {
 	authorizer := NewAdminJwtAuthorizationProvider([]byte{})
 	_, err := authorizer.GetAuthToken()
-	s.EqualError(err, "failed to parse PEM block containing the private key")
+	assert.EqualError(t, err, "failed to parse PEM block containing the private key")
 }

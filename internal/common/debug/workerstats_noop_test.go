@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Uber Technologies, Inc.
+// Copyright (c) 2017-2021 Uber Technologies Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,36 +18,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package replaytests
+package debug
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"go.uber.org/cadence/worker"
-	"go.uber.org/cadence/workflow"
-	"go.uber.org/zap/zaptest"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestReplayWorkflowHistoryFromFile(t *testing.T) {
-	for _, testFile := range []string{"basic.json", "basic_new.json", "version.json", "version_new.json"} {
-		t.Run("replay_"+strings.Split(testFile, ".")[0], func(t *testing.T) {
-			replayer := worker.NewWorkflowReplayer()
-			replayer.RegisterWorkflow(Workflow)
-			replayer.RegisterWorkflow(Workflow2)
-
-			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), testFile)
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestReplayChildWorkflowBugBackport(t *testing.T) {
-	replayer := worker.NewWorkflowReplayer()
-	replayer.RegisterWorkflowWithOptions(childWorkflow, workflow.RegisterOptions{Name: "child"})
-	replayer.RegisterWorkflowWithOptions(childWorkflowBug, workflow.RegisterOptions{Name: "parent"})
-
-	err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), "child_bug.json")
-	require.NoError(t, err)
+func TestWorkerStats(t *testing.T) {
+	pollerTracker := NewNoopPollerTracker()
+	activityTracker := NewNoopActivityTracker()
+	assert.NotNil(t, pollerTracker)
+	assert.NotNil(t, pollerTracker.Start())
+	assert.Equal(t, int32(0), pollerTracker.Stats())
+	assert.NotPanics(t, pollerTracker.Start().Stop)
+	assert.NotNil(t, activityTracker.Start(ActivityInfo{}))
+	assert.Nil(t, activityTracker.Stats())
 }

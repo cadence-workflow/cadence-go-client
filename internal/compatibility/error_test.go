@@ -25,10 +25,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/yarpc/yarpcerrors"
+
 	"go.uber.org/cadence/internal/compatibility/proto"
 	"go.uber.org/cadence/internal/compatibility/testdata"
 	"go.uber.org/cadence/internal/compatibility/thrift"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 func TestErrors(t *testing.T) {

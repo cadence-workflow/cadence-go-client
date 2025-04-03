@@ -32,17 +32,20 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/golang/mock/gomock"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/goleak"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/goleak"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 const (
@@ -116,11 +119,11 @@ func getWorkflowInfoWorkflowFunc(ctx Context, expectedLastCompletionResult strin
 
 // Test suite.
 func (t *TaskHandlersTestSuite) SetupTest() {
-	t.logger = zaptest.NewLogger(t.T())
+	t.logger = testlogger.NewZap(t.T())
 }
 
 func (t *TaskHandlersTestSuite) SetupSuite() {
-	t.logger = zaptest.NewLogger(t.T())
+	t.logger = testlogger.NewZap(t.T())
 	registerWorkflows(t.registry)
 }
 
@@ -246,7 +249,7 @@ func createWorkflowTaskWithQueries(
 	copy(eventsCopy, events)
 	return &s.PollForDecisionTaskResponse{
 		PreviousStartedEventId: common.Int64Ptr(previousStartEventID),
-		WorkflowType:           workflowTypePtr(WorkflowType{workflowName}),
+		WorkflowType:           workflowTypePtr(WorkflowType{Name: workflowName}),
 		History:                &s.History{Events: eventsCopy},
 		WorkflowExecution: &s.WorkflowExecution{
 			WorkflowId: common.StringPtr("fake-workflow-id"),
@@ -292,6 +295,15 @@ func createTestEventTimerFired(eventID int64, id int) *s.HistoryEvent {
 		EventId:                   common.Int64Ptr(eventID),
 		EventType:                 common.EventTypePtr(s.EventTypeTimerFired),
 		TimerFiredEventAttributes: attr}
+}
+
+func findLogField(entry observer.LoggedEntry, fieldName string) *zapcore.Field {
+	for _, field := range entry.Context {
+		if field.Key == fieldName {
+			return &field
+		}
+	}
+	return nil
 }
 
 var testWorkflowTaskTasklist = "tl1"
@@ -825,6 +837,54 @@ func (t *TaskHandlersTestSuite) TestWorkflowTask_NondeterministicDetection() {
 	t.NotNil(request)
 }
 
+func (t *TaskHandlersTestSuite) TestWorkflowTask_NondeterministicLogNonexistingID() {
+	taskList := "taskList"
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{TaskList: &s.TaskList{Name: &taskList}}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: &s.TaskList{Name: &taskList}}),
+		createTestEventDecisionTaskStarted(3),
+		createTestEventDecisionTaskCompleted(4, &s.DecisionTaskCompletedEventAttributes{ScheduledEventId: common.Int64Ptr(2)}),
+		createTestEventActivityTaskScheduled(5, &s.ActivityTaskScheduledEventAttributes{
+			// Insert an ID which does not exist
+			ActivityId:   common.StringPtr("NotAnActivityID"),
+			ActivityType: &s.ActivityType{Name: common.StringPtr("pkg.Greeter_Activity")},
+			TaskList:     &s.TaskList{Name: &taskList},
+		}),
+	}
+
+	obs, logs := observer.New(zap.ErrorLevel)
+	logger := zap.New(obs)
+
+	task := createWorkflowTask(testEvents, 3, "HelloWorld_Workflow")
+	stopC := make(chan struct{})
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity: "test-id-1",
+			Logger:   logger,
+		},
+		WorkerStopChannel: stopC,
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+
+	t.Nil(request)
+	t.ErrorContains(err, "nondeterministic workflow")
+
+	// Check that the error was logged
+	illegalPanicLogs := logs.FilterMessage("Illegal state caused panic")
+	require.Len(t.T(), illegalPanicLogs.All(), 1)
+
+	replayErrorField := findLogField(illegalPanicLogs.All()[0], "ReplayError")
+	require.NotNil(t.T(), replayErrorField)
+	require.Equal(t.T(), zapcore.ErrorType, replayErrorField.Type)
+	require.ErrorContains(t.T(), replayErrorField.Interface.(error),
+		"nondeterministic workflow: "+
+			"history event is ActivityTaskScheduled: (ActivityId:NotAnActivityID, ActivityType:(Name:pkg.Greeter_Activity), TaskList:(Name:taskList), Input:[]), "+
+			"replay decision is ScheduleActivityTask: (ActivityId:0, ActivityType:(Name:Greeter_Activity), TaskList:(Name:taskList)")
+}
+
 func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowReturnsPanicError() {
 	taskList := "taskList"
 	testEvents := []*s.HistoryEvent{
@@ -862,12 +922,16 @@ func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowPanics() {
 		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: &s.TaskList{Name: &taskList}}),
 		createTestEventDecisionTaskStarted(3),
 	}
+
+	obs, logs := observer.New(zap.ErrorLevel)
+	logger := zap.New(obs)
+
 	task := createWorkflowTask(testEvents, 3, "PanicWorkflow")
 	params := workerExecutionParameters{
 		TaskList: taskList,
 		WorkerOptions: WorkerOptions{
 			Identity:                       "test-id-1",
-			Logger:                         zap.NewNop(),
+			Logger:                         logger,
 			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
 		},
 	}
@@ -880,6 +944,14 @@ func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowPanics() {
 	t.True(ok)
 	t.EqualValues("WORKFLOW_WORKER_UNHANDLED_FAILURE", r.Cause.String())
 	t.EqualValues("panicError", string(r.Details))
+
+	// Check that the error was logged
+	panicLogs := logs.FilterMessage("Workflow panic.")
+	require.Len(t.T(), panicLogs.All(), 1)
+
+	wfTypeField := findLogField(panicLogs.All()[0], tagWorkflowType)
+	require.NotNil(t.T(), wfTypeField)
+	require.Equal(t.T(), "PanicWorkflow", wfTypeField.String)
 }
 
 func (t *TaskHandlersTestSuite) TestGetWorkflowInfo() {
@@ -1176,7 +1248,6 @@ func (t *TaskHandlersTestSuite) TestLocalActivityRetry_DecisionHeartbeatFail() {
 		WorkerOptions: WorkerOptions{
 			Identity: "test-id-1",
 			Logger:   t.logger,
-			Tracer:   opentracing.NoopTracer{},
 		},
 		WorkerStopChannel: stopCh,
 	}
@@ -1301,9 +1372,55 @@ func (t *TaskHandlersTestSuite) TestHeartBeat_Interleaved() {
 	time.Sleep(1 * time.Second)
 }
 
+func (t *TaskHandlersTestSuite) TestHeartBeatLogNil() {
+	core, obs := observer.New(zap.ErrorLevel)
+	logger := zap.New(core)
+
+	cadenceInv := &cadenceInvoker{
+		identity: "Test_Cadence_Invoker",
+		logger:   logger,
+	}
+
+	cadenceInv.logFailedHeartBeat(nil)
+
+	t.Empty(obs.All())
+}
+
+func (t *TaskHandlersTestSuite) TestHeartBeatLogCanceledError() {
+	core, obs := observer.New(zap.ErrorLevel)
+	logger := zap.New(core)
+
+	cadenceInv := &cadenceInvoker{
+		identity: "Test_Cadence_Invoker",
+		logger:   logger,
+	}
+
+	var workflowCompleatedErr CanceledError
+	cadenceInv.logFailedHeartBeat(&workflowCompleatedErr)
+
+	t.Empty(obs.All())
+}
+
+func (t *TaskHandlersTestSuite) TestHeartBeatLogNotCanceled() {
+	core, obs := observer.New(zap.ErrorLevel)
+	logger := zap.New(core)
+
+	cadenceInv := &cadenceInvoker{
+		identity: "Test_Cadence_Invoker",
+		logger:   logger,
+	}
+
+	var workflowCompleatedErr s.WorkflowExecutionAlreadyCompletedError
+	cadenceInv.logFailedHeartBeat(&workflowCompleatedErr)
+
+	t.Len(obs.All(), 1)
+	t.Equal("Failed to send heartbeat", obs.All()[0].Message)
+}
+
 func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithError() {
 	mockCtrl := gomock.NewController(t.T())
 	mockService := workflowservicetest.NewMockClient(mockCtrl)
+	logger := testlogger.NewZap(t.T())
 
 	entityNotExistsError := &s.EntityNotExistsError{}
 	mockService.EXPECT().RecordActivityTaskHeartbeat(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, entityNotExistsError)
@@ -1316,6 +1433,9 @@ func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithError() {
 		0,
 		make(chan struct{}),
 		FeatureFlags{},
+		logger,
+		testWorkflowType,
+		testActivityType,
 	)
 
 	heartbeatErr := cadenceInvoker.BatchHeartbeat(nil)
@@ -1327,6 +1447,7 @@ func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithError() {
 func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithDomainNotActiveError() {
 	mockCtrl := gomock.NewController(t.T())
 	mockService := workflowservicetest.NewMockClient(mockCtrl)
+	logger := testlogger.NewZap(t.T())
 
 	domainNotActiveError := &s.DomainNotActiveError{}
 	mockService.EXPECT().RecordActivityTaskHeartbeat(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, domainNotActiveError)
@@ -1342,6 +1463,9 @@ func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithDomainNotActiveErro
 		0,
 		make(chan struct{}),
 		FeatureFlags{},
+		logger,
+		testWorkflowType,
+		testActivityType,
 	)
 
 	heartbeatErr := cadenceInvoker.BatchHeartbeat(nil)
@@ -1378,128 +1502,6 @@ func (t *testActivityDeadline) GetFunction() interface{} {
 
 func (t *testActivityDeadline) GetOptions() RegisterActivityOptions {
 	return RegisterActivityOptions{}
-}
-
-type deadlineTest struct {
-	actWaitDuration  time.Duration
-	ScheduleTS       time.Time
-	ScheduleDuration int32
-	StartTS          time.Time
-	StartDuration    int32
-	err              error
-}
-
-func (t *TaskHandlersTestSuite) TestActivityExecutionDeadline() {
-	deadlineTests := []deadlineTest{
-		{time.Duration(0), time.Now(), 3, time.Now(), 3, nil},
-		{time.Duration(0), time.Now(), 4, time.Now(), 3, nil},
-		{time.Duration(0), time.Now(), 3, time.Now(), 4, nil},
-		{time.Duration(0), time.Now().Add(-1 * time.Second), 1, time.Now(), 1, context.DeadlineExceeded},
-		{time.Duration(0), time.Now(), 1, time.Now().Add(-1 * time.Second), 1, context.DeadlineExceeded},
-		{time.Duration(0), time.Now().Add(-1 * time.Second), 1, time.Now().Add(-1 * time.Second), 1, context.DeadlineExceeded},
-		{time.Duration(1 * time.Second), time.Now(), 1, time.Now(), 1, context.DeadlineExceeded},
-		{time.Duration(1 * time.Second), time.Now(), 2, time.Now(), 1, context.DeadlineExceeded},
-		{time.Duration(1 * time.Second), time.Now(), 1, time.Now(), 2, context.DeadlineExceeded},
-	}
-	a := &testActivityDeadline{logger: t.logger}
-	registry := t.registry
-	registry.addActivityWithLock(a.ActivityType().Name, a)
-
-	mockCtrl := gomock.NewController(t.T())
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
-
-	for i, d := range deadlineTests {
-		a.d = d.actWaitDuration
-		wep := workerExecutionParameters{
-			WorkerOptions: WorkerOptions{
-				Logger:        t.logger,
-				DataConverter: getDefaultDataConverter(),
-				Tracer:        opentracing.NoopTracer{},
-			},
-		}
-		activityHandler := newActivityTaskHandler(mockService, wep, registry)
-		pats := &s.PollForActivityTaskResponse{
-			TaskToken: []byte("token"),
-			WorkflowExecution: &s.WorkflowExecution{
-				WorkflowId: common.StringPtr("wID"),
-				RunId:      common.StringPtr("rID")},
-			ActivityType:                    &s.ActivityType{Name: common.StringPtr("test")},
-			ActivityId:                      common.StringPtr(uuid.New()),
-			ScheduledTimestamp:              common.Int64Ptr(d.ScheduleTS.UnixNano()),
-			ScheduledTimestampOfThisAttempt: common.Int64Ptr(d.ScheduleTS.UnixNano()),
-			ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(d.ScheduleDuration),
-			StartedTimestamp:                common.Int64Ptr(d.StartTS.UnixNano()),
-			StartToCloseTimeoutSeconds:      common.Int32Ptr(d.StartDuration),
-			WorkflowType: &s.WorkflowType{
-				Name: common.StringPtr("wType"),
-			},
-			WorkflowDomain: common.StringPtr("domain"),
-		}
-		td := fmt.Sprintf("testIndex: %v, testDetails: %v", i, d)
-		r, err := activityHandler.Execute(tasklist, pats)
-		t.logger.Info(fmt.Sprintf("test: %v, result: %v err: %v", td, r, err))
-		t.Equal(d.err, err, td)
-		if err != nil {
-			t.Nil(r, td)
-		}
-	}
-}
-
-func activityWithWorkerStop(ctx context.Context) error {
-	fmt.Println("Executing Activity with worker stop")
-	workerStopCh := GetWorkerStopChannel(ctx)
-
-	select {
-	case <-workerStopCh:
-		return nil
-	case <-time.NewTimer(time.Second * 5).C:
-		return fmt.Errorf("Activity failed to handle worker stop event")
-	}
-}
-
-func (t *TaskHandlersTestSuite) TestActivityExecutionWorkerStop() {
-	a := &testActivityDeadline{logger: t.logger}
-	registry := t.registry
-	registry.RegisterActivityWithOptions(
-		activityWithWorkerStop,
-		RegisterActivityOptions{Name: a.ActivityType().Name, DisableAlreadyRegisteredCheck: true},
-	)
-
-	mockCtrl := gomock.NewController(t.T())
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
-	workerStopCh := make(chan struct{}, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	wep := workerExecutionParameters{
-		WorkerOptions: WorkerOptions{
-			Logger:        t.logger,
-			DataConverter: getDefaultDataConverter(),
-		},
-		UserContext:       ctx,
-		UserContextCancel: cancel,
-		WorkerStopChannel: workerStopCh,
-	}
-	activityHandler := newActivityTaskHandler(mockService, wep, registry)
-	pats := &s.PollForActivityTaskResponse{
-		TaskToken: []byte("token"),
-		WorkflowExecution: &s.WorkflowExecution{
-			WorkflowId: common.StringPtr("wID"),
-			RunId:      common.StringPtr("rID")},
-		ActivityType:                    &s.ActivityType{Name: common.StringPtr("test")},
-		ActivityId:                      common.StringPtr(uuid.New()),
-		ScheduledTimestamp:              common.Int64Ptr(time.Now().UnixNano()),
-		ScheduledTimestampOfThisAttempt: common.Int64Ptr(time.Now().UnixNano()),
-		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
-		StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
-		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
-		WorkflowType: &s.WorkflowType{
-			Name: common.StringPtr("wType"),
-		},
-		WorkflowDomain: common.StringPtr("domain"),
-	}
-	close(workerStopCh)
-	r, err := activityHandler.Execute(tasklist, pats)
-	t.NoError(err)
-	t.NotNil(r)
 }
 
 // a regrettably-hacky func to use goleak to count leaking goroutines.
@@ -1768,6 +1770,192 @@ func Test_IsSearchAttributesMatched(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			require.Equal(t, testCase.expected, isSearchAttributesMatched(testCase.lhs, testCase.rhs))
+		})
+	}
+}
+
+func Test__GetWorkflowStartedEvent(t *testing.T) {
+	wfStartedEvent := createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{TaskList: &s.TaskList{Name: common.StringPtr("tl1")}})
+	h := &history{workflowTask: &workflowTask{task: &s.PollForDecisionTaskResponse{History: &s.History{Events: []*s.HistoryEvent{wfStartedEvent}}}}}
+	result, err := h.GetWorkflowStartedEvent()
+	require.NoError(t, err)
+	require.Equal(t, wfStartedEvent, result)
+
+	emptyHistory := &history{workflowTask: &workflowTask{task: &s.PollForDecisionTaskResponse{History: &s.History{}}}}
+	result, err = emptyHistory.GetWorkflowStartedEvent()
+	require.ErrorContains(t, err, "unable to find WorkflowExecutionStartedEventAttributes")
+	require.Nil(t, result)
+}
+
+func Test__verifyAllEventsProcessed(t *testing.T) {
+	testCases := []struct {
+		name        string
+		lastEventID int64
+		nextEventID int64
+		Message     string
+	}{
+		{
+			name:        "error",
+			lastEventID: 1,
+			nextEventID: 1,
+			Message:     "history_events: premature end of stream",
+		},
+		{
+			name:        "warn",
+			lastEventID: 1,
+			nextEventID: 3,
+			Message:     "history_events: processed events past the expected lastEventID",
+		},
+		{
+			name:        "success",
+			lastEventID: 1,
+			nextEventID: 2,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			obs, logs := observer.New(zap.WarnLevel)
+			logger := zap.New(obs)
+			h := &history{
+				lastEventID:   testCase.lastEventID,
+				nextEventID:   testCase.nextEventID,
+				eventsHandler: &workflowExecutionEventHandlerImpl{workflowEnvironmentImpl: &workflowEnvironmentImpl{logger: logger}}}
+			err := h.verifyAllEventsProcessed()
+			if testCase.name == "error" {
+				require.ErrorContains(t, err, testCase.Message)
+			} else if testCase.name == "warn" {
+				warnLogs := logs.FilterMessage(testCase.Message)
+				require.Len(t, warnLogs.All(), 1)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+}
+
+func Test__workflowCategorizedByTimeout(t *testing.T) {
+	testCases := []struct {
+		timeout          int32
+		expectedCategory string
+	}{
+		{
+			timeout:          1,
+			expectedCategory: "instant",
+		},
+		{
+			timeout:          1000,
+			expectedCategory: "short",
+		},
+		{
+			timeout:          2000,
+			expectedCategory: "intermediate",
+		},
+		{
+			timeout:          30000,
+			expectedCategory: "long",
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.expectedCategory, func(t *testing.T) {
+			wfContext := &workflowExecutionContextImpl{workflowInfo: &WorkflowInfo{ExecutionStartToCloseTimeoutSeconds: tt.timeout}}
+			require.Equal(t, tt.expectedCategory, workflowCategorizedByTimeout(wfContext))
+		})
+	}
+}
+
+func Test__SignalWorkflow(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockService := workflowservicetest.NewMockClient(mockCtrl)
+	mockService.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any(), callOptions()...).Return(nil)
+	cadenceInvoker := &cadenceInvoker{
+		identity:  "Test_Cadence_Invoker",
+		service:   mockService,
+		taskToken: nil,
+	}
+	err := cadenceInvoker.SignalWorkflow(context.Background(), "test-domain", "test-workflow-id", "test-run-id", "test-signal-name", nil)
+	require.NoError(t, err)
+}
+
+func Test__getRetryBackoffWithNowTime(t *testing.T) {
+	now := time.Now()
+	testCases := []struct {
+		name            string
+		maxAttempts     int32
+		ExpInterval     time.Duration
+		result          time.Duration
+		attempt         int32
+		errReason       string
+		expireTime      time.Time
+		initialInterval time.Duration
+		maxInterval     time.Duration
+	}{
+		{
+			name:        "no max attempts or expiration interval set",
+			maxAttempts: 0,
+			ExpInterval: 0,
+			result:      noRetryBackoff,
+		},
+		{
+			name:        "max attempts done",
+			maxAttempts: 5,
+			attempt:     5,
+			result:      noRetryBackoff,
+		},
+		{
+			name:            "non retryable error",
+			maxAttempts:     5,
+			attempt:         2,
+			errReason:       "bad request",
+			initialInterval: time.Minute,
+			maxInterval:     time.Minute,
+			result:          noRetryBackoff,
+		},
+		{
+			name:            "fallback to max interval when calculated backoff is 0",
+			maxAttempts:     5,
+			attempt:         2,
+			initialInterval: 0,
+			maxInterval:     time.Minute,
+			result:          time.Minute,
+		},
+		{
+			name:            "fallback to no retry backoff when calculated backoff is 0 and max interval is not set",
+			maxAttempts:     5,
+			attempt:         2,
+			initialInterval: 0,
+			result:          noRetryBackoff,
+		},
+		{
+			name:            "expiry time reached",
+			maxAttempts:     5,
+			attempt:         2,
+			expireTime:      now.Add(time.Second),
+			initialInterval: time.Minute,
+			maxInterval:     time.Minute,
+			result:          noRetryBackoff,
+		},
+		{
+			name:            "retry after backoff",
+			maxAttempts:     5,
+			attempt:         2,
+			errReason:       "timeout",
+			initialInterval: time.Minute,
+			maxInterval:     time.Minute,
+			result:          time.Minute,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := &RetryPolicy{
+				MaximumAttempts:          tt.maxAttempts,
+				ExpirationInterval:       tt.ExpInterval,
+				BackoffCoefficient:       2,
+				NonRetriableErrorReasons: []string{"bad request"},
+				MaximumInterval:          tt.maxInterval,
+				InitialInterval:          tt.initialInterval,
+			}
+			require.Equal(t, tt.result, getRetryBackoffWithNowTime(policy, tt.attempt, tt.errReason, now, tt.expireTime))
 		})
 	}
 }

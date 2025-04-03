@@ -27,19 +27,13 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
-// TSerialize is used to serialize thrift TStruct to []byte
-func TSerialize(ctx context.Context, t thrift.TStruct) (b []byte, err error) {
-	return thrift.NewTSerializer().Write(ctx, t)
-}
-
 // TListSerialize is used to serialize list of thrift TStruct to []byte
-func TListSerialize(ts []thrift.TStruct) (b []byte, err error) {
+func TListSerialize(ts []thrift.TStruct) ([]byte, error) {
 	if ts == nil {
-		return
+		return nil, nil
 	}
 
 	t := thrift.NewTSerializer()
-	t.Transport.Reset()
 
 	// NOTE: we don't write any markers as thrift by design being a streaming protocol doesn't
 	// recommend writing length.
@@ -48,26 +42,11 @@ func TListSerialize(ts []thrift.TStruct) (b []byte, err error) {
 	ctx := context.Background()
 	for _, v := range ts {
 		if e := v.Write(ctx, t.Protocol); e != nil {
-			err = thrift.PrependError("error writing TStruct: ", e)
-			return
+			return nil, thrift.PrependError("error writing TStruct: ", e)
 		}
 	}
 
-	if err = t.Protocol.Flush(ctx); err != nil {
-		return
-	}
-
-	if err = t.Transport.Flush(ctx); err != nil {
-		return
-	}
-
-	b = t.Transport.Bytes()
-	return
-}
-
-// TDeserialize is used to deserialize []byte to thrift TStruct
-func TDeserialize(ctx context.Context, t thrift.TStruct, b []byte) (err error) {
-	return thrift.NewTDeserializer().Read(ctx, t, b)
+	return t.Transport.Bytes(), t.Protocol.Flush(ctx)
 }
 
 // TListDeserialize is used to deserialize []byte to list of thrift TStruct
@@ -92,15 +71,13 @@ func TListDeserialize(ts []thrift.TStruct, b []byte) (err error) {
 
 // IsUseThriftEncoding checks if the objects passed in are all encoded using thrift.
 func IsUseThriftEncoding(objs []interface{}) bool {
-	// NOTE: our criteria to use which encoder is simple if all the types are serializable using thrift then we use
-	// thrift encoder. For everything else we default to gob.
-
 	if len(objs) == 0 {
 		return false
 	}
-
-	for i := 0; i < len(objs); i++ {
-		if !IsThriftType(objs[i]) {
+	// NOTE: our criteria to use which encoder is simple if all the types are serializable using thrift then we use
+	// thrift encoder. For everything else we default to gob.
+	for _, obj := range objs {
+		if !IsThriftType(obj) {
 			return false
 		}
 	}
@@ -109,15 +86,13 @@ func IsUseThriftEncoding(objs []interface{}) bool {
 
 // IsUseThriftDecoding checks if the objects passed in are all de-serializable using thrift.
 func IsUseThriftDecoding(objs []interface{}) bool {
-	// NOTE: our criteria to use which encoder is simple if all the types are de-serializable using thrift then we use
-	// thrift decoder. For everything else we default to gob.
-
 	if len(objs) == 0 {
 		return false
 	}
-
-	for i := 0; i < len(objs); i++ {
-		rVal := reflect.ValueOf(objs[i])
+	// NOTE: our criteria to use which encoder is simple if all the types are de-serializable using thrift then we use
+	// thrift decoder. For everything else we default to gob.
+	for _, obj := range objs {
+		rVal := reflect.ValueOf(obj)
 		if rVal.Kind() != reflect.Ptr || !IsThriftType(reflect.Indirect(rVal).Interface()) {
 			return false
 		}
@@ -133,6 +108,7 @@ func IsThriftType(v interface{}) bool {
 	if reflect.ValueOf(v).Kind() != reflect.Ptr {
 		return false
 	}
-	t := reflect.TypeOf((*thrift.TStruct)(nil)).Elem()
-	return reflect.TypeOf(v).Implements(t)
+	return reflect.TypeOf(v).Implements(tStructType)
 }
+
+var tStructType = reflect.TypeOf((*thrift.TStruct)(nil)).Elem()

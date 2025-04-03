@@ -25,10 +25,12 @@ import (
 	"fmt"
 	"testing"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/stretchr/testify/require"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/zap/zaptest"
 )
 
 const (
@@ -61,7 +63,7 @@ var (
 // Creates a new workflow environment with the correct logger configured.
 func newTestActivityEnv(t *testing.T) *TestActivityEnvironment {
 	s := &WorkflowTestSuite{}
-	s.SetLogger(zaptest.NewLogger(t))
+	s.SetLogger(testlogger.NewZap(t))
 	// same tally note
 	env := s.NewTestActivityEnvironment()
 	return env
@@ -459,7 +461,7 @@ func Test_SignalExternalWorkflowExecutionFailedError(t *testing.T) {
 		InitiatedEventId: common.Int64Ptr(initiatedEventID),
 		Cause:            shared.SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution.Ptr(),
 	})
-	require.NoError(t, weh.handleSignalExternalWorkflowExecutionFailed(event))
+	weh.handleSignalExternalWorkflowExecutionFailed(event)
 	_, ok := actualErr.(*UnknownExternalWorkflowExecutionError)
 	require.True(t, ok)
 }
@@ -481,7 +483,7 @@ func Test_ContinueAsNewError(t *testing.T) {
 		header:   header,
 		ctxProps: []ContextPropagator{NewStringMapPropagator([]string{"test"})},
 	}
-	s.SetLogger(zaptest.NewLogger(t))
+	s.SetLogger(testlogger.NewZap(t))
 	wfEnv := s.NewTestWorkflowEnvironment()
 	wfEnv.Test(t)
 	wfEnv.RegisterWorkflowWithOptions(continueAsNewWorkflowFn, RegisterWorkflowOptions{

@@ -39,7 +39,9 @@ const (
 	consistentQuerySignalCh = "consistent-query-signal-chan"
 )
 
-type Workflows struct{}
+type Workflows struct {
+	nonDeterminismSimulatorWorkflowCallCount int
+}
 
 func (w *Workflows) Basic(ctx workflow.Context) ([]string, error) {
 	ctx = workflow.WithActivityOptions(ctx, w.defaultActivityOptions())
@@ -573,6 +575,48 @@ func (w *Workflows) WorkflowWithLocalActivityCtxPropagation(ctx workflow.Context
 	return result, nil
 }
 
+func (w *Workflows) NonDeterminismSimulatorWorkflow(ctx workflow.Context) ([]string, error) {
+	logger := workflow.GetLogger(ctx)
+	ctx = workflow.WithActivityOptions(ctx, w.defaultActivityOptions())
+
+	workflow.SetQueryHandler(ctx, "custom_query", func() (int, error) {
+		return w.nonDeterminismSimulatorWorkflowCallCount, nil
+	})
+
+	var res []string
+
+	// Mimic non-deterministic behavior with alternating calls to activity here.
+	// Workflow functon is invoked multiple times at every decision point and each time it will behave differently due to this optional activity call.
+	// This will be considered as non-deterministic error
+	if w.nonDeterminismSimulatorWorkflowCallCount%2 == 0 {
+		var ans string
+		if err := workflow.ExecuteActivity(ctx, "Prefix_ToUpper", "hello").Get(ctx, &ans); err != nil {
+			return nil, err
+		}
+		res = append(res, ans)
+	}
+
+	w.nonDeterminismSimulatorWorkflowCallCount++
+
+	selector := workflow.NewSelector(ctx)
+	timer := workflow.NewTimer(ctx, 5*time.Second)
+	selector.AddFuture(timer, func(workflow.Future) {
+		logger.Info("Timer future is called")
+	})
+
+	logger.Info("Workflow will wait on timer")
+	selector.Select(ctx)
+	logger.Info("Timer returned. calling another activity")
+
+	var ans string
+	if err := workflow.ExecuteActivity(ctx, "Prefix_ToUpper", "hello").Get(ctx, &ans); err != nil {
+		return nil, err
+	}
+	res = append(res, ans)
+
+	return res, nil
+}
+
 func (w *Workflows) register(worker worker.Worker) {
 	// Kept to verify backward compatibility of workflow registration.
 	workflow.RegisterWithOptions(w.Basic, workflow.RegisterOptions{DisableAlreadyRegisteredCheck: true})
@@ -601,6 +645,7 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.RetryTimeoutStableErrorWorkflow)
 	worker.RegisterWorkflow(w.ConsistentQueryWorkflow)
 	worker.RegisterWorkflow(w.WorkflowWithLocalActivityCtxPropagation)
+	worker.RegisterWorkflow(w.NonDeterminismSimulatorWorkflow)
 
 }
 

@@ -29,14 +29,15 @@ import (
 	json "encoding/json"
 	errors "errors"
 	fmt "fmt"
+	math "math"
+	strconv "strconv"
+	strings "strings"
+
 	multierr "go.uber.org/multierr"
 	ptr "go.uber.org/thriftrw/ptr"
 	thriftreflect "go.uber.org/thriftrw/thriftreflect"
 	wire "go.uber.org/thriftrw/wire"
 	zapcore "go.uber.org/zap/zapcore"
-	math "math"
-	strconv "strconv"
-	strings "strings"
 )
 
 type AccessDeniedError struct {
@@ -3095,6 +3096,199 @@ func (v *ActivityType) IsSetName() bool {
 	return v != nil && v.Name != nil
 }
 
+// Any is a logical duplicate of google.protobuf.Any.
+//
+// The intent of the type is the same, but it is not intended to be directly
+// compatible with google.protobuf.Any or any Thrift equivalent - this blob is
+// RPC-type agnostic by design (as the underlying data may be transported over
+// proto or thrift), and the data-bytes may be in any encoding.
+//
+// This is intentionally different from DataBlob, which supports only a handful
+// of known encodings so it can be interpreted everywhere.  Any supports literally
+// any contents, and needs to be considered opaque until it is given to something
+// that is expecting it.
+//
+// See ValueType to interpret the contents.
+type Any struct {
+	ValueType *string `json:"ValueType,omitempty"`
+	Value     []byte  `json:"Value,omitempty"`
+}
+
+// ToWire translates a Any struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *Any) ToWire() (wire.Value, error) {
+	var (
+		fields [2]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.ValueType != nil {
+		w, err = wire.NewValueString(*(v.ValueType)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.Value != nil {
+		w, err = wire.NewValueBinary(v.Value), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a Any struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a Any struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v Any
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *Any) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.ValueType = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TBinary {
+				v.Value, err = field.Value.GetBinary(), error(nil)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a Any
+// struct.
+func (v *Any) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [2]string
+	i := 0
+	if v.ValueType != nil {
+		fields[i] = fmt.Sprintf("ValueType: %v", *(v.ValueType))
+		i++
+	}
+	if v.Value != nil {
+		fields[i] = fmt.Sprintf("Value: %v", v.Value)
+		i++
+	}
+
+	return fmt.Sprintf("Any{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this Any match the
+// provided Any.
+//
+// This function performs a deep comparison.
+func (v *Any) Equals(rhs *Any) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_String_EqualsPtr(v.ValueType, rhs.ValueType) {
+		return false
+	}
+	if !((v.Value == nil && rhs.Value == nil) || (v.Value != nil && rhs.Value != nil && bytes.Equal(v.Value, rhs.Value))) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of Any.
+func (v *Any) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.ValueType != nil {
+		enc.AddString("ValueType", *v.ValueType)
+	}
+	if v.Value != nil {
+		enc.AddString("Value", base64.StdEncoding.EncodeToString(v.Value))
+	}
+	return err
+}
+
+// GetValueType returns the value of ValueType if it is set or its
+// zero value if it is unset.
+func (v *Any) GetValueType() (o string) {
+	if v != nil && v.ValueType != nil {
+		return *v.ValueType
+	}
+
+	return
+}
+
+// IsSetValueType returns true if ValueType is not nil.
+func (v *Any) IsSetValueType() bool {
+	return v != nil && v.ValueType != nil
+}
+
+// GetValue returns the value of Value if it is set or its
+// zero value if it is unset.
+func (v *Any) GetValue() (o []byte) {
+	if v != nil && v.Value != nil {
+		return v.Value
+	}
+
+	return
+}
+
+// IsSetValue returns true if Value is not nil.
+func (v *Any) IsSetValue() bool {
+	return v != nil && v.Value != nil
+}
+
 type ApplyParentClosePolicyAttributes struct {
 	ChildDomainID     *string            `json:"childDomainID,omitempty"`
 	ChildWorkflowID   *string            `json:"childWorkflowID,omitempty"`
@@ -4130,6 +4324,462 @@ func (v *ArchivalStatus) UnmarshalJSON(text []byte) error {
 	}
 }
 
+type AsyncWorkflowConfiguration struct {
+	Enabled             *bool     `json:"enabled,omitempty"`
+	PredefinedQueueName *string   `json:"predefinedQueueName,omitempty"`
+	QueueType           *string   `json:"queueType,omitempty"`
+	QueueConfig         *DataBlob `json:"queueConfig,omitempty"`
+}
+
+// ToWire translates a AsyncWorkflowConfiguration struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *AsyncWorkflowConfiguration) ToWire() (wire.Value, error) {
+	var (
+		fields [4]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Enabled != nil {
+		w, err = wire.NewValueBool(*(v.Enabled)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.PredefinedQueueName != nil {
+		w, err = wire.NewValueString(*(v.PredefinedQueueName)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+	if v.QueueType != nil {
+		w, err = wire.NewValueString(*(v.QueueType)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 30, Value: w}
+		i++
+	}
+	if v.QueueConfig != nil {
+		w, err = v.QueueConfig.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 40, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _DataBlob_Read(w wire.Value) (*DataBlob, error) {
+	var v DataBlob
+	err := v.FromWire(w)
+	return &v, err
+}
+
+// FromWire deserializes a AsyncWorkflowConfiguration struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a AsyncWorkflowConfiguration struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v AsyncWorkflowConfiguration
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *AsyncWorkflowConfiguration) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBool {
+				var x bool
+				x, err = field.Value.GetBool(), error(nil)
+				v.Enabled = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.PredefinedQueueName = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 30:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.QueueType = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 40:
+			if field.Value.Type() == wire.TStruct {
+				v.QueueConfig, err = _DataBlob_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a AsyncWorkflowConfiguration
+// struct.
+func (v *AsyncWorkflowConfiguration) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [4]string
+	i := 0
+	if v.Enabled != nil {
+		fields[i] = fmt.Sprintf("Enabled: %v", *(v.Enabled))
+		i++
+	}
+	if v.PredefinedQueueName != nil {
+		fields[i] = fmt.Sprintf("PredefinedQueueName: %v", *(v.PredefinedQueueName))
+		i++
+	}
+	if v.QueueType != nil {
+		fields[i] = fmt.Sprintf("QueueType: %v", *(v.QueueType))
+		i++
+	}
+	if v.QueueConfig != nil {
+		fields[i] = fmt.Sprintf("QueueConfig: %v", v.QueueConfig)
+		i++
+	}
+
+	return fmt.Sprintf("AsyncWorkflowConfiguration{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this AsyncWorkflowConfiguration match the
+// provided AsyncWorkflowConfiguration.
+//
+// This function performs a deep comparison.
+func (v *AsyncWorkflowConfiguration) Equals(rhs *AsyncWorkflowConfiguration) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_Bool_EqualsPtr(v.Enabled, rhs.Enabled) {
+		return false
+	}
+	if !_String_EqualsPtr(v.PredefinedQueueName, rhs.PredefinedQueueName) {
+		return false
+	}
+	if !_String_EqualsPtr(v.QueueType, rhs.QueueType) {
+		return false
+	}
+	if !((v.QueueConfig == nil && rhs.QueueConfig == nil) || (v.QueueConfig != nil && rhs.QueueConfig != nil && v.QueueConfig.Equals(rhs.QueueConfig))) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of AsyncWorkflowConfiguration.
+func (v *AsyncWorkflowConfiguration) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Enabled != nil {
+		enc.AddBool("enabled", *v.Enabled)
+	}
+	if v.PredefinedQueueName != nil {
+		enc.AddString("predefinedQueueName", *v.PredefinedQueueName)
+	}
+	if v.QueueType != nil {
+		enc.AddString("queueType", *v.QueueType)
+	}
+	if v.QueueConfig != nil {
+		err = multierr.Append(err, enc.AddObject("queueConfig", v.QueueConfig))
+	}
+	return err
+}
+
+// GetEnabled returns the value of Enabled if it is set or its
+// zero value if it is unset.
+func (v *AsyncWorkflowConfiguration) GetEnabled() (o bool) {
+	if v != nil && v.Enabled != nil {
+		return *v.Enabled
+	}
+
+	return
+}
+
+// IsSetEnabled returns true if Enabled is not nil.
+func (v *AsyncWorkflowConfiguration) IsSetEnabled() bool {
+	return v != nil && v.Enabled != nil
+}
+
+// GetPredefinedQueueName returns the value of PredefinedQueueName if it is set or its
+// zero value if it is unset.
+func (v *AsyncWorkflowConfiguration) GetPredefinedQueueName() (o string) {
+	if v != nil && v.PredefinedQueueName != nil {
+		return *v.PredefinedQueueName
+	}
+
+	return
+}
+
+// IsSetPredefinedQueueName returns true if PredefinedQueueName is not nil.
+func (v *AsyncWorkflowConfiguration) IsSetPredefinedQueueName() bool {
+	return v != nil && v.PredefinedQueueName != nil
+}
+
+// GetQueueType returns the value of QueueType if it is set or its
+// zero value if it is unset.
+func (v *AsyncWorkflowConfiguration) GetQueueType() (o string) {
+	if v != nil && v.QueueType != nil {
+		return *v.QueueType
+	}
+
+	return
+}
+
+// IsSetQueueType returns true if QueueType is not nil.
+func (v *AsyncWorkflowConfiguration) IsSetQueueType() bool {
+	return v != nil && v.QueueType != nil
+}
+
+// GetQueueConfig returns the value of QueueConfig if it is set or its
+// zero value if it is unset.
+func (v *AsyncWorkflowConfiguration) GetQueueConfig() (o *DataBlob) {
+	if v != nil && v.QueueConfig != nil {
+		return v.QueueConfig
+	}
+
+	return
+}
+
+// IsSetQueueConfig returns true if QueueConfig is not nil.
+func (v *AsyncWorkflowConfiguration) IsSetQueueConfig() bool {
+	return v != nil && v.QueueConfig != nil
+}
+
+type AutoConfigHint struct {
+	EnableAutoConfig   *bool  `json:"enableAutoConfig,omitempty"`
+	PollerWaitTimeInMs *int64 `json:"pollerWaitTimeInMs,omitempty"`
+}
+
+// ToWire translates a AutoConfigHint struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *AutoConfigHint) ToWire() (wire.Value, error) {
+	var (
+		fields [2]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.EnableAutoConfig != nil {
+		w, err = wire.NewValueBool(*(v.EnableAutoConfig)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.PollerWaitTimeInMs != nil {
+		w, err = wire.NewValueI64(*(v.PollerWaitTimeInMs)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a AutoConfigHint struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a AutoConfigHint struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v AutoConfigHint
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *AutoConfigHint) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBool {
+				var x bool
+				x, err = field.Value.GetBool(), error(nil)
+				v.EnableAutoConfig = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.PollerWaitTimeInMs = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a AutoConfigHint
+// struct.
+func (v *AutoConfigHint) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [2]string
+	i := 0
+	if v.EnableAutoConfig != nil {
+		fields[i] = fmt.Sprintf("EnableAutoConfig: %v", *(v.EnableAutoConfig))
+		i++
+	}
+	if v.PollerWaitTimeInMs != nil {
+		fields[i] = fmt.Sprintf("PollerWaitTimeInMs: %v", *(v.PollerWaitTimeInMs))
+		i++
+	}
+
+	return fmt.Sprintf("AutoConfigHint{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this AutoConfigHint match the
+// provided AutoConfigHint.
+//
+// This function performs a deep comparison.
+func (v *AutoConfigHint) Equals(rhs *AutoConfigHint) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_Bool_EqualsPtr(v.EnableAutoConfig, rhs.EnableAutoConfig) {
+		return false
+	}
+	if !_I64_EqualsPtr(v.PollerWaitTimeInMs, rhs.PollerWaitTimeInMs) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of AutoConfigHint.
+func (v *AutoConfigHint) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.EnableAutoConfig != nil {
+		enc.AddBool("enableAutoConfig", *v.EnableAutoConfig)
+	}
+	if v.PollerWaitTimeInMs != nil {
+		enc.AddInt64("pollerWaitTimeInMs", *v.PollerWaitTimeInMs)
+	}
+	return err
+}
+
+// GetEnableAutoConfig returns the value of EnableAutoConfig if it is set or its
+// zero value if it is unset.
+func (v *AutoConfigHint) GetEnableAutoConfig() (o bool) {
+	if v != nil && v.EnableAutoConfig != nil {
+		return *v.EnableAutoConfig
+	}
+
+	return
+}
+
+// IsSetEnableAutoConfig returns true if EnableAutoConfig is not nil.
+func (v *AutoConfigHint) IsSetEnableAutoConfig() bool {
+	return v != nil && v.EnableAutoConfig != nil
+}
+
+// GetPollerWaitTimeInMs returns the value of PollerWaitTimeInMs if it is set or its
+// zero value if it is unset.
+func (v *AutoConfigHint) GetPollerWaitTimeInMs() (o int64) {
+	if v != nil && v.PollerWaitTimeInMs != nil {
+		return *v.PollerWaitTimeInMs
+	}
+
+	return
+}
+
+// IsSetPollerWaitTimeInMs returns true if PollerWaitTimeInMs is not nil.
+func (v *AutoConfigHint) IsSetPollerWaitTimeInMs() bool {
+	return v != nil && v.PollerWaitTimeInMs != nil
+}
+
 type BadBinaries struct {
 	Binaries map[string]*BadBinaryInfo `json:"binaries,omitempty"`
 }
@@ -4736,12 +5386,14 @@ type CancelExternalWorkflowExecutionFailedCause int32
 
 const (
 	CancelExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution CancelExternalWorkflowExecutionFailedCause = 0
+	CancelExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted         CancelExternalWorkflowExecutionFailedCause = 1
 )
 
 // CancelExternalWorkflowExecutionFailedCause_Values returns all recognized values of CancelExternalWorkflowExecutionFailedCause.
 func CancelExternalWorkflowExecutionFailedCause_Values() []CancelExternalWorkflowExecutionFailedCause {
 	return []CancelExternalWorkflowExecutionFailedCause{
 		CancelExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution,
+		CancelExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted,
 	}
 }
 
@@ -4754,6 +5406,9 @@ func (v *CancelExternalWorkflowExecutionFailedCause) UnmarshalText(value []byte)
 	switch s := string(value); s {
 	case "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION":
 		*v = CancelExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution
+		return nil
+	case "WORKFLOW_ALREADY_COMPLETED":
+		*v = CancelExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted
 		return nil
 	default:
 		val, err := strconv.ParseInt(s, 10, 32)
@@ -4775,6 +5430,8 @@ func (v CancelExternalWorkflowExecutionFailedCause) MarshalText() ([]byte, error
 	switch int32(v) {
 	case 0:
 		return []byte("UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION"), nil
+	case 1:
+		return []byte("WORKFLOW_ALREADY_COMPLETED"), nil
 	}
 	return []byte(strconv.FormatInt(int64(v), 10)), nil
 }
@@ -4788,6 +5445,8 @@ func (v CancelExternalWorkflowExecutionFailedCause) MarshalLogObject(enc zapcore
 	switch int32(v) {
 	case 0:
 		enc.AddString("name", "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION")
+	case 1:
+		enc.AddString("name", "WORKFLOW_ALREADY_COMPLETED")
 	}
 	return nil
 }
@@ -4830,6 +5489,8 @@ func (v CancelExternalWorkflowExecutionFailedCause) String() string {
 	switch w {
 	case 0:
 		return "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION"
+	case 1:
+		return "WORKFLOW_ALREADY_COMPLETED"
 	}
 	return fmt.Sprintf("CancelExternalWorkflowExecutionFailedCause(%d)", w)
 }
@@ -4850,6 +5511,8 @@ func (v CancelExternalWorkflowExecutionFailedCause) MarshalJSON() ([]byte, error
 	switch int32(v) {
 	case 0:
 		return ([]byte)("\"UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION\""), nil
+	case 1:
+		return ([]byte)("\"WORKFLOW_ALREADY_COMPLETED\""), nil
 	}
 	return ([]byte)(strconv.FormatInt(int64(v), 10)), nil
 }
@@ -11762,7 +12425,43 @@ type CrossClusterStartChildExecutionRequestAttributes struct {
 	InitiatedEventID         *int64                                               `json:"initiatedEventID,omitempty"`
 	InitiatedEventAttributes *StartChildWorkflowExecutionInitiatedEventAttributes `json:"initiatedEventAttributes,omitempty"`
 	TargetRunID              *string                                              `json:"targetRunID,omitempty"`
+	PartitionConfig          map[string]string                                    `json:"partitionConfig,omitempty"`
 }
+
+type _Map_String_String_MapItemList map[string]string
+
+func (m _Map_String_String_MapItemList) ForEach(f func(wire.MapItem) error) error {
+	for k, v := range m {
+		kw, err := wire.NewValueString(k), error(nil)
+		if err != nil {
+			return err
+		}
+
+		vw, err := wire.NewValueString(v), error(nil)
+		if err != nil {
+			return err
+		}
+		err = f(wire.MapItem{Key: kw, Value: vw})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m _Map_String_String_MapItemList) Size() int {
+	return len(m)
+}
+
+func (_Map_String_String_MapItemList) KeyType() wire.Type {
+	return wire.TBinary
+}
+
+func (_Map_String_String_MapItemList) ValueType() wire.Type {
+	return wire.TBinary
+}
+
+func (_Map_String_String_MapItemList) Close() {}
 
 // ToWire translates a CrossClusterStartChildExecutionRequestAttributes struct into a Thrift-level intermediate
 // representation. This intermediate representation may be serialized
@@ -11781,7 +12480,7 @@ type CrossClusterStartChildExecutionRequestAttributes struct {
 //	}
 func (v *CrossClusterStartChildExecutionRequestAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [5]wire.Field
+		fields [6]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -11827,6 +12526,14 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) ToWire() (wire.Value,
 		fields[i] = wire.Field{ID: 50, Value: w}
 		i++
 	}
+	if v.PartitionConfig != nil {
+		w, err = wire.NewValueMap(_Map_String_String_MapItemList(v.PartitionConfig)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 60, Value: w}
+		i++
+	}
 
 	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
 }
@@ -11835,6 +12542,34 @@ func _StartChildWorkflowExecutionInitiatedEventAttributes_Read(w wire.Value) (*S
 	var v StartChildWorkflowExecutionInitiatedEventAttributes
 	err := v.FromWire(w)
 	return &v, err
+}
+
+func _Map_String_String_Read(m wire.MapItemList) (map[string]string, error) {
+	if m.KeyType() != wire.TBinary {
+		return nil, nil
+	}
+
+	if m.ValueType() != wire.TBinary {
+		return nil, nil
+	}
+
+	o := make(map[string]string, m.Size())
+	err := m.ForEach(func(x wire.MapItem) error {
+		k, err := x.Key.GetString(), error(nil)
+		if err != nil {
+			return err
+		}
+
+		v, err := x.Value.GetString(), error(nil)
+		if err != nil {
+			return err
+		}
+
+		o[k] = v
+		return nil
+	})
+	m.Close()
+	return o, err
 }
 
 // FromWire deserializes a CrossClusterStartChildExecutionRequestAttributes struct from its Thrift-level
@@ -11907,6 +12642,14 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) FromWire(w wire.Value
 				}
 
 			}
+		case 60:
+			if field.Value.Type() == wire.TMap {
+				v.PartitionConfig, err = _Map_String_String_Read(field.Value.GetMap())
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -11920,7 +12663,7 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [5]string
+	var fields [6]string
 	i := 0
 	if v.TargetDomainID != nil {
 		fields[i] = fmt.Sprintf("TargetDomainID: %v", *(v.TargetDomainID))
@@ -11942,8 +12685,29 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) String() string {
 		fields[i] = fmt.Sprintf("TargetRunID: %v", *(v.TargetRunID))
 		i++
 	}
+	if v.PartitionConfig != nil {
+		fields[i] = fmt.Sprintf("PartitionConfig: %v", v.PartitionConfig)
+		i++
+	}
 
 	return fmt.Sprintf("CrossClusterStartChildExecutionRequestAttributes{%v}", strings.Join(fields[:i], ", "))
+}
+
+func _Map_String_String_Equals(lhs, rhs map[string]string) bool {
+	if len(lhs) != len(rhs) {
+		return false
+	}
+
+	for lk, lv := range lhs {
+		rv, ok := rhs[lk]
+		if !ok {
+			return false
+		}
+		if !(lv == rv) {
+			return false
+		}
+	}
+	return true
 }
 
 // Equals returns true if all the fields of this CrossClusterStartChildExecutionRequestAttributes match the
@@ -11971,8 +12735,22 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) Equals(rhs *CrossClus
 	if !_String_EqualsPtr(v.TargetRunID, rhs.TargetRunID) {
 		return false
 	}
+	if !((v.PartitionConfig == nil && rhs.PartitionConfig == nil) || (v.PartitionConfig != nil && rhs.PartitionConfig != nil && _Map_String_String_Equals(v.PartitionConfig, rhs.PartitionConfig))) {
+		return false
+	}
 
 	return true
+}
+
+type _Map_String_String_Zapper map[string]string
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of _Map_String_String_Zapper.
+func (m _Map_String_String_Zapper) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	for k, v := range m {
+		enc.AddString((string)(k), v)
+	}
+	return err
 }
 
 // MarshalLogObject implements zapcore.ObjectMarshaler, enabling
@@ -11995,6 +12773,9 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) MarshalLogObject(enc 
 	}
 	if v.TargetRunID != nil {
 		enc.AddString("targetRunID", *v.TargetRunID)
+	}
+	if v.PartitionConfig != nil {
+		err = multierr.Append(err, enc.AddObject("partitionConfig", (_Map_String_String_Zapper)(v.PartitionConfig)))
 	}
 	return err
 }
@@ -12072,6 +12853,21 @@ func (v *CrossClusterStartChildExecutionRequestAttributes) GetTargetRunID() (o s
 // IsSetTargetRunID returns true if TargetRunID is not nil.
 func (v *CrossClusterStartChildExecutionRequestAttributes) IsSetTargetRunID() bool {
 	return v != nil && v.TargetRunID != nil
+}
+
+// GetPartitionConfig returns the value of PartitionConfig if it is set or its
+// zero value if it is unset.
+func (v *CrossClusterStartChildExecutionRequestAttributes) GetPartitionConfig() (o map[string]string) {
+	if v != nil && v.PartitionConfig != nil {
+		return v.PartitionConfig
+	}
+
+	return
+}
+
+// IsSetPartitionConfig returns true if PartitionConfig is not nil.
+func (v *CrossClusterStartChildExecutionRequestAttributes) IsSetPartitionConfig() bool {
+	return v != nil && v.PartitionConfig != nil
 }
 
 type CrossClusterStartChildExecutionResponseAttributes struct {
@@ -15889,6 +16685,7 @@ type DecisionTaskFailedEventAttributes struct {
 	NewRunId         *string                  `json:"newRunId,omitempty"`
 	ForkEventVersion *int64                   `json:"forkEventVersion,omitempty"`
 	BinaryChecksum   *string                  `json:"binaryChecksum,omitempty"`
+	RequestId        *string                  `json:"requestId,omitempty"`
 }
 
 // ToWire translates a DecisionTaskFailedEventAttributes struct into a Thrift-level intermediate
@@ -15908,7 +16705,7 @@ type DecisionTaskFailedEventAttributes struct {
 //	}
 func (v *DecisionTaskFailedEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [10]wire.Field
+		fields [11]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -15992,6 +16789,14 @@ func (v *DecisionTaskFailedEventAttributes) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 90, Value: w}
+		i++
+	}
+	if v.RequestId != nil {
+		w, err = wire.NewValueString(*(v.RequestId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 100, Value: w}
 		i++
 	}
 
@@ -16124,6 +16929,16 @@ func (v *DecisionTaskFailedEventAttributes) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 100:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.RequestId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -16137,7 +16952,7 @@ func (v *DecisionTaskFailedEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [10]string
+	var fields [11]string
 	i := 0
 	if v.ScheduledEventId != nil {
 		fields[i] = fmt.Sprintf("ScheduledEventId: %v", *(v.ScheduledEventId))
@@ -16177,6 +16992,10 @@ func (v *DecisionTaskFailedEventAttributes) String() string {
 	}
 	if v.BinaryChecksum != nil {
 		fields[i] = fmt.Sprintf("BinaryChecksum: %v", *(v.BinaryChecksum))
+		i++
+	}
+	if v.RequestId != nil {
+		fields[i] = fmt.Sprintf("RequestId: %v", *(v.RequestId))
 		i++
 	}
 
@@ -16233,6 +17052,9 @@ func (v *DecisionTaskFailedEventAttributes) Equals(rhs *DecisionTaskFailedEventA
 	if !_String_EqualsPtr(v.BinaryChecksum, rhs.BinaryChecksum) {
 		return false
 	}
+	if !_String_EqualsPtr(v.RequestId, rhs.RequestId) {
+		return false
+	}
 
 	return true
 }
@@ -16272,6 +17094,9 @@ func (v *DecisionTaskFailedEventAttributes) MarshalLogObject(enc zapcore.ObjectE
 	}
 	if v.BinaryChecksum != nil {
 		enc.AddString("binaryChecksum", *v.BinaryChecksum)
+	}
+	if v.RequestId != nil {
+		enc.AddString("requestId", *v.RequestId)
 	}
 	return err
 }
@@ -16424,6 +17249,21 @@ func (v *DecisionTaskFailedEventAttributes) GetBinaryChecksum() (o string) {
 // IsSetBinaryChecksum returns true if BinaryChecksum is not nil.
 func (v *DecisionTaskFailedEventAttributes) IsSetBinaryChecksum() bool {
 	return v != nil && v.BinaryChecksum != nil
+}
+
+// GetRequestId returns the value of RequestId if it is set or its
+// zero value if it is unset.
+func (v *DecisionTaskFailedEventAttributes) GetRequestId() (o string) {
+	if v != nil && v.RequestId != nil {
+		return *v.RequestId
+	}
+
+	return
+}
+
+// IsSetRequestId returns true if RequestId is not nil.
+func (v *DecisionTaskFailedEventAttributes) IsSetRequestId() bool {
+	return v != nil && v.RequestId != nil
 }
 
 type DecisionTaskScheduledEventAttributes struct {
@@ -17056,6 +17896,7 @@ type DecisionTaskTimedOutEventAttributes struct {
 	ForkEventVersion *int64                     `json:"forkEventVersion,omitempty"`
 	Reason           *string                    `json:"reason,omitempty"`
 	Cause            *DecisionTaskTimedOutCause `json:"cause,omitempty"`
+	RequestId        *string                    `json:"requestId,omitempty"`
 }
 
 // ToWire translates a DecisionTaskTimedOutEventAttributes struct into a Thrift-level intermediate
@@ -17075,7 +17916,7 @@ type DecisionTaskTimedOutEventAttributes struct {
 //	}
 func (v *DecisionTaskTimedOutEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [8]wire.Field
+		fields [9]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -17143,6 +17984,14 @@ func (v *DecisionTaskTimedOutEventAttributes) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 80, Value: w}
+		i++
+	}
+	if v.RequestId != nil {
+		w, err = wire.NewValueString(*(v.RequestId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 90, Value: w}
 		i++
 	}
 
@@ -17257,6 +18106,16 @@ func (v *DecisionTaskTimedOutEventAttributes) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 90:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.RequestId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -17270,7 +18129,7 @@ func (v *DecisionTaskTimedOutEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [8]string
+	var fields [9]string
 	i := 0
 	if v.ScheduledEventId != nil {
 		fields[i] = fmt.Sprintf("ScheduledEventId: %v", *(v.ScheduledEventId))
@@ -17302,6 +18161,10 @@ func (v *DecisionTaskTimedOutEventAttributes) String() string {
 	}
 	if v.Cause != nil {
 		fields[i] = fmt.Sprintf("Cause: %v", *(v.Cause))
+		i++
+	}
+	if v.RequestId != nil {
+		fields[i] = fmt.Sprintf("RequestId: %v", *(v.RequestId))
 		i++
 	}
 
@@ -17352,6 +18215,9 @@ func (v *DecisionTaskTimedOutEventAttributes) Equals(rhs *DecisionTaskTimedOutEv
 	if !_DecisionTaskTimedOutCause_EqualsPtr(v.Cause, rhs.Cause) {
 		return false
 	}
+	if !_String_EqualsPtr(v.RequestId, rhs.RequestId) {
+		return false
+	}
 
 	return true
 }
@@ -17385,6 +18251,9 @@ func (v *DecisionTaskTimedOutEventAttributes) MarshalLogObject(enc zapcore.Objec
 	}
 	if v.Cause != nil {
 		err = multierr.Append(err, enc.AddObject("cause", *v.Cause))
+	}
+	if v.RequestId != nil {
+		enc.AddString("requestId", *v.RequestId)
 	}
 	return err
 }
@@ -17507,6 +18376,21 @@ func (v *DecisionTaskTimedOutEventAttributes) GetCause() (o DecisionTaskTimedOut
 // IsSetCause returns true if Cause is not nil.
 func (v *DecisionTaskTimedOutEventAttributes) IsSetCause() bool {
 	return v != nil && v.Cause != nil
+}
+
+// GetRequestId returns the value of RequestId if it is set or its
+// zero value if it is unset.
+func (v *DecisionTaskTimedOutEventAttributes) GetRequestId() (o string) {
+	if v != nil && v.RequestId != nil {
+		return *v.RequestId
+	}
+
+	return
+}
+
+// IsSetRequestId returns true if RequestId is not nil.
+func (v *DecisionTaskTimedOutEventAttributes) IsSetRequestId() bool {
+	return v != nil && v.RequestId != nil
 }
 
 type DecisionType int32
@@ -21276,6 +22160,410 @@ func (v *DescribeWorkflowExecutionResponse) IsSetPendingDecision() bool {
 	return v != nil && v.PendingDecision != nil
 }
 
+type DiagnoseWorkflowExecutionRequest struct {
+	Domain            *string            `json:"domain,omitempty"`
+	WorkflowExecution *WorkflowExecution `json:"workflowExecution,omitempty"`
+	Identity          *string            `json:"identity,omitempty"`
+}
+
+// ToWire translates a DiagnoseWorkflowExecutionRequest struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *DiagnoseWorkflowExecutionRequest) ToWire() (wire.Value, error) {
+	var (
+		fields [3]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Domain != nil {
+		w, err = wire.NewValueString(*(v.Domain)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.WorkflowExecution != nil {
+		w, err = v.WorkflowExecution.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+	if v.Identity != nil {
+		w, err = wire.NewValueString(*(v.Identity)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 30, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a DiagnoseWorkflowExecutionRequest struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a DiagnoseWorkflowExecutionRequest struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v DiagnoseWorkflowExecutionRequest
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *DiagnoseWorkflowExecutionRequest) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.Domain = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TStruct {
+				v.WorkflowExecution, err = _WorkflowExecution_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
+		case 30:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.Identity = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a DiagnoseWorkflowExecutionRequest
+// struct.
+func (v *DiagnoseWorkflowExecutionRequest) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [3]string
+	i := 0
+	if v.Domain != nil {
+		fields[i] = fmt.Sprintf("Domain: %v", *(v.Domain))
+		i++
+	}
+	if v.WorkflowExecution != nil {
+		fields[i] = fmt.Sprintf("WorkflowExecution: %v", v.WorkflowExecution)
+		i++
+	}
+	if v.Identity != nil {
+		fields[i] = fmt.Sprintf("Identity: %v", *(v.Identity))
+		i++
+	}
+
+	return fmt.Sprintf("DiagnoseWorkflowExecutionRequest{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this DiagnoseWorkflowExecutionRequest match the
+// provided DiagnoseWorkflowExecutionRequest.
+//
+// This function performs a deep comparison.
+func (v *DiagnoseWorkflowExecutionRequest) Equals(rhs *DiagnoseWorkflowExecutionRequest) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_String_EqualsPtr(v.Domain, rhs.Domain) {
+		return false
+	}
+	if !((v.WorkflowExecution == nil && rhs.WorkflowExecution == nil) || (v.WorkflowExecution != nil && rhs.WorkflowExecution != nil && v.WorkflowExecution.Equals(rhs.WorkflowExecution))) {
+		return false
+	}
+	if !_String_EqualsPtr(v.Identity, rhs.Identity) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of DiagnoseWorkflowExecutionRequest.
+func (v *DiagnoseWorkflowExecutionRequest) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Domain != nil {
+		enc.AddString("domain", *v.Domain)
+	}
+	if v.WorkflowExecution != nil {
+		err = multierr.Append(err, enc.AddObject("workflowExecution", v.WorkflowExecution))
+	}
+	if v.Identity != nil {
+		enc.AddString("identity", *v.Identity)
+	}
+	return err
+}
+
+// GetDomain returns the value of Domain if it is set or its
+// zero value if it is unset.
+func (v *DiagnoseWorkflowExecutionRequest) GetDomain() (o string) {
+	if v != nil && v.Domain != nil {
+		return *v.Domain
+	}
+
+	return
+}
+
+// IsSetDomain returns true if Domain is not nil.
+func (v *DiagnoseWorkflowExecutionRequest) IsSetDomain() bool {
+	return v != nil && v.Domain != nil
+}
+
+// GetWorkflowExecution returns the value of WorkflowExecution if it is set or its
+// zero value if it is unset.
+func (v *DiagnoseWorkflowExecutionRequest) GetWorkflowExecution() (o *WorkflowExecution) {
+	if v != nil && v.WorkflowExecution != nil {
+		return v.WorkflowExecution
+	}
+
+	return
+}
+
+// IsSetWorkflowExecution returns true if WorkflowExecution is not nil.
+func (v *DiagnoseWorkflowExecutionRequest) IsSetWorkflowExecution() bool {
+	return v != nil && v.WorkflowExecution != nil
+}
+
+// GetIdentity returns the value of Identity if it is set or its
+// zero value if it is unset.
+func (v *DiagnoseWorkflowExecutionRequest) GetIdentity() (o string) {
+	if v != nil && v.Identity != nil {
+		return *v.Identity
+	}
+
+	return
+}
+
+// IsSetIdentity returns true if Identity is not nil.
+func (v *DiagnoseWorkflowExecutionRequest) IsSetIdentity() bool {
+	return v != nil && v.Identity != nil
+}
+
+type DiagnoseWorkflowExecutionResponse struct {
+	Domain                      *string            `json:"domain,omitempty"`
+	DiagnosticWorkflowExecution *WorkflowExecution `json:"diagnosticWorkflowExecution,omitempty"`
+}
+
+// ToWire translates a DiagnoseWorkflowExecutionResponse struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *DiagnoseWorkflowExecutionResponse) ToWire() (wire.Value, error) {
+	var (
+		fields [2]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Domain != nil {
+		w, err = wire.NewValueString(*(v.Domain)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.DiagnosticWorkflowExecution != nil {
+		w, err = v.DiagnosticWorkflowExecution.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a DiagnoseWorkflowExecutionResponse struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a DiagnoseWorkflowExecutionResponse struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v DiagnoseWorkflowExecutionResponse
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *DiagnoseWorkflowExecutionResponse) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.Domain = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TStruct {
+				v.DiagnosticWorkflowExecution, err = _WorkflowExecution_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a DiagnoseWorkflowExecutionResponse
+// struct.
+func (v *DiagnoseWorkflowExecutionResponse) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [2]string
+	i := 0
+	if v.Domain != nil {
+		fields[i] = fmt.Sprintf("Domain: %v", *(v.Domain))
+		i++
+	}
+	if v.DiagnosticWorkflowExecution != nil {
+		fields[i] = fmt.Sprintf("DiagnosticWorkflowExecution: %v", v.DiagnosticWorkflowExecution)
+		i++
+	}
+
+	return fmt.Sprintf("DiagnoseWorkflowExecutionResponse{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this DiagnoseWorkflowExecutionResponse match the
+// provided DiagnoseWorkflowExecutionResponse.
+//
+// This function performs a deep comparison.
+func (v *DiagnoseWorkflowExecutionResponse) Equals(rhs *DiagnoseWorkflowExecutionResponse) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_String_EqualsPtr(v.Domain, rhs.Domain) {
+		return false
+	}
+	if !((v.DiagnosticWorkflowExecution == nil && rhs.DiagnosticWorkflowExecution == nil) || (v.DiagnosticWorkflowExecution != nil && rhs.DiagnosticWorkflowExecution != nil && v.DiagnosticWorkflowExecution.Equals(rhs.DiagnosticWorkflowExecution))) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of DiagnoseWorkflowExecutionResponse.
+func (v *DiagnoseWorkflowExecutionResponse) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Domain != nil {
+		enc.AddString("domain", *v.Domain)
+	}
+	if v.DiagnosticWorkflowExecution != nil {
+		err = multierr.Append(err, enc.AddObject("diagnosticWorkflowExecution", v.DiagnosticWorkflowExecution))
+	}
+	return err
+}
+
+// GetDomain returns the value of Domain if it is set or its
+// zero value if it is unset.
+func (v *DiagnoseWorkflowExecutionResponse) GetDomain() (o string) {
+	if v != nil && v.Domain != nil {
+		return *v.Domain
+	}
+
+	return
+}
+
+// IsSetDomain returns true if Domain is not nil.
+func (v *DiagnoseWorkflowExecutionResponse) IsSetDomain() bool {
+	return v != nil && v.Domain != nil
+}
+
+// GetDiagnosticWorkflowExecution returns the value of DiagnosticWorkflowExecution if it is set or its
+// zero value if it is unset.
+func (v *DiagnoseWorkflowExecutionResponse) GetDiagnosticWorkflowExecution() (o *WorkflowExecution) {
+	if v != nil && v.DiagnosticWorkflowExecution != nil {
+		return v.DiagnosticWorkflowExecution
+	}
+
+	return
+}
+
+// IsSetDiagnosticWorkflowExecution returns true if DiagnosticWorkflowExecution is not nil.
+func (v *DiagnoseWorkflowExecutionResponse) IsSetDiagnosticWorkflowExecution() bool {
+	return v != nil && v.DiagnosticWorkflowExecution != nil
+}
+
 type DomainAlreadyExistsError struct {
 	Message string `json:"message,required"`
 }
@@ -21599,13 +22887,15 @@ func (v *DomainCacheInfo) IsSetNumOfItemsInCacheByName() bool {
 }
 
 type DomainConfiguration struct {
-	WorkflowExecutionRetentionPeriodInDays *int32          `json:"workflowExecutionRetentionPeriodInDays,omitempty"`
-	EmitMetric                             *bool           `json:"emitMetric,omitempty"`
-	BadBinaries                            *BadBinaries    `json:"badBinaries,omitempty"`
-	HistoryArchivalStatus                  *ArchivalStatus `json:"historyArchivalStatus,omitempty"`
-	HistoryArchivalURI                     *string         `json:"historyArchivalURI,omitempty"`
-	VisibilityArchivalStatus               *ArchivalStatus `json:"visibilityArchivalStatus,omitempty"`
-	VisibilityArchivalURI                  *string         `json:"visibilityArchivalURI,omitempty"`
+	WorkflowExecutionRetentionPeriodInDays *int32                       `json:"workflowExecutionRetentionPeriodInDays,omitempty"`
+	EmitMetric                             *bool                        `json:"emitMetric,omitempty"`
+	Isolationgroups                        *IsolationGroupConfiguration `json:"isolationgroups,omitempty"`
+	BadBinaries                            *BadBinaries                 `json:"badBinaries,omitempty"`
+	HistoryArchivalStatus                  *ArchivalStatus              `json:"historyArchivalStatus,omitempty"`
+	HistoryArchivalURI                     *string                      `json:"historyArchivalURI,omitempty"`
+	VisibilityArchivalStatus               *ArchivalStatus              `json:"visibilityArchivalStatus,omitempty"`
+	VisibilityArchivalURI                  *string                      `json:"visibilityArchivalURI,omitempty"`
+	AsyncWorkflowConfiguration             *AsyncWorkflowConfiguration  `json:"AsyncWorkflowConfiguration,omitempty"`
 }
 
 // ToWire translates a DomainConfiguration struct into a Thrift-level intermediate
@@ -21625,7 +22915,7 @@ type DomainConfiguration struct {
 //	}
 func (v *DomainConfiguration) ToWire() (wire.Value, error) {
 	var (
-		fields [7]wire.Field
+		fields [9]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -21645,6 +22935,14 @@ func (v *DomainConfiguration) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+	if v.Isolationgroups != nil {
+		w, err = v.Isolationgroups.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 60, Value: w}
 		i++
 	}
 	if v.BadBinaries != nil {
@@ -21687,8 +22985,22 @@ func (v *DomainConfiguration) ToWire() (wire.Value, error) {
 		fields[i] = wire.Field{ID: 110, Value: w}
 		i++
 	}
+	if v.AsyncWorkflowConfiguration != nil {
+		w, err = v.AsyncWorkflowConfiguration.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 120, Value: w}
+		i++
+	}
 
 	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _IsolationGroupConfiguration_Read(w wire.Value) (*IsolationGroupConfiguration, error) {
+	var v IsolationGroupConfiguration
+	err := v.FromWire(w)
+	return &v, err
 }
 
 func _BadBinaries_Read(w wire.Value) (*BadBinaries, error) {
@@ -21701,6 +23013,12 @@ func _ArchivalStatus_Read(w wire.Value) (ArchivalStatus, error) {
 	var v ArchivalStatus
 	err := v.FromWire(w)
 	return v, err
+}
+
+func _AsyncWorkflowConfiguration_Read(w wire.Value) (*AsyncWorkflowConfiguration, error) {
+	var v AsyncWorkflowConfiguration
+	err := v.FromWire(w)
+	return &v, err
 }
 
 // FromWire deserializes a DomainConfiguration struct from its Thrift-level
@@ -21740,6 +23058,14 @@ func (v *DomainConfiguration) FromWire(w wire.Value) error {
 				var x bool
 				x, err = field.Value.GetBool(), error(nil)
 				v.EmitMetric = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 60:
+			if field.Value.Type() == wire.TStruct {
+				v.Isolationgroups, err = _IsolationGroupConfiguration_Read(field.Value)
 				if err != nil {
 					return err
 				}
@@ -21793,6 +23119,14 @@ func (v *DomainConfiguration) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 120:
+			if field.Value.Type() == wire.TStruct {
+				v.AsyncWorkflowConfiguration, err = _AsyncWorkflowConfiguration_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -21806,7 +23140,7 @@ func (v *DomainConfiguration) String() string {
 		return "<nil>"
 	}
 
-	var fields [7]string
+	var fields [9]string
 	i := 0
 	if v.WorkflowExecutionRetentionPeriodInDays != nil {
 		fields[i] = fmt.Sprintf("WorkflowExecutionRetentionPeriodInDays: %v", *(v.WorkflowExecutionRetentionPeriodInDays))
@@ -21814,6 +23148,10 @@ func (v *DomainConfiguration) String() string {
 	}
 	if v.EmitMetric != nil {
 		fields[i] = fmt.Sprintf("EmitMetric: %v", *(v.EmitMetric))
+		i++
+	}
+	if v.Isolationgroups != nil {
+		fields[i] = fmt.Sprintf("Isolationgroups: %v", v.Isolationgroups)
 		i++
 	}
 	if v.BadBinaries != nil {
@@ -21834,6 +23172,10 @@ func (v *DomainConfiguration) String() string {
 	}
 	if v.VisibilityArchivalURI != nil {
 		fields[i] = fmt.Sprintf("VisibilityArchivalURI: %v", *(v.VisibilityArchivalURI))
+		i++
+	}
+	if v.AsyncWorkflowConfiguration != nil {
+		fields[i] = fmt.Sprintf("AsyncWorkflowConfiguration: %v", v.AsyncWorkflowConfiguration)
 		i++
 	}
 
@@ -21866,6 +23208,9 @@ func (v *DomainConfiguration) Equals(rhs *DomainConfiguration) bool {
 	if !_Bool_EqualsPtr(v.EmitMetric, rhs.EmitMetric) {
 		return false
 	}
+	if !((v.Isolationgroups == nil && rhs.Isolationgroups == nil) || (v.Isolationgroups != nil && rhs.Isolationgroups != nil && v.Isolationgroups.Equals(rhs.Isolationgroups))) {
+		return false
+	}
 	if !((v.BadBinaries == nil && rhs.BadBinaries == nil) || (v.BadBinaries != nil && rhs.BadBinaries != nil && v.BadBinaries.Equals(rhs.BadBinaries))) {
 		return false
 	}
@@ -21879,6 +23224,9 @@ func (v *DomainConfiguration) Equals(rhs *DomainConfiguration) bool {
 		return false
 	}
 	if !_String_EqualsPtr(v.VisibilityArchivalURI, rhs.VisibilityArchivalURI) {
+		return false
+	}
+	if !((v.AsyncWorkflowConfiguration == nil && rhs.AsyncWorkflowConfiguration == nil) || (v.AsyncWorkflowConfiguration != nil && rhs.AsyncWorkflowConfiguration != nil && v.AsyncWorkflowConfiguration.Equals(rhs.AsyncWorkflowConfiguration))) {
 		return false
 	}
 
@@ -21897,6 +23245,9 @@ func (v *DomainConfiguration) MarshalLogObject(enc zapcore.ObjectEncoder) (err e
 	if v.EmitMetric != nil {
 		enc.AddBool("emitMetric", *v.EmitMetric)
 	}
+	if v.Isolationgroups != nil {
+		err = multierr.Append(err, enc.AddObject("isolationgroups", v.Isolationgroups))
+	}
 	if v.BadBinaries != nil {
 		err = multierr.Append(err, enc.AddObject("badBinaries", v.BadBinaries))
 	}
@@ -21911,6 +23262,9 @@ func (v *DomainConfiguration) MarshalLogObject(enc zapcore.ObjectEncoder) (err e
 	}
 	if v.VisibilityArchivalURI != nil {
 		enc.AddString("visibilityArchivalURI", *v.VisibilityArchivalURI)
+	}
+	if v.AsyncWorkflowConfiguration != nil {
+		err = multierr.Append(err, enc.AddObject("AsyncWorkflowConfiguration", v.AsyncWorkflowConfiguration))
 	}
 	return err
 }
@@ -21943,6 +23297,21 @@ func (v *DomainConfiguration) GetEmitMetric() (o bool) {
 // IsSetEmitMetric returns true if EmitMetric is not nil.
 func (v *DomainConfiguration) IsSetEmitMetric() bool {
 	return v != nil && v.EmitMetric != nil
+}
+
+// GetIsolationgroups returns the value of Isolationgroups if it is set or its
+// zero value if it is unset.
+func (v *DomainConfiguration) GetIsolationgroups() (o *IsolationGroupConfiguration) {
+	if v != nil && v.Isolationgroups != nil {
+		return v.Isolationgroups
+	}
+
+	return
+}
+
+// IsSetIsolationgroups returns true if Isolationgroups is not nil.
+func (v *DomainConfiguration) IsSetIsolationgroups() bool {
+	return v != nil && v.Isolationgroups != nil
 }
 
 // GetBadBinaries returns the value of BadBinaries if it is set or its
@@ -22020,6 +23389,21 @@ func (v *DomainConfiguration) IsSetVisibilityArchivalURI() bool {
 	return v != nil && v.VisibilityArchivalURI != nil
 }
 
+// GetAsyncWorkflowConfiguration returns the value of AsyncWorkflowConfiguration if it is set or its
+// zero value if it is unset.
+func (v *DomainConfiguration) GetAsyncWorkflowConfiguration() (o *AsyncWorkflowConfiguration) {
+	if v != nil && v.AsyncWorkflowConfiguration != nil {
+		return v.AsyncWorkflowConfiguration
+	}
+
+	return
+}
+
+// IsSetAsyncWorkflowConfiguration returns true if AsyncWorkflowConfiguration is not nil.
+func (v *DomainConfiguration) IsSetAsyncWorkflowConfiguration() bool {
+	return v != nil && v.AsyncWorkflowConfiguration != nil
+}
+
 type DomainInfo struct {
 	Name        *string           `json:"name,omitempty"`
 	Status      *DomainStatus     `json:"status,omitempty"`
@@ -22028,41 +23412,6 @@ type DomainInfo struct {
 	Data        map[string]string `json:"data,omitempty"`
 	UUID        *string           `json:"uuid,omitempty"`
 }
-
-type _Map_String_String_MapItemList map[string]string
-
-func (m _Map_String_String_MapItemList) ForEach(f func(wire.MapItem) error) error {
-	for k, v := range m {
-		kw, err := wire.NewValueString(k), error(nil)
-		if err != nil {
-			return err
-		}
-
-		vw, err := wire.NewValueString(v), error(nil)
-		if err != nil {
-			return err
-		}
-		err = f(wire.MapItem{Key: kw, Value: vw})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (m _Map_String_String_MapItemList) Size() int {
-	return len(m)
-}
-
-func (_Map_String_String_MapItemList) KeyType() wire.Type {
-	return wire.TBinary
-}
-
-func (_Map_String_String_MapItemList) ValueType() wire.Type {
-	return wire.TBinary
-}
-
-func (_Map_String_String_MapItemList) Close() {}
 
 // ToWire translates a DomainInfo struct into a Thrift-level intermediate
 // representation. This intermediate representation may be serialized
@@ -22143,34 +23492,6 @@ func _DomainStatus_Read(w wire.Value) (DomainStatus, error) {
 	var v DomainStatus
 	err := v.FromWire(w)
 	return v, err
-}
-
-func _Map_String_String_Read(m wire.MapItemList) (map[string]string, error) {
-	if m.KeyType() != wire.TBinary {
-		return nil, nil
-	}
-
-	if m.ValueType() != wire.TBinary {
-		return nil, nil
-	}
-
-	o := make(map[string]string, m.Size())
-	err := m.ForEach(func(x wire.MapItem) error {
-		k, err := x.Key.GetString(), error(nil)
-		if err != nil {
-			return err
-		}
-
-		v, err := x.Value.GetString(), error(nil)
-		if err != nil {
-			return err
-		}
-
-		o[k] = v
-		return nil
-	})
-	m.Close()
-	return o, err
 }
 
 // FromWire deserializes a DomainInfo struct from its Thrift-level
@@ -22306,23 +23627,6 @@ func _DomainStatus_EqualsPtr(lhs, rhs *DomainStatus) bool {
 	return lhs == nil && rhs == nil
 }
 
-func _Map_String_String_Equals(lhs, rhs map[string]string) bool {
-	if len(lhs) != len(rhs) {
-		return false
-	}
-
-	for lk, lv := range lhs {
-		rv, ok := rhs[lk]
-		if !ok {
-			return false
-		}
-		if !(lv == rv) {
-			return false
-		}
-	}
-	return true
-}
-
 // Equals returns true if all the fields of this DomainInfo match the
 // provided DomainInfo.
 //
@@ -22353,17 +23657,6 @@ func (v *DomainInfo) Equals(rhs *DomainInfo) bool {
 	}
 
 	return true
-}
-
-type _Map_String_String_Zapper map[string]string
-
-// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
-// fast logging of _Map_String_String_Zapper.
-func (m _Map_String_String_Zapper) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
-	for k, v := range m {
-		enc.AddString((string)(k), v)
-	}
-	return err
 }
 
 // MarshalLogObject implements zapcore.ObjectMarshaler, enabling
@@ -27539,12 +28832,6 @@ func _History_Read(w wire.Value) (*History, error) {
 	return &v, err
 }
 
-func _DataBlob_Read(w wire.Value) (*DataBlob, error) {
-	var v DataBlob
-	err := v.FromWire(w)
-	return &v, err
-}
-
 func _List_DataBlob_Read(l wire.ValueList) ([]*DataBlob, error) {
 	if l.ValueType() != wire.TStruct {
 		return nil, nil
@@ -31769,6 +33056,603 @@ func (v *InternalServiceError) Error() string {
 	return v.String()
 }
 
+type IsolationGroupConfiguration struct {
+	IsolationGroups []*IsolationGroupPartition `json:"isolationGroups,omitempty"`
+}
+
+type _List_IsolationGroupPartition_ValueList []*IsolationGroupPartition
+
+func (v _List_IsolationGroupPartition_ValueList) ForEach(f func(wire.Value) error) error {
+	for i, x := range v {
+		if x == nil {
+			return fmt.Errorf("invalid [%v]: value is nil", i)
+		}
+		w, err := x.ToWire()
+		if err != nil {
+			return err
+		}
+		err = f(w)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v _List_IsolationGroupPartition_ValueList) Size() int {
+	return len(v)
+}
+
+func (_List_IsolationGroupPartition_ValueList) ValueType() wire.Type {
+	return wire.TStruct
+}
+
+func (_List_IsolationGroupPartition_ValueList) Close() {}
+
+// ToWire translates a IsolationGroupConfiguration struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *IsolationGroupConfiguration) ToWire() (wire.Value, error) {
+	var (
+		fields [1]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.IsolationGroups != nil {
+		w, err = wire.NewValueList(_List_IsolationGroupPartition_ValueList(v.IsolationGroups)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _IsolationGroupPartition_Read(w wire.Value) (*IsolationGroupPartition, error) {
+	var v IsolationGroupPartition
+	err := v.FromWire(w)
+	return &v, err
+}
+
+func _List_IsolationGroupPartition_Read(l wire.ValueList) ([]*IsolationGroupPartition, error) {
+	if l.ValueType() != wire.TStruct {
+		return nil, nil
+	}
+
+	o := make([]*IsolationGroupPartition, 0, l.Size())
+	err := l.ForEach(func(x wire.Value) error {
+		i, err := _IsolationGroupPartition_Read(x)
+		if err != nil {
+			return err
+		}
+		o = append(o, i)
+		return nil
+	})
+	l.Close()
+	return o, err
+}
+
+// FromWire deserializes a IsolationGroupConfiguration struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a IsolationGroupConfiguration struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v IsolationGroupConfiguration
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *IsolationGroupConfiguration) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TList {
+				v.IsolationGroups, err = _List_IsolationGroupPartition_Read(field.Value.GetList())
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a IsolationGroupConfiguration
+// struct.
+func (v *IsolationGroupConfiguration) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [1]string
+	i := 0
+	if v.IsolationGroups != nil {
+		fields[i] = fmt.Sprintf("IsolationGroups: %v", v.IsolationGroups)
+		i++
+	}
+
+	return fmt.Sprintf("IsolationGroupConfiguration{%v}", strings.Join(fields[:i], ", "))
+}
+
+func _List_IsolationGroupPartition_Equals(lhs, rhs []*IsolationGroupPartition) bool {
+	if len(lhs) != len(rhs) {
+		return false
+	}
+
+	for i, lv := range lhs {
+		rv := rhs[i]
+		if !lv.Equals(rv) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equals returns true if all the fields of this IsolationGroupConfiguration match the
+// provided IsolationGroupConfiguration.
+//
+// This function performs a deep comparison.
+func (v *IsolationGroupConfiguration) Equals(rhs *IsolationGroupConfiguration) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !((v.IsolationGroups == nil && rhs.IsolationGroups == nil) || (v.IsolationGroups != nil && rhs.IsolationGroups != nil && _List_IsolationGroupPartition_Equals(v.IsolationGroups, rhs.IsolationGroups))) {
+		return false
+	}
+
+	return true
+}
+
+type _List_IsolationGroupPartition_Zapper []*IsolationGroupPartition
+
+// MarshalLogArray implements zapcore.ArrayMarshaler, enabling
+// fast logging of _List_IsolationGroupPartition_Zapper.
+func (l _List_IsolationGroupPartition_Zapper) MarshalLogArray(enc zapcore.ArrayEncoder) (err error) {
+	for _, v := range l {
+		err = multierr.Append(err, enc.AppendObject(v))
+	}
+	return err
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of IsolationGroupConfiguration.
+func (v *IsolationGroupConfiguration) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.IsolationGroups != nil {
+		err = multierr.Append(err, enc.AddArray("isolationGroups", (_List_IsolationGroupPartition_Zapper)(v.IsolationGroups)))
+	}
+	return err
+}
+
+// GetIsolationGroups returns the value of IsolationGroups if it is set or its
+// zero value if it is unset.
+func (v *IsolationGroupConfiguration) GetIsolationGroups() (o []*IsolationGroupPartition) {
+	if v != nil && v.IsolationGroups != nil {
+		return v.IsolationGroups
+	}
+
+	return
+}
+
+// IsSetIsolationGroups returns true if IsolationGroups is not nil.
+func (v *IsolationGroupConfiguration) IsSetIsolationGroups() bool {
+	return v != nil && v.IsolationGroups != nil
+}
+
+type IsolationGroupPartition struct {
+	Name  *string              `json:"name,omitempty"`
+	State *IsolationGroupState `json:"state,omitempty"`
+}
+
+// ToWire translates a IsolationGroupPartition struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *IsolationGroupPartition) ToWire() (wire.Value, error) {
+	var (
+		fields [2]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Name != nil {
+		w, err = wire.NewValueString(*(v.Name)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+	if v.State != nil {
+		w, err = v.State.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 20, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _IsolationGroupState_Read(w wire.Value) (IsolationGroupState, error) {
+	var v IsolationGroupState
+	err := v.FromWire(w)
+	return v, err
+}
+
+// FromWire deserializes a IsolationGroupPartition struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a IsolationGroupPartition struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v IsolationGroupPartition
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *IsolationGroupPartition) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.Name = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 20:
+			if field.Value.Type() == wire.TI32 {
+				var x IsolationGroupState
+				x, err = _IsolationGroupState_Read(field.Value)
+				v.State = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a IsolationGroupPartition
+// struct.
+func (v *IsolationGroupPartition) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [2]string
+	i := 0
+	if v.Name != nil {
+		fields[i] = fmt.Sprintf("Name: %v", *(v.Name))
+		i++
+	}
+	if v.State != nil {
+		fields[i] = fmt.Sprintf("State: %v", *(v.State))
+		i++
+	}
+
+	return fmt.Sprintf("IsolationGroupPartition{%v}", strings.Join(fields[:i], ", "))
+}
+
+func _IsolationGroupState_EqualsPtr(lhs, rhs *IsolationGroupState) bool {
+	if lhs != nil && rhs != nil {
+
+		x := *lhs
+		y := *rhs
+		return x.Equals(y)
+	}
+	return lhs == nil && rhs == nil
+}
+
+// Equals returns true if all the fields of this IsolationGroupPartition match the
+// provided IsolationGroupPartition.
+//
+// This function performs a deep comparison.
+func (v *IsolationGroupPartition) Equals(rhs *IsolationGroupPartition) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !_String_EqualsPtr(v.Name, rhs.Name) {
+		return false
+	}
+	if !_IsolationGroupState_EqualsPtr(v.State, rhs.State) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of IsolationGroupPartition.
+func (v *IsolationGroupPartition) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Name != nil {
+		enc.AddString("name", *v.Name)
+	}
+	if v.State != nil {
+		err = multierr.Append(err, enc.AddObject("state", *v.State))
+	}
+	return err
+}
+
+// GetName returns the value of Name if it is set or its
+// zero value if it is unset.
+func (v *IsolationGroupPartition) GetName() (o string) {
+	if v != nil && v.Name != nil {
+		return *v.Name
+	}
+
+	return
+}
+
+// IsSetName returns true if Name is not nil.
+func (v *IsolationGroupPartition) IsSetName() bool {
+	return v != nil && v.Name != nil
+}
+
+// GetState returns the value of State if it is set or its
+// zero value if it is unset.
+func (v *IsolationGroupPartition) GetState() (o IsolationGroupState) {
+	if v != nil && v.State != nil {
+		return *v.State
+	}
+
+	return
+}
+
+// IsSetState returns true if State is not nil.
+func (v *IsolationGroupPartition) IsSetState() bool {
+	return v != nil && v.State != nil
+}
+
+type IsolationGroupState int32
+
+const (
+	IsolationGroupStateInvalid IsolationGroupState = 0
+	IsolationGroupStateHealthy IsolationGroupState = 1
+	IsolationGroupStateDrained IsolationGroupState = 2
+)
+
+// IsolationGroupState_Values returns all recognized values of IsolationGroupState.
+func IsolationGroupState_Values() []IsolationGroupState {
+	return []IsolationGroupState{
+		IsolationGroupStateInvalid,
+		IsolationGroupStateHealthy,
+		IsolationGroupStateDrained,
+	}
+}
+
+// UnmarshalText tries to decode IsolationGroupState from a byte slice
+// containing its name.
+//
+//	var v IsolationGroupState
+//	err := v.UnmarshalText([]byte("INVALID"))
+func (v *IsolationGroupState) UnmarshalText(value []byte) error {
+	switch s := string(value); s {
+	case "INVALID":
+		*v = IsolationGroupStateInvalid
+		return nil
+	case "HEALTHY":
+		*v = IsolationGroupStateHealthy
+		return nil
+	case "DRAINED":
+		*v = IsolationGroupStateDrained
+		return nil
+	default:
+		val, err := strconv.ParseInt(s, 10, 32)
+		if err != nil {
+			return fmt.Errorf("unknown enum value %q for %q: %v", s, "IsolationGroupState", err)
+		}
+		*v = IsolationGroupState(val)
+		return nil
+	}
+}
+
+// MarshalText encodes IsolationGroupState to text.
+//
+// If the enum value is recognized, its name is returned. Otherwise,
+// its integer value is returned.
+//
+// This implements the TextMarshaler interface.
+func (v IsolationGroupState) MarshalText() ([]byte, error) {
+	switch int32(v) {
+	case 0:
+		return []byte("INVALID"), nil
+	case 1:
+		return []byte("HEALTHY"), nil
+	case 2:
+		return []byte("DRAINED"), nil
+	}
+	return []byte(strconv.FormatInt(int64(v), 10)), nil
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of IsolationGroupState.
+// Enums are logged as objects, where the value is logged with key "value", and
+// if this value's name is known, the name is logged with key "name".
+func (v IsolationGroupState) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddInt32("value", int32(v))
+	switch int32(v) {
+	case 0:
+		enc.AddString("name", "INVALID")
+	case 1:
+		enc.AddString("name", "HEALTHY")
+	case 2:
+		enc.AddString("name", "DRAINED")
+	}
+	return nil
+}
+
+// Ptr returns a pointer to this enum value.
+func (v IsolationGroupState) Ptr() *IsolationGroupState {
+	return &v
+}
+
+// ToWire translates IsolationGroupState into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// Enums are represented as 32-bit integers over the wire.
+func (v IsolationGroupState) ToWire() (wire.Value, error) {
+	return wire.NewValueI32(int32(v)), nil
+}
+
+// FromWire deserializes IsolationGroupState from its Thrift-level
+// representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TI32)
+//	if err != nil {
+//	  return IsolationGroupState(0), err
+//	}
+//
+//	var v IsolationGroupState
+//	if err := v.FromWire(x); err != nil {
+//	  return IsolationGroupState(0), err
+//	}
+//	return v, nil
+func (v *IsolationGroupState) FromWire(w wire.Value) error {
+	*v = (IsolationGroupState)(w.GetI32())
+	return nil
+}
+
+// String returns a readable string representation of IsolationGroupState.
+func (v IsolationGroupState) String() string {
+	w := int32(v)
+	switch w {
+	case 0:
+		return "INVALID"
+	case 1:
+		return "HEALTHY"
+	case 2:
+		return "DRAINED"
+	}
+	return fmt.Sprintf("IsolationGroupState(%d)", w)
+}
+
+// Equals returns true if this IsolationGroupState value matches the provided
+// value.
+func (v IsolationGroupState) Equals(rhs IsolationGroupState) bool {
+	return v == rhs
+}
+
+// MarshalJSON serializes IsolationGroupState into JSON.
+//
+// If the enum value is recognized, its name is returned. Otherwise,
+// its integer value is returned.
+//
+// This implements json.Marshaler.
+func (v IsolationGroupState) MarshalJSON() ([]byte, error) {
+	switch int32(v) {
+	case 0:
+		return ([]byte)("\"INVALID\""), nil
+	case 1:
+		return ([]byte)("\"HEALTHY\""), nil
+	case 2:
+		return ([]byte)("\"DRAINED\""), nil
+	}
+	return ([]byte)(strconv.FormatInt(int64(v), 10)), nil
+}
+
+// UnmarshalJSON attempts to decode IsolationGroupState from its JSON
+// representation.
+//
+// This implementation supports both, numeric and string inputs. If a
+// string is provided, it must be a known enum name.
+//
+// This implements json.Unmarshaler.
+func (v *IsolationGroupState) UnmarshalJSON(text []byte) error {
+	d := json.NewDecoder(bytes.NewReader(text))
+	d.UseNumber()
+	t, err := d.Token()
+	if err != nil {
+		return err
+	}
+
+	switch w := t.(type) {
+	case json.Number:
+		x, err := w.Int64()
+		if err != nil {
+			return err
+		}
+		if x > math.MaxInt32 {
+			return fmt.Errorf("enum overflow from JSON %q for %q", text, "IsolationGroupState")
+		}
+		if x < math.MinInt32 {
+			return fmt.Errorf("enum underflow from JSON %q for %q", text, "IsolationGroupState")
+		}
+		*v = (IsolationGroupState)(x)
+		return nil
+	case string:
+		return v.UnmarshalText([]byte(w))
+	default:
+		return fmt.Errorf("invalid JSON value %q (%T) to unmarshal into %q", t, t, "IsolationGroupState")
+	}
+}
+
 type LimitExceededError struct {
 	Message string `json:"message,required"`
 }
@@ -35482,6 +37366,8 @@ type PendingActivityInfo struct {
 	LastFailureReason      *string               `json:"lastFailureReason,omitempty"`
 	LastWorkerIdentity     *string               `json:"lastWorkerIdentity,omitempty"`
 	LastFailureDetails     []byte                `json:"lastFailureDetails,omitempty"`
+	StartedWorkerIdentity  *string               `json:"startedWorkerIdentity,omitempty"`
+	ScheduleID             *int64                `json:"scheduleID,omitempty"`
 }
 
 // ToWire translates a PendingActivityInfo struct into a Thrift-level intermediate
@@ -35501,7 +37387,7 @@ type PendingActivityInfo struct {
 //	}
 func (v *PendingActivityInfo) ToWire() (wire.Value, error) {
 	var (
-		fields [13]wire.Field
+		fields [15]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -35609,6 +37495,22 @@ func (v *PendingActivityInfo) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 130, Value: w}
+		i++
+	}
+	if v.StartedWorkerIdentity != nil {
+		w, err = wire.NewValueString(*(v.StartedWorkerIdentity)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 140, Value: w}
+		i++
+	}
+	if v.ScheduleID != nil {
+		w, err = wire.NewValueI64(*(v.ScheduleID)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 150, Value: w}
 		i++
 	}
 
@@ -35767,6 +37669,26 @@ func (v *PendingActivityInfo) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 140:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.StartedWorkerIdentity = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 150:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.ScheduleID = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -35780,7 +37702,7 @@ func (v *PendingActivityInfo) String() string {
 		return "<nil>"
 	}
 
-	var fields [13]string
+	var fields [15]string
 	i := 0
 	if v.ActivityID != nil {
 		fields[i] = fmt.Sprintf("ActivityID: %v", *(v.ActivityID))
@@ -35832,6 +37754,14 @@ func (v *PendingActivityInfo) String() string {
 	}
 	if v.LastFailureDetails != nil {
 		fields[i] = fmt.Sprintf("LastFailureDetails: %v", v.LastFailureDetails)
+		i++
+	}
+	if v.StartedWorkerIdentity != nil {
+		fields[i] = fmt.Sprintf("StartedWorkerIdentity: %v", *(v.StartedWorkerIdentity))
+		i++
+	}
+	if v.ScheduleID != nil {
+		fields[i] = fmt.Sprintf("ScheduleID: %v", *(v.ScheduleID))
 		i++
 	}
 
@@ -35897,6 +37827,12 @@ func (v *PendingActivityInfo) Equals(rhs *PendingActivityInfo) bool {
 	if !((v.LastFailureDetails == nil && rhs.LastFailureDetails == nil) || (v.LastFailureDetails != nil && rhs.LastFailureDetails != nil && bytes.Equal(v.LastFailureDetails, rhs.LastFailureDetails))) {
 		return false
 	}
+	if !_String_EqualsPtr(v.StartedWorkerIdentity, rhs.StartedWorkerIdentity) {
+		return false
+	}
+	if !_I64_EqualsPtr(v.ScheduleID, rhs.ScheduleID) {
+		return false
+	}
 
 	return true
 }
@@ -35945,6 +37881,12 @@ func (v *PendingActivityInfo) MarshalLogObject(enc zapcore.ObjectEncoder) (err e
 	}
 	if v.LastFailureDetails != nil {
 		enc.AddString("lastFailureDetails", base64.StdEncoding.EncodeToString(v.LastFailureDetails))
+	}
+	if v.StartedWorkerIdentity != nil {
+		enc.AddString("startedWorkerIdentity", *v.StartedWorkerIdentity)
+	}
+	if v.ScheduleID != nil {
+		enc.AddInt64("scheduleID", *v.ScheduleID)
 	}
 	return err
 }
@@ -36142,6 +38084,36 @@ func (v *PendingActivityInfo) GetLastFailureDetails() (o []byte) {
 // IsSetLastFailureDetails returns true if LastFailureDetails is not nil.
 func (v *PendingActivityInfo) IsSetLastFailureDetails() bool {
 	return v != nil && v.LastFailureDetails != nil
+}
+
+// GetStartedWorkerIdentity returns the value of StartedWorkerIdentity if it is set or its
+// zero value if it is unset.
+func (v *PendingActivityInfo) GetStartedWorkerIdentity() (o string) {
+	if v != nil && v.StartedWorkerIdentity != nil {
+		return *v.StartedWorkerIdentity
+	}
+
+	return
+}
+
+// IsSetStartedWorkerIdentity returns true if StartedWorkerIdentity is not nil.
+func (v *PendingActivityInfo) IsSetStartedWorkerIdentity() bool {
+	return v != nil && v.StartedWorkerIdentity != nil
+}
+
+// GetScheduleID returns the value of ScheduleID if it is set or its
+// zero value if it is unset.
+func (v *PendingActivityInfo) GetScheduleID() (o int64) {
+	if v != nil && v.ScheduleID != nil {
+		return *v.ScheduleID
+	}
+
+	return
+}
+
+// IsSetScheduleID returns true if ScheduleID is not nil.
+func (v *PendingActivityInfo) IsSetScheduleID() bool {
+	return v != nil && v.ScheduleID != nil
 }
 
 type PendingActivityState int32
@@ -36692,6 +38664,7 @@ type PendingDecisionInfo struct {
 	StartedTimestamp           *int64                `json:"startedTimestamp,omitempty"`
 	Attempt                    *int64                `json:"attempt,omitempty"`
 	OriginalScheduledTimestamp *int64                `json:"originalScheduledTimestamp,omitempty"`
+	ScheduleID                 *int64                `json:"scheduleID,omitempty"`
 }
 
 // ToWire translates a PendingDecisionInfo struct into a Thrift-level intermediate
@@ -36711,7 +38684,7 @@ type PendingDecisionInfo struct {
 //	}
 func (v *PendingDecisionInfo) ToWire() (wire.Value, error) {
 	var (
-		fields [5]wire.Field
+		fields [6]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -36755,6 +38728,14 @@ func (v *PendingDecisionInfo) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 50, Value: w}
+		i++
+	}
+	if v.ScheduleID != nil {
+		w, err = wire.NewValueI64(*(v.ScheduleID)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 60, Value: w}
 		i++
 	}
 
@@ -36839,6 +38820,16 @@ func (v *PendingDecisionInfo) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 60:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.ScheduleID = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -36852,7 +38843,7 @@ func (v *PendingDecisionInfo) String() string {
 		return "<nil>"
 	}
 
-	var fields [5]string
+	var fields [6]string
 	i := 0
 	if v.State != nil {
 		fields[i] = fmt.Sprintf("State: %v", *(v.State))
@@ -36872,6 +38863,10 @@ func (v *PendingDecisionInfo) String() string {
 	}
 	if v.OriginalScheduledTimestamp != nil {
 		fields[i] = fmt.Sprintf("OriginalScheduledTimestamp: %v", *(v.OriginalScheduledTimestamp))
+		i++
+	}
+	if v.ScheduleID != nil {
+		fields[i] = fmt.Sprintf("ScheduleID: %v", *(v.ScheduleID))
 		i++
 	}
 
@@ -36913,6 +38908,9 @@ func (v *PendingDecisionInfo) Equals(rhs *PendingDecisionInfo) bool {
 	if !_I64_EqualsPtr(v.OriginalScheduledTimestamp, rhs.OriginalScheduledTimestamp) {
 		return false
 	}
+	if !_I64_EqualsPtr(v.ScheduleID, rhs.ScheduleID) {
+		return false
+	}
 
 	return true
 }
@@ -36937,6 +38935,9 @@ func (v *PendingDecisionInfo) MarshalLogObject(enc zapcore.ObjectEncoder) (err e
 	}
 	if v.OriginalScheduledTimestamp != nil {
 		enc.AddInt64("originalScheduledTimestamp", *v.OriginalScheduledTimestamp)
+	}
+	if v.ScheduleID != nil {
+		enc.AddInt64("scheduleID", *v.ScheduleID)
 	}
 	return err
 }
@@ -37014,6 +39015,21 @@ func (v *PendingDecisionInfo) GetOriginalScheduledTimestamp() (o int64) {
 // IsSetOriginalScheduledTimestamp returns true if OriginalScheduledTimestamp is not nil.
 func (v *PendingDecisionInfo) IsSetOriginalScheduledTimestamp() bool {
 	return v != nil && v.OriginalScheduledTimestamp != nil
+}
+
+// GetScheduleID returns the value of ScheduleID if it is set or its
+// zero value if it is unset.
+func (v *PendingDecisionInfo) GetScheduleID() (o int64) {
+	if v != nil && v.ScheduleID != nil {
+		return *v.ScheduleID
+	}
+
+	return
+}
+
+// IsSetScheduleID returns true if ScheduleID is not nil.
+func (v *PendingDecisionInfo) IsSetScheduleID() bool {
+	return v != nil && v.ScheduleID != nil
 }
 
 type PendingDecisionState int32
@@ -37476,6 +39492,7 @@ type PollForActivityTaskResponse struct {
 	WorkflowType                    *WorkflowType      `json:"workflowType,omitempty"`
 	WorkflowDomain                  *string            `json:"workflowDomain,omitempty"`
 	Header                          *Header            `json:"header,omitempty"`
+	AutoConfigHint                  *AutoConfigHint    `json:"autoConfigHint,omitempty"`
 }
 
 // ToWire translates a PollForActivityTaskResponse struct into a Thrift-level intermediate
@@ -37495,7 +39512,7 @@ type PollForActivityTaskResponse struct {
 //	}
 func (v *PollForActivityTaskResponse) ToWire() (wire.Value, error) {
 	var (
-		fields [16]wire.Field
+		fields [17]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -37629,8 +39646,22 @@ func (v *PollForActivityTaskResponse) ToWire() (wire.Value, error) {
 		fields[i] = wire.Field{ID: 170, Value: w}
 		i++
 	}
+	if v.AutoConfigHint != nil {
+		w, err = v.AutoConfigHint.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 180, Value: w}
+		i++
+	}
 
 	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _AutoConfigHint_Read(w wire.Value) (*AutoConfigHint, error) {
+	var v AutoConfigHint
+	err := v.FromWire(w)
+	return &v, err
 }
 
 // FromWire deserializes a PollForActivityTaskResponse struct from its Thrift-level
@@ -37801,6 +39832,14 @@ func (v *PollForActivityTaskResponse) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 180:
+			if field.Value.Type() == wire.TStruct {
+				v.AutoConfigHint, err = _AutoConfigHint_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -37814,7 +39853,7 @@ func (v *PollForActivityTaskResponse) String() string {
 		return "<nil>"
 	}
 
-	var fields [16]string
+	var fields [17]string
 	i := 0
 	if v.TaskToken != nil {
 		fields[i] = fmt.Sprintf("TaskToken: %v", v.TaskToken)
@@ -37880,6 +39919,10 @@ func (v *PollForActivityTaskResponse) String() string {
 		fields[i] = fmt.Sprintf("Header: %v", v.Header)
 		i++
 	}
+	if v.AutoConfigHint != nil {
+		fields[i] = fmt.Sprintf("AutoConfigHint: %v", v.AutoConfigHint)
+		i++
+	}
 
 	return fmt.Sprintf("PollForActivityTaskResponse{%v}", strings.Join(fields[:i], ", "))
 }
@@ -37942,6 +39985,9 @@ func (v *PollForActivityTaskResponse) Equals(rhs *PollForActivityTaskResponse) b
 	if !((v.Header == nil && rhs.Header == nil) || (v.Header != nil && rhs.Header != nil && v.Header.Equals(rhs.Header))) {
 		return false
 	}
+	if !((v.AutoConfigHint == nil && rhs.AutoConfigHint == nil) || (v.AutoConfigHint != nil && rhs.AutoConfigHint != nil && v.AutoConfigHint.Equals(rhs.AutoConfigHint))) {
+		return false
+	}
 
 	return true
 }
@@ -37999,6 +40045,9 @@ func (v *PollForActivityTaskResponse) MarshalLogObject(enc zapcore.ObjectEncoder
 	}
 	if v.Header != nil {
 		err = multierr.Append(err, enc.AddObject("header", v.Header))
+	}
+	if v.AutoConfigHint != nil {
+		err = multierr.Append(err, enc.AddObject("autoConfigHint", v.AutoConfigHint))
 	}
 	return err
 }
@@ -38241,6 +40290,21 @@ func (v *PollForActivityTaskResponse) GetHeader() (o *Header) {
 // IsSetHeader returns true if Header is not nil.
 func (v *PollForActivityTaskResponse) IsSetHeader() bool {
 	return v != nil && v.Header != nil
+}
+
+// GetAutoConfigHint returns the value of AutoConfigHint if it is set or its
+// zero value if it is unset.
+func (v *PollForActivityTaskResponse) GetAutoConfigHint() (o *AutoConfigHint) {
+	if v != nil && v.AutoConfigHint != nil {
+		return v.AutoConfigHint
+	}
+
+	return
+}
+
+// IsSetAutoConfigHint returns true if AutoConfigHint is not nil.
+func (v *PollForActivityTaskResponse) IsSetAutoConfigHint() bool {
+	return v != nil && v.AutoConfigHint != nil
 }
 
 type PollForDecisionTaskRequest struct {
@@ -38527,6 +40591,8 @@ type PollForDecisionTaskResponse struct {
 	StartedTimestamp          *int64                    `json:"startedTimestamp,omitempty"`
 	Queries                   map[string]*WorkflowQuery `json:"queries,omitempty"`
 	NextEventId               *int64                    `json:"nextEventId,omitempty"`
+	TotalHistoryBytes         *int64                    `json:"totalHistoryBytes,omitempty"`
+	AutoConfigHint            *AutoConfigHint           `json:"autoConfigHint,omitempty"`
 }
 
 type _Map_String_WorkflowQuery_MapItemList map[string]*WorkflowQuery
@@ -38584,7 +40650,7 @@ func (_Map_String_WorkflowQuery_MapItemList) Close() {}
 //	}
 func (v *PollForDecisionTaskResponse) ToWire() (wire.Value, error) {
 	var (
-		fields [15]wire.Field
+		fields [17]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -38708,6 +40774,22 @@ func (v *PollForDecisionTaskResponse) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 130, Value: w}
+		i++
+	}
+	if v.TotalHistoryBytes != nil {
+		w, err = wire.NewValueI64(*(v.TotalHistoryBytes)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 140, Value: w}
+		i++
+	}
+	if v.AutoConfigHint != nil {
+		w, err = v.AutoConfigHint.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 150, Value: w}
 		i++
 	}
 
@@ -38904,6 +40986,24 @@ func (v *PollForDecisionTaskResponse) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 140:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.TotalHistoryBytes = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 150:
+			if field.Value.Type() == wire.TStruct {
+				v.AutoConfigHint, err = _AutoConfigHint_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -38917,7 +41017,7 @@ func (v *PollForDecisionTaskResponse) String() string {
 		return "<nil>"
 	}
 
-	var fields [15]string
+	var fields [17]string
 	i := 0
 	if v.TaskToken != nil {
 		fields[i] = fmt.Sprintf("TaskToken: %v", v.TaskToken)
@@ -38977,6 +41077,14 @@ func (v *PollForDecisionTaskResponse) String() string {
 	}
 	if v.NextEventId != nil {
 		fields[i] = fmt.Sprintf("NextEventId: %v", *(v.NextEventId))
+		i++
+	}
+	if v.TotalHistoryBytes != nil {
+		fields[i] = fmt.Sprintf("TotalHistoryBytes: %v", *(v.TotalHistoryBytes))
+		i++
+	}
+	if v.AutoConfigHint != nil {
+		fields[i] = fmt.Sprintf("AutoConfigHint: %v", v.AutoConfigHint)
 		i++
 	}
 
@@ -39055,6 +41163,12 @@ func (v *PollForDecisionTaskResponse) Equals(rhs *PollForDecisionTaskResponse) b
 	if !_I64_EqualsPtr(v.NextEventId, rhs.NextEventId) {
 		return false
 	}
+	if !_I64_EqualsPtr(v.TotalHistoryBytes, rhs.TotalHistoryBytes) {
+		return false
+	}
+	if !((v.AutoConfigHint == nil && rhs.AutoConfigHint == nil) || (v.AutoConfigHint != nil && rhs.AutoConfigHint != nil && v.AutoConfigHint.Equals(rhs.AutoConfigHint))) {
+		return false
+	}
 
 	return true
 }
@@ -39120,6 +41234,12 @@ func (v *PollForDecisionTaskResponse) MarshalLogObject(enc zapcore.ObjectEncoder
 	}
 	if v.NextEventId != nil {
 		enc.AddInt64("nextEventId", *v.NextEventId)
+	}
+	if v.TotalHistoryBytes != nil {
+		enc.AddInt64("totalHistoryBytes", *v.TotalHistoryBytes)
+	}
+	if v.AutoConfigHint != nil {
+		err = multierr.Append(err, enc.AddObject("autoConfigHint", v.AutoConfigHint))
 	}
 	return err
 }
@@ -39347,6 +41467,36 @@ func (v *PollForDecisionTaskResponse) GetNextEventId() (o int64) {
 // IsSetNextEventId returns true if NextEventId is not nil.
 func (v *PollForDecisionTaskResponse) IsSetNextEventId() bool {
 	return v != nil && v.NextEventId != nil
+}
+
+// GetTotalHistoryBytes returns the value of TotalHistoryBytes if it is set or its
+// zero value if it is unset.
+func (v *PollForDecisionTaskResponse) GetTotalHistoryBytes() (o int64) {
+	if v != nil && v.TotalHistoryBytes != nil {
+		return *v.TotalHistoryBytes
+	}
+
+	return
+}
+
+// IsSetTotalHistoryBytes returns true if TotalHistoryBytes is not nil.
+func (v *PollForDecisionTaskResponse) IsSetTotalHistoryBytes() bool {
+	return v != nil && v.TotalHistoryBytes != nil
+}
+
+// GetAutoConfigHint returns the value of AutoConfigHint if it is set or its
+// zero value if it is unset.
+func (v *PollForDecisionTaskResponse) GetAutoConfigHint() (o *AutoConfigHint) {
+	if v != nil && v.AutoConfigHint != nil {
+		return v.AutoConfigHint
+	}
+
+	return
+}
+
+// IsSetAutoConfigHint returns true if AutoConfigHint is not nil.
+func (v *PollForDecisionTaskResponse) IsSetAutoConfigHint() bool {
+	return v != nil && v.AutoConfigHint != nil
 }
 
 type PollerInfo struct {
@@ -52717,7 +54867,8 @@ func (v *SearchAttributes) IsSetIndexedFields() bool {
 }
 
 type ServiceBusyError struct {
-	Message string `json:"message,required"`
+	Message string  `json:"message,required"`
+	Reason  *string `json:"reason,omitempty"`
 }
 
 // ToWire translates a ServiceBusyError struct into a Thrift-level intermediate
@@ -52737,7 +54888,7 @@ type ServiceBusyError struct {
 //	}
 func (v *ServiceBusyError) ToWire() (wire.Value, error) {
 	var (
-		fields [1]wire.Field
+		fields [2]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -52749,6 +54900,14 @@ func (v *ServiceBusyError) ToWire() (wire.Value, error) {
 	}
 	fields[i] = wire.Field{ID: 1, Value: w}
 	i++
+	if v.Reason != nil {
+		w, err = wire.NewValueString(*(v.Reason)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 2, Value: w}
+		i++
+	}
 
 	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
 }
@@ -52785,6 +54944,16 @@ func (v *ServiceBusyError) FromWire(w wire.Value) error {
 				}
 				messageIsSet = true
 			}
+		case 2:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.Reason = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -52802,10 +54971,14 @@ func (v *ServiceBusyError) String() string {
 		return "<nil>"
 	}
 
-	var fields [1]string
+	var fields [2]string
 	i := 0
 	fields[i] = fmt.Sprintf("Message: %v", v.Message)
 	i++
+	if v.Reason != nil {
+		fields[i] = fmt.Sprintf("Reason: %v", *(v.Reason))
+		i++
+	}
 
 	return fmt.Sprintf("ServiceBusyError{%v}", strings.Join(fields[:i], ", "))
 }
@@ -52829,6 +55002,9 @@ func (v *ServiceBusyError) Equals(rhs *ServiceBusyError) bool {
 	if !(v.Message == rhs.Message) {
 		return false
 	}
+	if !_String_EqualsPtr(v.Reason, rhs.Reason) {
+		return false
+	}
 
 	return true
 }
@@ -52840,6 +55016,9 @@ func (v *ServiceBusyError) MarshalLogObject(enc zapcore.ObjectEncoder) (err erro
 		return nil
 	}
 	enc.AddString("message", v.Message)
+	if v.Reason != nil {
+		enc.AddString("reason", *v.Reason)
+	}
 	return err
 }
 
@@ -52850,6 +55029,21 @@ func (v *ServiceBusyError) GetMessage() (o string) {
 		o = v.Message
 	}
 	return
+}
+
+// GetReason returns the value of Reason if it is set or its
+// zero value if it is unset.
+func (v *ServiceBusyError) GetReason() (o string) {
+	if v != nil && v.Reason != nil {
+		return *v.Reason
+	}
+
+	return
+}
+
+// IsSetReason returns true if Reason is not nil.
+func (v *ServiceBusyError) IsSetReason() bool {
+	return v != nil && v.Reason != nil
 }
 
 func (v *ServiceBusyError) Error() string {
@@ -53212,12 +55406,14 @@ type SignalExternalWorkflowExecutionFailedCause int32
 
 const (
 	SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution SignalExternalWorkflowExecutionFailedCause = 0
+	SignalExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted         SignalExternalWorkflowExecutionFailedCause = 1
 )
 
 // SignalExternalWorkflowExecutionFailedCause_Values returns all recognized values of SignalExternalWorkflowExecutionFailedCause.
 func SignalExternalWorkflowExecutionFailedCause_Values() []SignalExternalWorkflowExecutionFailedCause {
 	return []SignalExternalWorkflowExecutionFailedCause{
 		SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution,
+		SignalExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted,
 	}
 }
 
@@ -53230,6 +55426,9 @@ func (v *SignalExternalWorkflowExecutionFailedCause) UnmarshalText(value []byte)
 	switch s := string(value); s {
 	case "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION":
 		*v = SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution
+		return nil
+	case "WORKFLOW_ALREADY_COMPLETED":
+		*v = SignalExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted
 		return nil
 	default:
 		val, err := strconv.ParseInt(s, 10, 32)
@@ -53251,6 +55450,8 @@ func (v SignalExternalWorkflowExecutionFailedCause) MarshalText() ([]byte, error
 	switch int32(v) {
 	case 0:
 		return []byte("UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION"), nil
+	case 1:
+		return []byte("WORKFLOW_ALREADY_COMPLETED"), nil
 	}
 	return []byte(strconv.FormatInt(int64(v), 10)), nil
 }
@@ -53264,6 +55465,8 @@ func (v SignalExternalWorkflowExecutionFailedCause) MarshalLogObject(enc zapcore
 	switch int32(v) {
 	case 0:
 		enc.AddString("name", "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION")
+	case 1:
+		enc.AddString("name", "WORKFLOW_ALREADY_COMPLETED")
 	}
 	return nil
 }
@@ -53306,6 +55509,8 @@ func (v SignalExternalWorkflowExecutionFailedCause) String() string {
 	switch w {
 	case 0:
 		return "UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION"
+	case 1:
+		return "WORKFLOW_ALREADY_COMPLETED"
 	}
 	return fmt.Sprintf("SignalExternalWorkflowExecutionFailedCause(%d)", w)
 }
@@ -53326,6 +55531,8 @@ func (v SignalExternalWorkflowExecutionFailedCause) MarshalJSON() ([]byte, error
 	switch int32(v) {
 	case 0:
 		return ([]byte)("\"UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION\""), nil
+	case 1:
+		return ([]byte)("\"WORKFLOW_ALREADY_COMPLETED\""), nil
 	}
 	return ([]byte)(strconv.FormatInt(int64(v), 10)), nil
 }
@@ -54132,6 +56339,238 @@ func (v *SignalExternalWorkflowExecutionInitiatedEventAttributes) IsSetChildWork
 	return v != nil && v.ChildWorkflowOnly != nil
 }
 
+type SignalWithStartWorkflowExecutionAsyncRequest struct {
+	Request *SignalWithStartWorkflowExecutionRequest `json:"request,omitempty"`
+}
+
+// ToWire translates a SignalWithStartWorkflowExecutionAsyncRequest struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) ToWire() (wire.Value, error) {
+	var (
+		fields [1]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Request != nil {
+		w, err = v.Request.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _SignalWithStartWorkflowExecutionRequest_Read(w wire.Value) (*SignalWithStartWorkflowExecutionRequest, error) {
+	var v SignalWithStartWorkflowExecutionRequest
+	err := v.FromWire(w)
+	return &v, err
+}
+
+// FromWire deserializes a SignalWithStartWorkflowExecutionAsyncRequest struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a SignalWithStartWorkflowExecutionAsyncRequest struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v SignalWithStartWorkflowExecutionAsyncRequest
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TStruct {
+				v.Request, err = _SignalWithStartWorkflowExecutionRequest_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a SignalWithStartWorkflowExecutionAsyncRequest
+// struct.
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [1]string
+	i := 0
+	if v.Request != nil {
+		fields[i] = fmt.Sprintf("Request: %v", v.Request)
+		i++
+	}
+
+	return fmt.Sprintf("SignalWithStartWorkflowExecutionAsyncRequest{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this SignalWithStartWorkflowExecutionAsyncRequest match the
+// provided SignalWithStartWorkflowExecutionAsyncRequest.
+//
+// This function performs a deep comparison.
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) Equals(rhs *SignalWithStartWorkflowExecutionAsyncRequest) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !((v.Request == nil && rhs.Request == nil) || (v.Request != nil && rhs.Request != nil && v.Request.Equals(rhs.Request))) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of SignalWithStartWorkflowExecutionAsyncRequest.
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Request != nil {
+		err = multierr.Append(err, enc.AddObject("request", v.Request))
+	}
+	return err
+}
+
+// GetRequest returns the value of Request if it is set or its
+// zero value if it is unset.
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) GetRequest() (o *SignalWithStartWorkflowExecutionRequest) {
+	if v != nil && v.Request != nil {
+		return v.Request
+	}
+
+	return
+}
+
+// IsSetRequest returns true if Request is not nil.
+func (v *SignalWithStartWorkflowExecutionAsyncRequest) IsSetRequest() bool {
+	return v != nil && v.Request != nil
+}
+
+type SignalWithStartWorkflowExecutionAsyncResponse struct {
+}
+
+// ToWire translates a SignalWithStartWorkflowExecutionAsyncResponse struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *SignalWithStartWorkflowExecutionAsyncResponse) ToWire() (wire.Value, error) {
+	var (
+		fields [0]wire.Field
+		i      int = 0
+	)
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a SignalWithStartWorkflowExecutionAsyncResponse struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a SignalWithStartWorkflowExecutionAsyncResponse struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v SignalWithStartWorkflowExecutionAsyncResponse
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *SignalWithStartWorkflowExecutionAsyncResponse) FromWire(w wire.Value) error {
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a SignalWithStartWorkflowExecutionAsyncResponse
+// struct.
+func (v *SignalWithStartWorkflowExecutionAsyncResponse) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [0]string
+	i := 0
+
+	return fmt.Sprintf("SignalWithStartWorkflowExecutionAsyncResponse{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this SignalWithStartWorkflowExecutionAsyncResponse match the
+// provided SignalWithStartWorkflowExecutionAsyncResponse.
+//
+// This function performs a deep comparison.
+func (v *SignalWithStartWorkflowExecutionAsyncResponse) Equals(rhs *SignalWithStartWorkflowExecutionAsyncResponse) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of SignalWithStartWorkflowExecutionAsyncResponse.
+func (v *SignalWithStartWorkflowExecutionAsyncResponse) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	return err
+}
+
 type SignalWithStartWorkflowExecutionRequest struct {
 	Domain                              *string                `json:"domain,omitempty"`
 	WorkflowId                          *string                `json:"workflowId,omitempty"`
@@ -54153,6 +56592,7 @@ type SignalWithStartWorkflowExecutionRequest struct {
 	Header                              *Header                `json:"header,omitempty"`
 	DelayStartSeconds                   *int32                 `json:"delayStartSeconds,omitempty"`
 	JitterStartSeconds                  *int32                 `json:"jitterStartSeconds,omitempty"`
+	FirstRunAtTimestamp                 *int64                 `json:"firstRunAtTimestamp,omitempty"`
 }
 
 // ToWire translates a SignalWithStartWorkflowExecutionRequest struct into a Thrift-level intermediate
@@ -54172,7 +56612,7 @@ type SignalWithStartWorkflowExecutionRequest struct {
 //	}
 func (v *SignalWithStartWorkflowExecutionRequest) ToWire() (wire.Value, error) {
 	var (
-		fields [20]wire.Field
+		fields [21]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -54336,6 +56776,14 @@ func (v *SignalWithStartWorkflowExecutionRequest) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 190, Value: w}
+		i++
+	}
+	if v.FirstRunAtTimestamp != nil {
+		w, err = wire.NewValueI64(*(v.FirstRunAtTimestamp)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 200, Value: w}
 		i++
 	}
 
@@ -54552,6 +57000,16 @@ func (v *SignalWithStartWorkflowExecutionRequest) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 200:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.FirstRunAtTimestamp = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -54565,7 +57023,7 @@ func (v *SignalWithStartWorkflowExecutionRequest) String() string {
 		return "<nil>"
 	}
 
-	var fields [20]string
+	var fields [21]string
 	i := 0
 	if v.Domain != nil {
 		fields[i] = fmt.Sprintf("Domain: %v", *(v.Domain))
@@ -54645,6 +57103,10 @@ func (v *SignalWithStartWorkflowExecutionRequest) String() string {
 	}
 	if v.JitterStartSeconds != nil {
 		fields[i] = fmt.Sprintf("JitterStartSeconds: %v", *(v.JitterStartSeconds))
+		i++
+	}
+	if v.FirstRunAtTimestamp != nil {
+		fields[i] = fmt.Sprintf("FirstRunAtTimestamp: %v", *(v.FirstRunAtTimestamp))
 		i++
 	}
 
@@ -54731,6 +57193,9 @@ func (v *SignalWithStartWorkflowExecutionRequest) Equals(rhs *SignalWithStartWor
 	if !_I32_EqualsPtr(v.JitterStartSeconds, rhs.JitterStartSeconds) {
 		return false
 	}
+	if !_I64_EqualsPtr(v.FirstRunAtTimestamp, rhs.FirstRunAtTimestamp) {
+		return false
+	}
 
 	return true
 }
@@ -54800,6 +57265,9 @@ func (v *SignalWithStartWorkflowExecutionRequest) MarshalLogObject(enc zapcore.O
 	}
 	if v.JitterStartSeconds != nil {
 		enc.AddInt32("jitterStartSeconds", *v.JitterStartSeconds)
+	}
+	if v.FirstRunAtTimestamp != nil {
+		enc.AddInt64("firstRunAtTimestamp", *v.FirstRunAtTimestamp)
 	}
 	return err
 }
@@ -55102,6 +57570,21 @@ func (v *SignalWithStartWorkflowExecutionRequest) GetJitterStartSeconds() (o int
 // IsSetJitterStartSeconds returns true if JitterStartSeconds is not nil.
 func (v *SignalWithStartWorkflowExecutionRequest) IsSetJitterStartSeconds() bool {
 	return v != nil && v.JitterStartSeconds != nil
+}
+
+// GetFirstRunAtTimestamp returns the value of FirstRunAtTimestamp if it is set or its
+// zero value if it is unset.
+func (v *SignalWithStartWorkflowExecutionRequest) GetFirstRunAtTimestamp() (o int64) {
+	if v != nil && v.FirstRunAtTimestamp != nil {
+		return *v.FirstRunAtTimestamp
+	}
+
+	return
+}
+
+// IsSetFirstRunAtTimestamp returns true if FirstRunAtTimestamp is not nil.
+func (v *SignalWithStartWorkflowExecutionRequest) IsSetFirstRunAtTimestamp() bool {
+	return v != nil && v.FirstRunAtTimestamp != nil
 }
 
 type SignalWorkflowExecutionRequest struct {
@@ -56671,6 +59154,7 @@ type StartChildWorkflowExecutionInitiatedEventAttributes struct {
 	SearchAttributes                    *SearchAttributes      `json:"searchAttributes,omitempty"`
 	DelayStartSeconds                   *int32                 `json:"delayStartSeconds,omitempty"`
 	JitterStartSeconds                  *int32                 `json:"jitterStartSeconds,omitempty"`
+	FirstRunAtTimestamp                 *int64                 `json:"firstRunAtTimestamp,omitempty"`
 }
 
 // ToWire translates a StartChildWorkflowExecutionInitiatedEventAttributes struct into a Thrift-level intermediate
@@ -56690,7 +59174,7 @@ type StartChildWorkflowExecutionInitiatedEventAttributes struct {
 //	}
 func (v *StartChildWorkflowExecutionInitiatedEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [18]wire.Field
+		fields [19]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -56838,6 +59322,14 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) ToWire() (wire.Val
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 180, Value: w}
+		i++
+	}
+	if v.FirstRunAtTimestamp != nil {
+		w, err = wire.NewValueI64(*(v.FirstRunAtTimestamp)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 190, Value: w}
 		i++
 	}
 
@@ -57030,6 +59522,16 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) FromWire(w wire.Va
 				}
 
 			}
+		case 190:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.FirstRunAtTimestamp = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -57043,7 +59545,7 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [18]string
+	var fields [19]string
 	i := 0
 	if v.Domain != nil {
 		fields[i] = fmt.Sprintf("Domain: %v", *(v.Domain))
@@ -57117,6 +59619,10 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) String() string {
 		fields[i] = fmt.Sprintf("JitterStartSeconds: %v", *(v.JitterStartSeconds))
 		i++
 	}
+	if v.FirstRunAtTimestamp != nil {
+		fields[i] = fmt.Sprintf("FirstRunAtTimestamp: %v", *(v.FirstRunAtTimestamp))
+		i++
+	}
 
 	return fmt.Sprintf("StartChildWorkflowExecutionInitiatedEventAttributes{%v}", strings.Join(fields[:i], ", "))
 }
@@ -57185,6 +59691,9 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) Equals(rhs *StartC
 	if !_I32_EqualsPtr(v.JitterStartSeconds, rhs.JitterStartSeconds) {
 		return false
 	}
+	if !_I64_EqualsPtr(v.FirstRunAtTimestamp, rhs.FirstRunAtTimestamp) {
+		return false
+	}
 
 	return true
 }
@@ -57248,6 +59757,9 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) MarshalLogObject(e
 	}
 	if v.JitterStartSeconds != nil {
 		enc.AddInt32("jitterStartSeconds", *v.JitterStartSeconds)
+	}
+	if v.FirstRunAtTimestamp != nil {
+		enc.AddInt64("firstRunAtTimestamp", *v.FirstRunAtTimestamp)
 	}
 	return err
 }
@@ -57520,6 +60032,21 @@ func (v *StartChildWorkflowExecutionInitiatedEventAttributes) GetJitterStartSeco
 // IsSetJitterStartSeconds returns true if JitterStartSeconds is not nil.
 func (v *StartChildWorkflowExecutionInitiatedEventAttributes) IsSetJitterStartSeconds() bool {
 	return v != nil && v.JitterStartSeconds != nil
+}
+
+// GetFirstRunAtTimestamp returns the value of FirstRunAtTimestamp if it is set or its
+// zero value if it is unset.
+func (v *StartChildWorkflowExecutionInitiatedEventAttributes) GetFirstRunAtTimestamp() (o int64) {
+	if v != nil && v.FirstRunAtTimestamp != nil {
+		return *v.FirstRunAtTimestamp
+	}
+
+	return
+}
+
+// IsSetFirstRunAtTimestamp returns true if FirstRunAtTimestamp is not nil.
+func (v *StartChildWorkflowExecutionInitiatedEventAttributes) IsSetFirstRunAtTimestamp() bool {
+	return v != nil && v.FirstRunAtTimestamp != nil
 }
 
 type StartTimeFilter struct {
@@ -57886,6 +60413,238 @@ func (v *StartTimerDecisionAttributes) IsSetStartToFireTimeoutSeconds() bool {
 	return v != nil && v.StartToFireTimeoutSeconds != nil
 }
 
+type StartWorkflowExecutionAsyncRequest struct {
+	Request *StartWorkflowExecutionRequest `json:"request,omitempty"`
+}
+
+// ToWire translates a StartWorkflowExecutionAsyncRequest struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *StartWorkflowExecutionAsyncRequest) ToWire() (wire.Value, error) {
+	var (
+		fields [1]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	if v.Request != nil {
+		w, err = v.Request.ToWire()
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 10, Value: w}
+		i++
+	}
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+func _StartWorkflowExecutionRequest_Read(w wire.Value) (*StartWorkflowExecutionRequest, error) {
+	var v StartWorkflowExecutionRequest
+	err := v.FromWire(w)
+	return &v, err
+}
+
+// FromWire deserializes a StartWorkflowExecutionAsyncRequest struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a StartWorkflowExecutionAsyncRequest struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v StartWorkflowExecutionAsyncRequest
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *StartWorkflowExecutionAsyncRequest) FromWire(w wire.Value) error {
+	var err error
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 10:
+			if field.Value.Type() == wire.TStruct {
+				v.Request, err = _StartWorkflowExecutionRequest_Read(field.Value)
+				if err != nil {
+					return err
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a StartWorkflowExecutionAsyncRequest
+// struct.
+func (v *StartWorkflowExecutionAsyncRequest) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [1]string
+	i := 0
+	if v.Request != nil {
+		fields[i] = fmt.Sprintf("Request: %v", v.Request)
+		i++
+	}
+
+	return fmt.Sprintf("StartWorkflowExecutionAsyncRequest{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this StartWorkflowExecutionAsyncRequest match the
+// provided StartWorkflowExecutionAsyncRequest.
+//
+// This function performs a deep comparison.
+func (v *StartWorkflowExecutionAsyncRequest) Equals(rhs *StartWorkflowExecutionAsyncRequest) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !((v.Request == nil && rhs.Request == nil) || (v.Request != nil && rhs.Request != nil && v.Request.Equals(rhs.Request))) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of StartWorkflowExecutionAsyncRequest.
+func (v *StartWorkflowExecutionAsyncRequest) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	if v.Request != nil {
+		err = multierr.Append(err, enc.AddObject("request", v.Request))
+	}
+	return err
+}
+
+// GetRequest returns the value of Request if it is set or its
+// zero value if it is unset.
+func (v *StartWorkflowExecutionAsyncRequest) GetRequest() (o *StartWorkflowExecutionRequest) {
+	if v != nil && v.Request != nil {
+		return v.Request
+	}
+
+	return
+}
+
+// IsSetRequest returns true if Request is not nil.
+func (v *StartWorkflowExecutionAsyncRequest) IsSetRequest() bool {
+	return v != nil && v.Request != nil
+}
+
+type StartWorkflowExecutionAsyncResponse struct {
+}
+
+// ToWire translates a StartWorkflowExecutionAsyncResponse struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *StartWorkflowExecutionAsyncResponse) ToWire() (wire.Value, error) {
+	var (
+		fields [0]wire.Field
+		i      int = 0
+	)
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a StartWorkflowExecutionAsyncResponse struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a StartWorkflowExecutionAsyncResponse struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v StartWorkflowExecutionAsyncResponse
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *StartWorkflowExecutionAsyncResponse) FromWire(w wire.Value) error {
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		}
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a StartWorkflowExecutionAsyncResponse
+// struct.
+func (v *StartWorkflowExecutionAsyncResponse) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [0]string
+	i := 0
+
+	return fmt.Sprintf("StartWorkflowExecutionAsyncResponse{%v}", strings.Join(fields[:i], ", "))
+}
+
+// Equals returns true if all the fields of this StartWorkflowExecutionAsyncResponse match the
+// provided StartWorkflowExecutionAsyncResponse.
+//
+// This function performs a deep comparison.
+func (v *StartWorkflowExecutionAsyncResponse) Equals(rhs *StartWorkflowExecutionAsyncResponse) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of StartWorkflowExecutionAsyncResponse.
+func (v *StartWorkflowExecutionAsyncResponse) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	return err
+}
+
 type StartWorkflowExecutionRequest struct {
 	Domain                              *string                `json:"domain,omitempty"`
 	WorkflowId                          *string                `json:"workflowId,omitempty"`
@@ -57904,6 +60663,7 @@ type StartWorkflowExecutionRequest struct {
 	Header                              *Header                `json:"header,omitempty"`
 	DelayStartSeconds                   *int32                 `json:"delayStartSeconds,omitempty"`
 	JitterStartSeconds                  *int32                 `json:"jitterStartSeconds,omitempty"`
+	FirstRunAtTimestamp                 *int64                 `json:"firstRunAtTimestamp,omitempty"`
 }
 
 // ToWire translates a StartWorkflowExecutionRequest struct into a Thrift-level intermediate
@@ -57923,7 +60683,7 @@ type StartWorkflowExecutionRequest struct {
 //	}
 func (v *StartWorkflowExecutionRequest) ToWire() (wire.Value, error) {
 	var (
-		fields [17]wire.Field
+		fields [18]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -58063,6 +60823,14 @@ func (v *StartWorkflowExecutionRequest) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 170, Value: w}
+		i++
+	}
+	if v.FirstRunAtTimestamp != nil {
+		w, err = wire.NewValueI64(*(v.FirstRunAtTimestamp)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 180, Value: w}
 		i++
 	}
 
@@ -58247,6 +61015,16 @@ func (v *StartWorkflowExecutionRequest) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 180:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.FirstRunAtTimestamp = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -58260,7 +61038,7 @@ func (v *StartWorkflowExecutionRequest) String() string {
 		return "<nil>"
 	}
 
-	var fields [17]string
+	var fields [18]string
 	i := 0
 	if v.Domain != nil {
 		fields[i] = fmt.Sprintf("Domain: %v", *(v.Domain))
@@ -58330,6 +61108,10 @@ func (v *StartWorkflowExecutionRequest) String() string {
 		fields[i] = fmt.Sprintf("JitterStartSeconds: %v", *(v.JitterStartSeconds))
 		i++
 	}
+	if v.FirstRunAtTimestamp != nil {
+		fields[i] = fmt.Sprintf("FirstRunAtTimestamp: %v", *(v.FirstRunAtTimestamp))
+		i++
+	}
 
 	return fmt.Sprintf("StartWorkflowExecutionRequest{%v}", strings.Join(fields[:i], ", "))
 }
@@ -58395,6 +61177,9 @@ func (v *StartWorkflowExecutionRequest) Equals(rhs *StartWorkflowExecutionReques
 	if !_I32_EqualsPtr(v.JitterStartSeconds, rhs.JitterStartSeconds) {
 		return false
 	}
+	if !_I64_EqualsPtr(v.FirstRunAtTimestamp, rhs.FirstRunAtTimestamp) {
+		return false
+	}
 
 	return true
 }
@@ -58455,6 +61240,9 @@ func (v *StartWorkflowExecutionRequest) MarshalLogObject(enc zapcore.ObjectEncod
 	}
 	if v.JitterStartSeconds != nil {
 		enc.AddInt32("jitterStartSeconds", *v.JitterStartSeconds)
+	}
+	if v.FirstRunAtTimestamp != nil {
+		enc.AddInt64("firstRunAtTimestamp", *v.FirstRunAtTimestamp)
 	}
 	return err
 }
@@ -58712,6 +61500,21 @@ func (v *StartWorkflowExecutionRequest) GetJitterStartSeconds() (o int32) {
 // IsSetJitterStartSeconds returns true if JitterStartSeconds is not nil.
 func (v *StartWorkflowExecutionRequest) IsSetJitterStartSeconds() bool {
 	return v != nil && v.JitterStartSeconds != nil
+}
+
+// GetFirstRunAtTimestamp returns the value of FirstRunAtTimestamp if it is set or its
+// zero value if it is unset.
+func (v *StartWorkflowExecutionRequest) GetFirstRunAtTimestamp() (o int64) {
+	if v != nil && v.FirstRunAtTimestamp != nil {
+		return *v.FirstRunAtTimestamp
+	}
+
+	return
+}
+
+// IsSetFirstRunAtTimestamp returns true if FirstRunAtTimestamp is not nil.
+func (v *StartWorkflowExecutionRequest) IsSetFirstRunAtTimestamp() bool {
+	return v != nil && v.FirstRunAtTimestamp != nil
 }
 
 type StartWorkflowExecutionResponse struct {
@@ -60041,6 +62844,218 @@ func (v *TaskListMetadata) GetMaxTasksPerSecond() (o float64) {
 // IsSetMaxTasksPerSecond returns true if MaxTasksPerSecond is not nil.
 func (v *TaskListMetadata) IsSetMaxTasksPerSecond() bool {
 	return v != nil && v.MaxTasksPerSecond != nil
+}
+
+type TaskListNotOwnedByHostError struct {
+	OwnedByIdentity string `json:"ownedByIdentity,required"`
+	MyIdentity      string `json:"myIdentity,required"`
+	TasklistName    string `json:"tasklistName,required"`
+}
+
+// ToWire translates a TaskListNotOwnedByHostError struct into a Thrift-level intermediate
+// representation. This intermediate representation may be serialized
+// into bytes using a ThriftRW protocol implementation.
+//
+// An error is returned if the struct or any of its fields failed to
+// validate.
+//
+//	x, err := v.ToWire()
+//	if err != nil {
+//	  return err
+//	}
+//
+//	if err := binaryProtocol.Encode(x, writer); err != nil {
+//	  return err
+//	}
+func (v *TaskListNotOwnedByHostError) ToWire() (wire.Value, error) {
+	var (
+		fields [3]wire.Field
+		i      int = 0
+		w      wire.Value
+		err    error
+	)
+
+	w, err = wire.NewValueString(v.OwnedByIdentity), error(nil)
+	if err != nil {
+		return w, err
+	}
+	fields[i] = wire.Field{ID: 1, Value: w}
+	i++
+
+	w, err = wire.NewValueString(v.MyIdentity), error(nil)
+	if err != nil {
+		return w, err
+	}
+	fields[i] = wire.Field{ID: 2, Value: w}
+	i++
+
+	w, err = wire.NewValueString(v.TasklistName), error(nil)
+	if err != nil {
+		return w, err
+	}
+	fields[i] = wire.Field{ID: 3, Value: w}
+	i++
+
+	return wire.NewValueStruct(wire.Struct{Fields: fields[:i]}), nil
+}
+
+// FromWire deserializes a TaskListNotOwnedByHostError struct from its Thrift-level
+// representation. The Thrift-level representation may be obtained
+// from a ThriftRW protocol implementation.
+//
+// An error is returned if we were unable to build a TaskListNotOwnedByHostError struct
+// from the provided intermediate representation.
+//
+//	x, err := binaryProtocol.Decode(reader, wire.TStruct)
+//	if err != nil {
+//	  return nil, err
+//	}
+//
+//	var v TaskListNotOwnedByHostError
+//	if err := v.FromWire(x); err != nil {
+//	  return nil, err
+//	}
+//	return &v, nil
+func (v *TaskListNotOwnedByHostError) FromWire(w wire.Value) error {
+	var err error
+
+	ownedByIdentityIsSet := false
+	myIdentityIsSet := false
+	tasklistNameIsSet := false
+
+	for _, field := range w.GetStruct().Fields {
+		switch field.ID {
+		case 1:
+			if field.Value.Type() == wire.TBinary {
+				v.OwnedByIdentity, err = field.Value.GetString(), error(nil)
+				if err != nil {
+					return err
+				}
+				ownedByIdentityIsSet = true
+			}
+		case 2:
+			if field.Value.Type() == wire.TBinary {
+				v.MyIdentity, err = field.Value.GetString(), error(nil)
+				if err != nil {
+					return err
+				}
+				myIdentityIsSet = true
+			}
+		case 3:
+			if field.Value.Type() == wire.TBinary {
+				v.TasklistName, err = field.Value.GetString(), error(nil)
+				if err != nil {
+					return err
+				}
+				tasklistNameIsSet = true
+			}
+		}
+	}
+
+	if !ownedByIdentityIsSet {
+		return errors.New("field OwnedByIdentity of TaskListNotOwnedByHostError is required")
+	}
+
+	if !myIdentityIsSet {
+		return errors.New("field MyIdentity of TaskListNotOwnedByHostError is required")
+	}
+
+	if !tasklistNameIsSet {
+		return errors.New("field TasklistName of TaskListNotOwnedByHostError is required")
+	}
+
+	return nil
+}
+
+// String returns a readable string representation of a TaskListNotOwnedByHostError
+// struct.
+func (v *TaskListNotOwnedByHostError) String() string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var fields [3]string
+	i := 0
+	fields[i] = fmt.Sprintf("OwnedByIdentity: %v", v.OwnedByIdentity)
+	i++
+	fields[i] = fmt.Sprintf("MyIdentity: %v", v.MyIdentity)
+	i++
+	fields[i] = fmt.Sprintf("TasklistName: %v", v.TasklistName)
+	i++
+
+	return fmt.Sprintf("TaskListNotOwnedByHostError{%v}", strings.Join(fields[:i], ", "))
+}
+
+// ErrorName is the name of this type as defined in the Thrift
+// file.
+func (*TaskListNotOwnedByHostError) ErrorName() string {
+	return "TaskListNotOwnedByHostError"
+}
+
+// Equals returns true if all the fields of this TaskListNotOwnedByHostError match the
+// provided TaskListNotOwnedByHostError.
+//
+// This function performs a deep comparison.
+func (v *TaskListNotOwnedByHostError) Equals(rhs *TaskListNotOwnedByHostError) bool {
+	if v == nil {
+		return rhs == nil
+	} else if rhs == nil {
+		return false
+	}
+	if !(v.OwnedByIdentity == rhs.OwnedByIdentity) {
+		return false
+	}
+	if !(v.MyIdentity == rhs.MyIdentity) {
+		return false
+	}
+	if !(v.TasklistName == rhs.TasklistName) {
+		return false
+	}
+
+	return true
+}
+
+// MarshalLogObject implements zapcore.ObjectMarshaler, enabling
+// fast logging of TaskListNotOwnedByHostError.
+func (v *TaskListNotOwnedByHostError) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
+	if v == nil {
+		return nil
+	}
+	enc.AddString("ownedByIdentity", v.OwnedByIdentity)
+	enc.AddString("myIdentity", v.MyIdentity)
+	enc.AddString("tasklistName", v.TasklistName)
+	return err
+}
+
+// GetOwnedByIdentity returns the value of OwnedByIdentity if it is set or its
+// zero value if it is unset.
+func (v *TaskListNotOwnedByHostError) GetOwnedByIdentity() (o string) {
+	if v != nil {
+		o = v.OwnedByIdentity
+	}
+	return
+}
+
+// GetMyIdentity returns the value of MyIdentity if it is set or its
+// zero value if it is unset.
+func (v *TaskListNotOwnedByHostError) GetMyIdentity() (o string) {
+	if v != nil {
+		o = v.MyIdentity
+	}
+	return
+}
+
+// GetTasklistName returns the value of TasklistName if it is set or its
+// zero value if it is unset.
+func (v *TaskListNotOwnedByHostError) GetTasklistName() (o string) {
+	if v != nil {
+		o = v.TasklistName
+	}
+	return
+}
+
+func (v *TaskListNotOwnedByHostError) Error() string {
+	return v.String()
 }
 
 type TaskListPartitionMetadata struct {
@@ -64814,6 +67829,7 @@ type WorkflowExecutionCancelRequestedEventAttributes struct {
 	ExternalInitiatedEventId  *int64             `json:"externalInitiatedEventId,omitempty"`
 	ExternalWorkflowExecution *WorkflowExecution `json:"externalWorkflowExecution,omitempty"`
 	Identity                  *string            `json:"identity,omitempty"`
+	RequestId                 *string            `json:"requestId,omitempty"`
 }
 
 // ToWire translates a WorkflowExecutionCancelRequestedEventAttributes struct into a Thrift-level intermediate
@@ -64833,7 +67849,7 @@ type WorkflowExecutionCancelRequestedEventAttributes struct {
 //	}
 func (v *WorkflowExecutionCancelRequestedEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [4]wire.Field
+		fields [5]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -64869,6 +67885,14 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) ToWire() (wire.Value, 
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 40, Value: w}
+		i++
+	}
+	if v.RequestId != nil {
+		w, err = wire.NewValueString(*(v.RequestId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 50, Value: w}
 		i++
 	}
 
@@ -64935,6 +67959,16 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) FromWire(w wire.Value)
 				}
 
 			}
+		case 50:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.RequestId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -64948,7 +67982,7 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [4]string
+	var fields [5]string
 	i := 0
 	if v.Cause != nil {
 		fields[i] = fmt.Sprintf("Cause: %v", *(v.Cause))
@@ -64964,6 +67998,10 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) String() string {
 	}
 	if v.Identity != nil {
 		fields[i] = fmt.Sprintf("Identity: %v", *(v.Identity))
+		i++
+	}
+	if v.RequestId != nil {
+		fields[i] = fmt.Sprintf("RequestId: %v", *(v.RequestId))
 		i++
 	}
 
@@ -64992,6 +68030,9 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) Equals(rhs *WorkflowEx
 	if !_String_EqualsPtr(v.Identity, rhs.Identity) {
 		return false
 	}
+	if !_String_EqualsPtr(v.RequestId, rhs.RequestId) {
+		return false
+	}
 
 	return true
 }
@@ -65013,6 +68054,9 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) MarshalLogObject(enc z
 	}
 	if v.Identity != nil {
 		enc.AddString("identity", *v.Identity)
+	}
+	if v.RequestId != nil {
+		enc.AddString("requestId", *v.RequestId)
 	}
 	return err
 }
@@ -65075,6 +68119,21 @@ func (v *WorkflowExecutionCancelRequestedEventAttributes) GetIdentity() (o strin
 // IsSetIdentity returns true if Identity is not nil.
 func (v *WorkflowExecutionCancelRequestedEventAttributes) IsSetIdentity() bool {
 	return v != nil && v.Identity != nil
+}
+
+// GetRequestId returns the value of RequestId if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionCancelRequestedEventAttributes) GetRequestId() (o string) {
+	if v != nil && v.RequestId != nil {
+		return *v.RequestId
+	}
+
+	return
+}
+
+// IsSetRequestId returns true if RequestId is not nil.
+func (v *WorkflowExecutionCancelRequestedEventAttributes) IsSetRequestId() bool {
+	return v != nil && v.RequestId != nil
 }
 
 type WorkflowExecutionCanceledEventAttributes struct {
@@ -67036,6 +70095,8 @@ type WorkflowExecutionInfo struct {
 	CloseStatus      *WorkflowExecutionCloseStatus `json:"closeStatus,omitempty"`
 	HistoryLength    *int64                        `json:"historyLength,omitempty"`
 	ParentDomainId   *string                       `json:"parentDomainId,omitempty"`
+	ParentDomainName *string                       `json:"parentDomainName,omitempty"`
+	ParentInitatedId *int64                        `json:"parentInitatedId,omitempty"`
 	ParentExecution  *WorkflowExecution            `json:"parentExecution,omitempty"`
 	ExecutionTime    *int64                        `json:"executionTime,omitempty"`
 	Memo             *Memo                         `json:"memo,omitempty"`
@@ -67044,6 +70105,7 @@ type WorkflowExecutionInfo struct {
 	TaskList         *string                       `json:"taskList,omitempty"`
 	IsCron           *bool                         `json:"isCron,omitempty"`
 	UpdateTime       *int64                        `json:"updateTime,omitempty"`
+	PartitionConfig  map[string]string             `json:"partitionConfig,omitempty"`
 }
 
 // ToWire translates a WorkflowExecutionInfo struct into a Thrift-level intermediate
@@ -67063,7 +70125,7 @@ type WorkflowExecutionInfo struct {
 //	}
 func (v *WorkflowExecutionInfo) ToWire() (wire.Value, error) {
 	var (
-		fields [15]wire.Field
+		fields [18]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -67123,6 +70185,22 @@ func (v *WorkflowExecutionInfo) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 70, Value: w}
+		i++
+	}
+	if v.ParentDomainName != nil {
+		w, err = wire.NewValueString(*(v.ParentDomainName)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 71, Value: w}
+		i++
+	}
+	if v.ParentInitatedId != nil {
+		w, err = wire.NewValueI64(*(v.ParentInitatedId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 72, Value: w}
 		i++
 	}
 	if v.ParentExecution != nil {
@@ -67187,6 +70265,14 @@ func (v *WorkflowExecutionInfo) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 140, Value: w}
+		i++
+	}
+	if v.PartitionConfig != nil {
+		w, err = wire.NewValueMap(_Map_String_String_MapItemList(v.PartitionConfig)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 150, Value: w}
 		i++
 	}
 
@@ -67287,6 +70373,26 @@ func (v *WorkflowExecutionInfo) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 71:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.ParentDomainName = &x
+				if err != nil {
+					return err
+				}
+
+			}
+		case 72:
+			if field.Value.Type() == wire.TI64 {
+				var x int64
+				x, err = field.Value.GetI64(), error(nil)
+				v.ParentInitatedId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		case 80:
 			if field.Value.Type() == wire.TStruct {
 				v.ParentExecution, err = _WorkflowExecution_Read(field.Value)
@@ -67359,6 +70465,14 @@ func (v *WorkflowExecutionInfo) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 150:
+			if field.Value.Type() == wire.TMap {
+				v.PartitionConfig, err = _Map_String_String_Read(field.Value.GetMap())
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -67372,7 +70486,7 @@ func (v *WorkflowExecutionInfo) String() string {
 		return "<nil>"
 	}
 
-	var fields [15]string
+	var fields [18]string
 	i := 0
 	if v.Execution != nil {
 		fields[i] = fmt.Sprintf("Execution: %v", v.Execution)
@@ -67400,6 +70514,14 @@ func (v *WorkflowExecutionInfo) String() string {
 	}
 	if v.ParentDomainId != nil {
 		fields[i] = fmt.Sprintf("ParentDomainId: %v", *(v.ParentDomainId))
+		i++
+	}
+	if v.ParentDomainName != nil {
+		fields[i] = fmt.Sprintf("ParentDomainName: %v", *(v.ParentDomainName))
+		i++
+	}
+	if v.ParentInitatedId != nil {
+		fields[i] = fmt.Sprintf("ParentInitatedId: %v", *(v.ParentInitatedId))
 		i++
 	}
 	if v.ParentExecution != nil {
@@ -67432,6 +70554,10 @@ func (v *WorkflowExecutionInfo) String() string {
 	}
 	if v.UpdateTime != nil {
 		fields[i] = fmt.Sprintf("UpdateTime: %v", *(v.UpdateTime))
+		i++
+	}
+	if v.PartitionConfig != nil {
+		fields[i] = fmt.Sprintf("PartitionConfig: %v", v.PartitionConfig)
 		i++
 	}
 
@@ -67469,6 +70595,12 @@ func (v *WorkflowExecutionInfo) Equals(rhs *WorkflowExecutionInfo) bool {
 	if !_String_EqualsPtr(v.ParentDomainId, rhs.ParentDomainId) {
 		return false
 	}
+	if !_String_EqualsPtr(v.ParentDomainName, rhs.ParentDomainName) {
+		return false
+	}
+	if !_I64_EqualsPtr(v.ParentInitatedId, rhs.ParentInitatedId) {
+		return false
+	}
 	if !((v.ParentExecution == nil && rhs.ParentExecution == nil) || (v.ParentExecution != nil && rhs.ParentExecution != nil && v.ParentExecution.Equals(rhs.ParentExecution))) {
 		return false
 	}
@@ -67491,6 +70623,9 @@ func (v *WorkflowExecutionInfo) Equals(rhs *WorkflowExecutionInfo) bool {
 		return false
 	}
 	if !_I64_EqualsPtr(v.UpdateTime, rhs.UpdateTime) {
+		return false
+	}
+	if !((v.PartitionConfig == nil && rhs.PartitionConfig == nil) || (v.PartitionConfig != nil && rhs.PartitionConfig != nil && _Map_String_String_Equals(v.PartitionConfig, rhs.PartitionConfig))) {
 		return false
 	}
 
@@ -67524,6 +70659,12 @@ func (v *WorkflowExecutionInfo) MarshalLogObject(enc zapcore.ObjectEncoder) (err
 	if v.ParentDomainId != nil {
 		enc.AddString("parentDomainId", *v.ParentDomainId)
 	}
+	if v.ParentDomainName != nil {
+		enc.AddString("parentDomainName", *v.ParentDomainName)
+	}
+	if v.ParentInitatedId != nil {
+		enc.AddInt64("parentInitatedId", *v.ParentInitatedId)
+	}
 	if v.ParentExecution != nil {
 		err = multierr.Append(err, enc.AddObject("parentExecution", v.ParentExecution))
 	}
@@ -67547,6 +70688,9 @@ func (v *WorkflowExecutionInfo) MarshalLogObject(enc zapcore.ObjectEncoder) (err
 	}
 	if v.UpdateTime != nil {
 		enc.AddInt64("updateTime", *v.UpdateTime)
+	}
+	if v.PartitionConfig != nil {
+		err = multierr.Append(err, enc.AddObject("partitionConfig", (_Map_String_String_Zapper)(v.PartitionConfig)))
 	}
 	return err
 }
@@ -67654,6 +70798,36 @@ func (v *WorkflowExecutionInfo) GetParentDomainId() (o string) {
 // IsSetParentDomainId returns true if ParentDomainId is not nil.
 func (v *WorkflowExecutionInfo) IsSetParentDomainId() bool {
 	return v != nil && v.ParentDomainId != nil
+}
+
+// GetParentDomainName returns the value of ParentDomainName if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionInfo) GetParentDomainName() (o string) {
+	if v != nil && v.ParentDomainName != nil {
+		return *v.ParentDomainName
+	}
+
+	return
+}
+
+// IsSetParentDomainName returns true if ParentDomainName is not nil.
+func (v *WorkflowExecutionInfo) IsSetParentDomainName() bool {
+	return v != nil && v.ParentDomainName != nil
+}
+
+// GetParentInitatedId returns the value of ParentInitatedId if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionInfo) GetParentInitatedId() (o int64) {
+	if v != nil && v.ParentInitatedId != nil {
+		return *v.ParentInitatedId
+	}
+
+	return
+}
+
+// IsSetParentInitatedId returns true if ParentInitatedId is not nil.
+func (v *WorkflowExecutionInfo) IsSetParentInitatedId() bool {
+	return v != nil && v.ParentInitatedId != nil
 }
 
 // GetParentExecution returns the value of ParentExecution if it is set or its
@@ -67776,10 +70950,26 @@ func (v *WorkflowExecutionInfo) IsSetUpdateTime() bool {
 	return v != nil && v.UpdateTime != nil
 }
 
+// GetPartitionConfig returns the value of PartitionConfig if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionInfo) GetPartitionConfig() (o map[string]string) {
+	if v != nil && v.PartitionConfig != nil {
+		return v.PartitionConfig
+	}
+
+	return
+}
+
+// IsSetPartitionConfig returns true if PartitionConfig is not nil.
+func (v *WorkflowExecutionInfo) IsSetPartitionConfig() bool {
+	return v != nil && v.PartitionConfig != nil
+}
+
 type WorkflowExecutionSignaledEventAttributes struct {
 	SignalName *string `json:"signalName,omitempty"`
 	Input      []byte  `json:"input,omitempty"`
 	Identity   *string `json:"identity,omitempty"`
+	RequestId  *string `json:"requestId,omitempty"`
 }
 
 // ToWire translates a WorkflowExecutionSignaledEventAttributes struct into a Thrift-level intermediate
@@ -67799,7 +70989,7 @@ type WorkflowExecutionSignaledEventAttributes struct {
 //	}
 func (v *WorkflowExecutionSignaledEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [3]wire.Field
+		fields [4]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -67827,6 +71017,14 @@ func (v *WorkflowExecutionSignaledEventAttributes) ToWire() (wire.Value, error) 
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 30, Value: w}
+		i++
+	}
+	if v.RequestId != nil {
+		w, err = wire.NewValueString(*(v.RequestId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 40, Value: w}
 		i++
 	}
 
@@ -67883,6 +71081,16 @@ func (v *WorkflowExecutionSignaledEventAttributes) FromWire(w wire.Value) error 
 				}
 
 			}
+		case 40:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.RequestId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -67896,7 +71104,7 @@ func (v *WorkflowExecutionSignaledEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [3]string
+	var fields [4]string
 	i := 0
 	if v.SignalName != nil {
 		fields[i] = fmt.Sprintf("SignalName: %v", *(v.SignalName))
@@ -67908,6 +71116,10 @@ func (v *WorkflowExecutionSignaledEventAttributes) String() string {
 	}
 	if v.Identity != nil {
 		fields[i] = fmt.Sprintf("Identity: %v", *(v.Identity))
+		i++
+	}
+	if v.RequestId != nil {
+		fields[i] = fmt.Sprintf("RequestId: %v", *(v.RequestId))
 		i++
 	}
 
@@ -67933,6 +71145,9 @@ func (v *WorkflowExecutionSignaledEventAttributes) Equals(rhs *WorkflowExecution
 	if !_String_EqualsPtr(v.Identity, rhs.Identity) {
 		return false
 	}
+	if !_String_EqualsPtr(v.RequestId, rhs.RequestId) {
+		return false
+	}
 
 	return true
 }
@@ -67951,6 +71166,9 @@ func (v *WorkflowExecutionSignaledEventAttributes) MarshalLogObject(enc zapcore.
 	}
 	if v.Identity != nil {
 		enc.AddString("identity", *v.Identity)
+	}
+	if v.RequestId != nil {
+		enc.AddString("requestId", *v.RequestId)
 	}
 	return err
 }
@@ -68000,6 +71218,21 @@ func (v *WorkflowExecutionSignaledEventAttributes) IsSetIdentity() bool {
 	return v != nil && v.Identity != nil
 }
 
+// GetRequestId returns the value of RequestId if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionSignaledEventAttributes) GetRequestId() (o string) {
+	if v != nil && v.RequestId != nil {
+		return *v.RequestId
+	}
+
+	return
+}
+
+// IsSetRequestId returns true if RequestId is not nil.
+func (v *WorkflowExecutionSignaledEventAttributes) IsSetRequestId() bool {
+	return v != nil && v.RequestId != nil
+}
+
 type WorkflowExecutionStartedEventAttributes struct {
 	WorkflowType                        *WorkflowType           `json:"workflowType,omitempty"`
 	ParentWorkflowDomain                *string                 `json:"parentWorkflowDomain,omitempty"`
@@ -68027,6 +71260,8 @@ type WorkflowExecutionStartedEventAttributes struct {
 	SearchAttributes                    *SearchAttributes       `json:"searchAttributes,omitempty"`
 	PrevAutoResetPoints                 *ResetPoints            `json:"prevAutoResetPoints,omitempty"`
 	Header                              *Header                 `json:"header,omitempty"`
+	PartitionConfig                     map[string]string       `json:"partitionConfig,omitempty"`
+	RequestId                           *string                 `json:"requestId,omitempty"`
 }
 
 // ToWire translates a WorkflowExecutionStartedEventAttributes struct into a Thrift-level intermediate
@@ -68046,7 +71281,7 @@ type WorkflowExecutionStartedEventAttributes struct {
 //	}
 func (v *WorkflowExecutionStartedEventAttributes) ToWire() (wire.Value, error) {
 	var (
-		fields [26]wire.Field
+		fields [28]wire.Field
 		i      int = 0
 		w      wire.Value
 		err    error
@@ -68258,6 +71493,22 @@ func (v *WorkflowExecutionStartedEventAttributes) ToWire() (wire.Value, error) {
 			return w, err
 		}
 		fields[i] = wire.Field{ID: 140, Value: w}
+		i++
+	}
+	if v.PartitionConfig != nil {
+		w, err = wire.NewValueMap(_Map_String_String_MapItemList(v.PartitionConfig)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 150, Value: w}
+		i++
+	}
+	if v.RequestId != nil {
+		w, err = wire.NewValueString(*(v.RequestId)), error(nil)
+		if err != nil {
+			return w, err
+		}
+		fields[i] = wire.Field{ID: 160, Value: w}
 		i++
 	}
 
@@ -68524,6 +71775,24 @@ func (v *WorkflowExecutionStartedEventAttributes) FromWire(w wire.Value) error {
 				}
 
 			}
+		case 150:
+			if field.Value.Type() == wire.TMap {
+				v.PartitionConfig, err = _Map_String_String_Read(field.Value.GetMap())
+				if err != nil {
+					return err
+				}
+
+			}
+		case 160:
+			if field.Value.Type() == wire.TBinary {
+				var x string
+				x, err = field.Value.GetString(), error(nil)
+				v.RequestId = &x
+				if err != nil {
+					return err
+				}
+
+			}
 		}
 	}
 
@@ -68537,7 +71806,7 @@ func (v *WorkflowExecutionStartedEventAttributes) String() string {
 		return "<nil>"
 	}
 
-	var fields [26]string
+	var fields [28]string
 	i := 0
 	if v.WorkflowType != nil {
 		fields[i] = fmt.Sprintf("WorkflowType: %v", v.WorkflowType)
@@ -68643,6 +71912,14 @@ func (v *WorkflowExecutionStartedEventAttributes) String() string {
 		fields[i] = fmt.Sprintf("Header: %v", v.Header)
 		i++
 	}
+	if v.PartitionConfig != nil {
+		fields[i] = fmt.Sprintf("PartitionConfig: %v", v.PartitionConfig)
+		i++
+	}
+	if v.RequestId != nil {
+		fields[i] = fmt.Sprintf("RequestId: %v", *(v.RequestId))
+		i++
+	}
 
 	return fmt.Sprintf("WorkflowExecutionStartedEventAttributes{%v}", strings.Join(fields[:i], ", "))
 }
@@ -68735,6 +72012,12 @@ func (v *WorkflowExecutionStartedEventAttributes) Equals(rhs *WorkflowExecutionS
 	if !((v.Header == nil && rhs.Header == nil) || (v.Header != nil && rhs.Header != nil && v.Header.Equals(rhs.Header))) {
 		return false
 	}
+	if !((v.PartitionConfig == nil && rhs.PartitionConfig == nil) || (v.PartitionConfig != nil && rhs.PartitionConfig != nil && _Map_String_String_Equals(v.PartitionConfig, rhs.PartitionConfig))) {
+		return false
+	}
+	if !_String_EqualsPtr(v.RequestId, rhs.RequestId) {
+		return false
+	}
 
 	return true
 }
@@ -68822,6 +72105,12 @@ func (v *WorkflowExecutionStartedEventAttributes) MarshalLogObject(enc zapcore.O
 	}
 	if v.Header != nil {
 		err = multierr.Append(err, enc.AddObject("header", v.Header))
+	}
+	if v.PartitionConfig != nil {
+		err = multierr.Append(err, enc.AddObject("partitionConfig", (_Map_String_String_Zapper)(v.PartitionConfig)))
+	}
+	if v.RequestId != nil {
+		enc.AddString("requestId", *v.RequestId)
 	}
 	return err
 }
@@ -69214,6 +72503,36 @@ func (v *WorkflowExecutionStartedEventAttributes) GetHeader() (o *Header) {
 // IsSetHeader returns true if Header is not nil.
 func (v *WorkflowExecutionStartedEventAttributes) IsSetHeader() bool {
 	return v != nil && v.Header != nil
+}
+
+// GetPartitionConfig returns the value of PartitionConfig if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionStartedEventAttributes) GetPartitionConfig() (o map[string]string) {
+	if v != nil && v.PartitionConfig != nil {
+		return v.PartitionConfig
+	}
+
+	return
+}
+
+// IsSetPartitionConfig returns true if PartitionConfig is not nil.
+func (v *WorkflowExecutionStartedEventAttributes) IsSetPartitionConfig() bool {
+	return v != nil && v.PartitionConfig != nil
+}
+
+// GetRequestId returns the value of RequestId if it is set or its
+// zero value if it is unset.
+func (v *WorkflowExecutionStartedEventAttributes) GetRequestId() (o string) {
+	if v != nil && v.RequestId != nil {
+		return *v.RequestId
+	}
+
+	return
+}
+
+// IsSetRequestId returns true if RequestId is not nil.
+func (v *WorkflowExecutionStartedEventAttributes) IsSetRequestId() bool {
+	return v != nil && v.RequestId != nil
 }
 
 type WorkflowExecutionTerminatedEventAttributes struct {
@@ -70476,8 +73795,8 @@ var ThriftModule = &thriftreflect.ThriftModule{
 	Name:     "shared",
 	Package:  "go.uber.org/cadence/.gen/go/shared",
 	FilePath: "shared.thrift",
-	SHA1:     "24d0e9d04b63c31532c91f3529abecd12c9c6ab6",
+	SHA1:     "c24af4a97d8b3051d71619467e1f84024a8f8757",
 	Raw:      rawIDL,
 }
 
-const rawIDL = "// Copyright (c) 2017 Uber Technologies, Inc.\n//\n// Permission is hereby granted, free of charge, to any person obtaining a copy\n// of this software and associated documentation files (the \"Software\"), to deal\n// in the Software without restriction, including without limitation the rights\n// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n// copies of the Software, and to permit persons to whom the Software is\n// furnished to do so, subject to the following conditions:\n//\n// The above copyright notice and this permission notice shall be included in\n// all copies or substantial portions of the Software.\n//\n// THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\n// THE SOFTWARE.\n\nnamespace java com.uber.cadence\n\nexception BadRequestError {\n  1: required string message\n}\n\nexception InternalServiceError {\n  1: required string message\n}\n\nexception InternalDataInconsistencyError {\n  1: required string message\n}\n\nexception DomainAlreadyExistsError {\n  1: required string message\n}\n\nexception WorkflowExecutionAlreadyStartedError {\n  10: optional string message\n  20: optional string startRequestId\n  30: optional string runId\n}\n\nexception WorkflowExecutionAlreadyCompletedError {\n  1: required string message\n}\n\nexception EntityNotExistsError {\n  1: required string message\n  2: optional string currentCluster\n  3: optional string activeCluster\n}\n\nexception ServiceBusyError {\n  1: required string message\n}\n\nexception CancellationAlreadyRequestedError {\n  1: required string message\n}\n\nexception QueryFailedError {\n  1: required string message\n}\n\nexception DomainNotActiveError {\n  1: required string message\n  2: required string domainName\n  3: required string currentCluster\n  4: required string activeCluster\n}\n\nexception LimitExceededError {\n  1: required string message\n}\n\nexception AccessDeniedError {\n  1: required string message\n}\n\nexception RetryTaskV2Error {\n  1: required string message\n  2: optional string domainId\n  3: optional string workflowId\n  4: optional string runId\n  5: optional i64 (js.type = \"Long\") startEventId\n  6: optional i64 (js.type = \"Long\") startEventVersion\n  7: optional i64 (js.type = \"Long\") endEventId\n  8: optional i64 (js.type = \"Long\") endEventVersion\n}\n\nexception ClientVersionNotSupportedError {\n  1: required string featureVersion\n  2: required string clientImpl\n  3: required string supportedVersions\n}\n\nexception FeatureNotEnabledError {\n  1: required string featureFlag\n}\n\nexception CurrentBranchChangedError {\n  10: required string message\n  20: required binary currentBranchToken\n}\n\nexception RemoteSyncMatchedError {\n  10: required string message\n}\n\nexception StickyWorkerUnavailableError {\n  1: required string message\n}\n\nenum WorkflowIdReusePolicy {\n  /*\n   * allow start a workflow execution using the same workflow ID,\n   * when workflow not running, and the last execution close state is in\n   * [terminated, cancelled, timeouted, failed].\n   */\n  AllowDuplicateFailedOnly,\n  /*\n   * allow start a workflow execution using the same workflow ID,\n   * when workflow not running.\n   */\n  AllowDuplicate,\n  /*\n   * do not allow start a workflow execution using the same workflow ID at all\n   */\n  RejectDuplicate,\n  /*\n   * if a workflow is running using the same workflow ID, terminate it and start a new one\n   */\n  TerminateIfRunning,\n}\n\nenum DomainStatus {\n  REGISTERED,\n  DEPRECATED,\n  DELETED,\n}\n\nenum TimeoutType {\n  START_TO_CLOSE,\n  SCHEDULE_TO_START,\n  SCHEDULE_TO_CLOSE,\n  HEARTBEAT,\n}\n\nenum ParentClosePolicy {\n\tABANDON,\n\tREQUEST_CANCEL,\n\tTERMINATE,\n}\n\n\n// whenever this list of decision is changed\n// do change the mutableStateBuilder.go\n// function shouldBufferEvent\n// to make sure wo do the correct event ordering\nenum DecisionType {\n  ScheduleActivityTask,\n  RequestCancelActivityTask,\n  StartTimer,\n  CompleteWorkflowExecution,\n  FailWorkflowExecution,\n  CancelTimer,\n  CancelWorkflowExecution,\n  RequestCancelExternalWorkflowExecution,\n  RecordMarker,\n  ContinueAsNewWorkflowExecution,\n  StartChildWorkflowExecution,\n  SignalExternalWorkflowExecution,\n  UpsertWorkflowSearchAttributes,\n}\n\nenum EventType {\n  WorkflowExecutionStarted,\n  WorkflowExecutionCompleted,\n  WorkflowExecutionFailed,\n  WorkflowExecutionTimedOut,\n  DecisionTaskScheduled,\n  DecisionTaskStarted,\n  DecisionTaskCompleted,\n  DecisionTaskTimedOut\n  DecisionTaskFailed,\n  ActivityTaskScheduled,\n  ActivityTaskStarted,\n  ActivityTaskCompleted,\n  ActivityTaskFailed,\n  ActivityTaskTimedOut,\n  ActivityTaskCancelRequested,\n  RequestCancelActivityTaskFailed,\n  ActivityTaskCanceled,\n  TimerStarted,\n  TimerFired,\n  CancelTimerFailed,\n  TimerCanceled,\n  WorkflowExecutionCancelRequested,\n  WorkflowExecutionCanceled,\n  RequestCancelExternalWorkflowExecutionInitiated,\n  RequestCancelExternalWorkflowExecutionFailed,\n  ExternalWorkflowExecutionCancelRequested,\n  MarkerRecorded,\n  WorkflowExecutionSignaled,\n  WorkflowExecutionTerminated,\n  WorkflowExecutionContinuedAsNew,\n  StartChildWorkflowExecutionInitiated,\n  StartChildWorkflowExecutionFailed,\n  ChildWorkflowExecutionStarted,\n  ChildWorkflowExecutionCompleted,\n  ChildWorkflowExecutionFailed,\n  ChildWorkflowExecutionCanceled,\n  ChildWorkflowExecutionTimedOut,\n  ChildWorkflowExecutionTerminated,\n  SignalExternalWorkflowExecutionInitiated,\n  SignalExternalWorkflowExecutionFailed,\n  ExternalWorkflowExecutionSignaled,\n  UpsertWorkflowSearchAttributes,\n}\n\nenum DecisionTaskFailedCause {\n  UNHANDLED_DECISION,\n  BAD_SCHEDULE_ACTIVITY_ATTRIBUTES,\n  BAD_REQUEST_CANCEL_ACTIVITY_ATTRIBUTES,\n  BAD_START_TIMER_ATTRIBUTES,\n  BAD_CANCEL_TIMER_ATTRIBUTES,\n  BAD_RECORD_MARKER_ATTRIBUTES,\n  BAD_COMPLETE_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_FAIL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_CANCEL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_REQUEST_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_CONTINUE_AS_NEW_ATTRIBUTES,\n  START_TIMER_DUPLICATE_ID,\n  RESET_STICKY_TASKLIST,\n  WORKFLOW_WORKER_UNHANDLED_FAILURE,\n  BAD_SIGNAL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_START_CHILD_EXECUTION_ATTRIBUTES,\n  FORCE_CLOSE_DECISION,\n  FAILOVER_CLOSE_DECISION,\n  BAD_SIGNAL_INPUT_SIZE,\n  RESET_WORKFLOW,\n  BAD_BINARY,\n  SCHEDULE_ACTIVITY_DUPLICATE_ID,\n  BAD_SEARCH_ATTRIBUTES,\n}\n\nenum DecisionTaskTimedOutCause {\n  TIMEOUT,\n  RESET,\n}\n\nenum CancelExternalWorkflowExecutionFailedCause {\n  UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,\n}\n\nenum SignalExternalWorkflowExecutionFailedCause {\n  UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,\n}\n\nenum ChildWorkflowExecutionFailedCause {\n  WORKFLOW_ALREADY_RUNNING,\n}\n\n// TODO: when migrating to gRPC, add a running / none status,\n//  currently, customer is using null / nil as an indication\n//  that workflow is still running\nenum WorkflowExecutionCloseStatus {\n  COMPLETED,\n  FAILED,\n  CANCELED,\n  TERMINATED,\n  CONTINUED_AS_NEW,\n  TIMED_OUT,\n}\n\nenum QueryTaskCompletedType {\n  COMPLETED,\n  FAILED,\n}\n\nenum QueryResultType {\n  ANSWERED,\n  FAILED,\n}\n\nenum PendingActivityState {\n  SCHEDULED,\n  STARTED,\n  CANCEL_REQUESTED,\n}\n\nenum PendingDecisionState {\n  SCHEDULED,\n  STARTED,\n}\n\nenum HistoryEventFilterType {\n  ALL_EVENT,\n  CLOSE_EVENT,\n}\n\nenum TaskListKind {\n  NORMAL,\n  STICKY,\n}\n\nenum ArchivalStatus {\n  DISABLED,\n  ENABLED,\n}\n\nenum IndexedValueType {\n  STRING,\n  KEYWORD,\n  INT,\n  DOUBLE,\n  BOOL,\n  DATETIME,\n}\n\nstruct Header {\n    10: optional map<string, binary> fields\n}\n\nstruct WorkflowType {\n  10: optional string name\n}\n\nstruct ActivityType {\n  10: optional string name\n}\n\nstruct TaskList {\n  10: optional string name\n  20: optional TaskListKind kind\n}\n\nenum EncodingType {\n  ThriftRW,\n  JSON,\n}\n\nenum QueryRejectCondition {\n  // NOT_OPEN indicates that query should be rejected if workflow is not open\n  NOT_OPEN\n  // NOT_COMPLETED_CLEANLY indicates that query should be rejected if workflow did not complete cleanly\n  NOT_COMPLETED_CLEANLY\n}\n\nenum QueryConsistencyLevel {\n  // EVENTUAL indicates that query should be eventually consistent\n  EVENTUAL\n  // STRONG indicates that any events that came before query should be reflected in workflow state before running query\n  STRONG\n}\n\nstruct DataBlob {\n  10: optional EncodingType EncodingType\n  20: optional binary Data\n}\n\nstruct TaskListMetadata {\n  10: optional double maxTasksPerSecond\n}\n\nstruct WorkflowExecution {\n  10: optional string workflowId\n  20: optional string runId\n}\n\nstruct Memo {\n  10: optional map<string,binary> fields\n}\n\nstruct SearchAttributes {\n  10: optional map<string,binary> indexedFields\n}\n\nstruct WorkerVersionInfo {\n  10: optional string impl\n  20: optional string featureVersion\n}\n\nstruct WorkflowExecutionInfo {\n  10: optional WorkflowExecution execution\n  20: optional WorkflowType type\n  30: optional i64 (js.type = \"Long\") startTime\n  40: optional i64 (js.type = \"Long\") closeTime\n  50: optional WorkflowExecutionCloseStatus closeStatus\n  60: optional i64 (js.type = \"Long\") historyLength\n  70: optional string parentDomainId\n  80: optional WorkflowExecution parentExecution\n  90: optional i64 (js.type = \"Long\") executionTime\n  100: optional Memo memo\n  101: optional SearchAttributes searchAttributes\n  110: optional ResetPoints autoResetPoints\n  120: optional string taskList\n  130: optional bool isCron\n  140: optional i64 (js.type = \"Long\") updateTime\n}\n\nstruct WorkflowExecutionConfiguration {\n  10: optional TaskList taskList\n  20: optional i32 executionStartToCloseTimeoutSeconds\n  30: optional i32 taskStartToCloseTimeoutSeconds\n//  40: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n}\n\nstruct TransientDecisionInfo {\n  10: optional HistoryEvent scheduledEvent\n  20: optional HistoryEvent startedEvent\n}\n\nstruct ScheduleActivityTaskDecisionAttributes {\n  10: optional string activityId\n  20: optional ActivityType activityType\n  25: optional string domain\n  30: optional TaskList taskList\n  40: optional binary input\n  45: optional i32 scheduleToCloseTimeoutSeconds\n  50: optional i32 scheduleToStartTimeoutSeconds\n  55: optional i32 startToCloseTimeoutSeconds\n  60: optional i32 heartbeatTimeoutSeconds\n  70: optional RetryPolicy retryPolicy\n  80: optional Header header\n  90: optional bool requestLocalDispatch\n}\n\nstruct ActivityLocalDispatchInfo{\n  10: optional string activityId\n  20: optional i64 (js.type = \"Long\") scheduledTimestamp\n  30: optional i64 (js.type = \"Long\") startedTimestamp\n  40: optional i64 (js.type = \"Long\") scheduledTimestampOfThisAttempt\n  50: optional binary taskToken\n}\n\nstruct RequestCancelActivityTaskDecisionAttributes {\n  10: optional string activityId\n}\n\nstruct StartTimerDecisionAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startToFireTimeoutSeconds\n}\n\nstruct CompleteWorkflowExecutionDecisionAttributes {\n  10: optional binary result\n}\n\nstruct FailWorkflowExecutionDecisionAttributes {\n  10: optional string reason\n  20: optional binary details\n}\n\nstruct CancelTimerDecisionAttributes {\n  10: optional string timerId\n}\n\nstruct CancelWorkflowExecutionDecisionAttributes {\n  10: optional binary details\n}\n\nstruct RequestCancelExternalWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional string runId\n  40: optional binary control\n  50: optional bool childWorkflowOnly\n}\n\nstruct SignalExternalWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional string signalName\n  40: optional binary input\n  50: optional binary control\n  60: optional bool childWorkflowOnly\n}\n\nstruct UpsertWorkflowSearchAttributesDecisionAttributes {\n  10: optional SearchAttributes searchAttributes\n}\n\nstruct RecordMarkerDecisionAttributes {\n  10: optional string markerName\n  20: optional binary details\n  30: optional Header header\n}\n\nstruct ContinueAsNewWorkflowExecutionDecisionAttributes {\n  10: optional WorkflowType workflowType\n  20: optional TaskList taskList\n  30: optional binary input\n  40: optional i32 executionStartToCloseTimeoutSeconds\n  50: optional i32 taskStartToCloseTimeoutSeconds\n  60: optional i32 backoffStartIntervalInSeconds\n  70: optional RetryPolicy retryPolicy\n  80: optional ContinueAsNewInitiator initiator\n  90: optional string failureReason\n  100: optional binary failureDetails\n  110: optional binary lastCompletionResult\n  120: optional string cronSchedule\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n  160: optional i32 jitterStartSeconds\n}\n\nstruct StartChildWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n//  80: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  81: optional ParentClosePolicy parentClosePolicy\n  90: optional binary control\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  110: optional RetryPolicy retryPolicy\n  120: optional string cronSchedule\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n}\n\nstruct Decision {\n  10:  optional DecisionType decisionType\n  20:  optional ScheduleActivityTaskDecisionAttributes scheduleActivityTaskDecisionAttributes\n  25:  optional StartTimerDecisionAttributes startTimerDecisionAttributes\n  30:  optional CompleteWorkflowExecutionDecisionAttributes completeWorkflowExecutionDecisionAttributes\n  35:  optional FailWorkflowExecutionDecisionAttributes failWorkflowExecutionDecisionAttributes\n  40:  optional RequestCancelActivityTaskDecisionAttributes requestCancelActivityTaskDecisionAttributes\n  50:  optional CancelTimerDecisionAttributes cancelTimerDecisionAttributes\n  60:  optional CancelWorkflowExecutionDecisionAttributes cancelWorkflowExecutionDecisionAttributes\n  70:  optional RequestCancelExternalWorkflowExecutionDecisionAttributes requestCancelExternalWorkflowExecutionDecisionAttributes\n  80:  optional RecordMarkerDecisionAttributes recordMarkerDecisionAttributes\n  90:  optional ContinueAsNewWorkflowExecutionDecisionAttributes continueAsNewWorkflowExecutionDecisionAttributes\n  100: optional StartChildWorkflowExecutionDecisionAttributes startChildWorkflowExecutionDecisionAttributes\n  110: optional SignalExternalWorkflowExecutionDecisionAttributes signalExternalWorkflowExecutionDecisionAttributes\n  120: optional UpsertWorkflowSearchAttributesDecisionAttributes upsertWorkflowSearchAttributesDecisionAttributes\n}\n\nstruct WorkflowExecutionStartedEventAttributes {\n  10: optional WorkflowType workflowType\n  12: optional string parentWorkflowDomain\n  14: optional WorkflowExecution parentWorkflowExecution\n  16: optional i64 (js.type = \"Long\") parentInitiatedEventId\n  20: optional TaskList taskList\n  30: optional binary input\n  40: optional i32 executionStartToCloseTimeoutSeconds\n  50: optional i32 taskStartToCloseTimeoutSeconds\n//  52: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  54: optional string continuedExecutionRunId\n  55: optional ContinueAsNewInitiator initiator\n  56: optional string continuedFailureReason\n  57: optional binary continuedFailureDetails\n  58: optional binary lastCompletionResult\n  59: optional string originalExecutionRunId // This is the runID when the WorkflowExecutionStarted event is written\n  60: optional string identity\n  61: optional string firstExecutionRunId // This is the very first runID along the chain of ContinueAsNew and Reset.\n  62: optional i64 (js.type = \"Long\") firstScheduledTimeNano\n  70: optional RetryPolicy retryPolicy\n  80: optional i32 attempt\n  90: optional i64 (js.type = \"Long\") expirationTimestamp\n  100: optional string cronSchedule\n  110: optional i32 firstDecisionTaskBackoffSeconds\n  120: optional Memo memo\n  121: optional SearchAttributes searchAttributes\n  130: optional ResetPoints prevAutoResetPoints\n  140: optional Header header\n}\n\nstruct ResetPoints{\n  10: optional list<ResetPointInfo> points\n}\n\n struct ResetPointInfo{\n  10: optional string binaryChecksum\n  20: optional string runId\n  30: optional i64 firstDecisionCompletedId\n  40: optional i64 (js.type = \"Long\") createdTimeNano\n  50: optional i64 (js.type = \"Long\") expiringTimeNano //the time that the run is deleted due to retention\n  60: optional bool resettable                         // false if the resset point has pending childWFs/reqCancels/signalExternals.\n}\n\nstruct WorkflowExecutionCompletedEventAttributes {\n  10: optional binary result\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct WorkflowExecutionFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct WorkflowExecutionTimedOutEventAttributes {\n  10: optional TimeoutType timeoutType\n}\n\nenum ContinueAsNewInitiator {\n  Decider,\n  RetryPolicy,\n  CronSchedule,\n}\n\nstruct WorkflowExecutionContinuedAsNewEventAttributes {\n  10: optional string newExecutionRunId\n  20: optional WorkflowType workflowType\n  30: optional TaskList taskList\n  40: optional binary input\n  50: optional i32 executionStartToCloseTimeoutSeconds\n  60: optional i32 taskStartToCloseTimeoutSeconds\n  70: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  80: optional i32 backoffStartIntervalInSeconds\n  90: optional ContinueAsNewInitiator initiator\n  100: optional string failureReason\n  110: optional binary failureDetails\n  120: optional binary lastCompletionResult\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n}\n\nstruct DecisionTaskScheduledEventAttributes {\n  10: optional TaskList taskList\n  20: optional i32 startToCloseTimeoutSeconds\n  30: optional i64 (js.type = \"Long\") attempt\n}\n\nstruct DecisionTaskStartedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional string identity\n  30: optional string requestId\n}\n\nstruct DecisionTaskCompletedEventAttributes {\n  10: optional binary executionContext\n  20: optional i64 (js.type = \"Long\") scheduledEventId\n  30: optional i64 (js.type = \"Long\") startedEventId\n  40: optional string identity\n  50: optional string binaryChecksum\n}\n\nstruct DecisionTaskTimedOutEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional TimeoutType timeoutType\n  // for reset workflow\n  40: optional string baseRunId\n  50: optional string newRunId\n  60: optional i64 (js.type = \"Long\") forkEventVersion\n  70: optional string reason\n  80: optional DecisionTaskTimedOutCause cause\n}\n\nstruct DecisionTaskFailedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional DecisionTaskFailedCause cause\n  35: optional binary details\n  40: optional string identity\n  50: optional string reason\n  // for reset workflow\n  60: optional string baseRunId\n  70: optional string newRunId\n  80: optional i64 (js.type = \"Long\") forkEventVersion\n  90: optional string binaryChecksum\n}\n\nstruct ActivityTaskScheduledEventAttributes {\n  10: optional string activityId\n  20: optional ActivityType activityType\n  25: optional string domain\n  30: optional TaskList taskList\n  40: optional binary input\n  45: optional i32 scheduleToCloseTimeoutSeconds\n  50: optional i32 scheduleToStartTimeoutSeconds\n  55: optional i32 startToCloseTimeoutSeconds\n  60: optional i32 heartbeatTimeoutSeconds\n  90: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  110: optional RetryPolicy retryPolicy\n  120: optional Header header\n}\n\nstruct ActivityTaskStartedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional string identity\n  30: optional string requestId\n  40: optional i32 attempt\n  50: optional string lastFailureReason\n  60: optional binary lastFailureDetails\n}\n\nstruct ActivityTaskCompletedEventAttributes {\n  10: optional binary result\n  20: optional i64 (js.type = \"Long\") scheduledEventId\n  30: optional i64 (js.type = \"Long\") startedEventId\n  40: optional string identity\n}\n\nstruct ActivityTaskFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") scheduledEventId\n  40: optional i64 (js.type = \"Long\") startedEventId\n  50: optional string identity\n}\n\nstruct ActivityTaskTimedOutEventAttributes {\n  05: optional binary details\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional TimeoutType timeoutType\n  // For retry activity, it may have a failure before timeout. It's important to keep those information for debug.\n  // Client can also provide the info for making next decision\n  40: optional string lastFailureReason\n  50: optional binary lastFailureDetails\n}\n\nstruct ActivityTaskCancelRequestedEventAttributes {\n  10: optional string activityId\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct RequestCancelActivityTaskFailedEventAttributes{\n  10: optional string activityId\n  20: optional string cause\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct ActivityTaskCanceledEventAttributes {\n  10: optional binary details\n  20: optional i64 (js.type = \"Long\") latestCancelRequestedEventId\n  30: optional i64 (js.type = \"Long\") scheduledEventId\n  40: optional i64 (js.type = \"Long\") startedEventId\n  50: optional string identity\n}\n\nstruct TimerStartedEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startToFireTimeoutSeconds\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct TimerFiredEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct TimerCanceledEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional string identity\n}\n\nstruct CancelTimerFailedEventAttributes {\n  10: optional string timerId\n  20: optional string cause\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional string identity\n}\n\nstruct WorkflowExecutionCancelRequestedEventAttributes {\n  10: optional string cause\n  20: optional i64 (js.type = \"Long\") externalInitiatedEventId\n  30: optional WorkflowExecution externalWorkflowExecution\n  40: optional string identity\n}\n\nstruct WorkflowExecutionCanceledEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional binary details\n}\n\nstruct MarkerRecordedEventAttributes {\n  10: optional string markerName\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional Header header\n}\n\nstruct WorkflowExecutionSignaledEventAttributes {\n  10: optional string signalName\n  20: optional binary input\n  30: optional string identity\n}\n\nstruct WorkflowExecutionTerminatedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RequestCancelExternalWorkflowExecutionInitiatedEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional binary control\n  50: optional bool childWorkflowOnly\n}\n\nstruct RequestCancelExternalWorkflowExecutionFailedEventAttributes {\n  10: optional CancelExternalWorkflowExecutionFailedCause cause\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional binary control\n}\n\nstruct ExternalWorkflowExecutionCancelRequestedEventAttributes {\n  10: optional i64 (js.type = \"Long\") initiatedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n}\n\nstruct SignalExternalWorkflowExecutionInitiatedEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional string signalName\n  50: optional binary input\n  60: optional binary control\n  70: optional bool childWorkflowOnly\n}\n\nstruct SignalExternalWorkflowExecutionFailedEventAttributes {\n  10: optional SignalExternalWorkflowExecutionFailedCause cause\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional binary control\n}\n\nstruct ExternalWorkflowExecutionSignaledEventAttributes {\n  10: optional i64 (js.type = \"Long\") initiatedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional binary control\n}\n\nstruct UpsertWorkflowSearchAttributesEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional SearchAttributes searchAttributes\n}\n\nstruct StartChildWorkflowExecutionInitiatedEventAttributes {\n  10:  optional string domain\n  20:  optional string workflowId\n  30:  optional WorkflowType workflowType\n  40:  optional TaskList taskList\n  50:  optional binary input\n  60:  optional i32 executionStartToCloseTimeoutSeconds\n  70:  optional i32 taskStartToCloseTimeoutSeconds\n//  80:  optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  81:  optional ParentClosePolicy parentClosePolicy\n  90:  optional binary control\n  100: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  110: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  120: optional RetryPolicy retryPolicy\n  130: optional string cronSchedule\n  140: optional Header header\n  150: optional Memo memo\n  160: optional SearchAttributes searchAttributes\n  170: optional i32 delayStartSeconds\n  180: optional i32 jitterStartSeconds\n}\n\nstruct StartChildWorkflowExecutionFailedEventAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional ChildWorkflowExecutionFailedCause cause\n  50: optional binary control\n  60: optional i64 (js.type = \"Long\") initiatedEventId\n  70: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct ChildWorkflowExecutionStartedEventAttributes {\n  10: optional string domain\n  20: optional i64 (js.type = \"Long\") initiatedEventId\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional Header header\n}\n\nstruct ChildWorkflowExecutionCompletedEventAttributes {\n  10: optional binary result\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional WorkflowType workflowType\n  60: optional i64 (js.type = \"Long\") initiatedEventId\n  70: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionCanceledEventAttributes {\n  10: optional binary details\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionTimedOutEventAttributes {\n  10: optional TimeoutType timeoutType\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionTerminatedEventAttributes {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional WorkflowType workflowType\n  40: optional i64 (js.type = \"Long\") initiatedEventId\n  50: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct HistoryEvent {\n  10:  optional i64 (js.type = \"Long\") eventId\n  20:  optional i64 (js.type = \"Long\") timestamp\n  30:  optional EventType eventType\n  35:  optional i64 (js.type = \"Long\") version\n  36:  optional i64 (js.type = \"Long\") taskId\n  40:  optional WorkflowExecutionStartedEventAttributes workflowExecutionStartedEventAttributes\n  50:  optional WorkflowExecutionCompletedEventAttributes workflowExecutionCompletedEventAttributes\n  60:  optional WorkflowExecutionFailedEventAttributes workflowExecutionFailedEventAttributes\n  70:  optional WorkflowExecutionTimedOutEventAttributes workflowExecutionTimedOutEventAttributes\n  80:  optional DecisionTaskScheduledEventAttributes decisionTaskScheduledEventAttributes\n  90:  optional DecisionTaskStartedEventAttributes decisionTaskStartedEventAttributes\n  100: optional DecisionTaskCompletedEventAttributes decisionTaskCompletedEventAttributes\n  110: optional DecisionTaskTimedOutEventAttributes decisionTaskTimedOutEventAttributes\n  120: optional DecisionTaskFailedEventAttributes decisionTaskFailedEventAttributes\n  130: optional ActivityTaskScheduledEventAttributes activityTaskScheduledEventAttributes\n  140: optional ActivityTaskStartedEventAttributes activityTaskStartedEventAttributes\n  150: optional ActivityTaskCompletedEventAttributes activityTaskCompletedEventAttributes\n  160: optional ActivityTaskFailedEventAttributes activityTaskFailedEventAttributes\n  170: optional ActivityTaskTimedOutEventAttributes activityTaskTimedOutEventAttributes\n  180: optional TimerStartedEventAttributes timerStartedEventAttributes\n  190: optional TimerFiredEventAttributes timerFiredEventAttributes\n  200: optional ActivityTaskCancelRequestedEventAttributes activityTaskCancelRequestedEventAttributes\n  210: optional RequestCancelActivityTaskFailedEventAttributes requestCancelActivityTaskFailedEventAttributes\n  220: optional ActivityTaskCanceledEventAttributes activityTaskCanceledEventAttributes\n  230: optional TimerCanceledEventAttributes timerCanceledEventAttributes\n  240: optional CancelTimerFailedEventAttributes cancelTimerFailedEventAttributes\n  250: optional MarkerRecordedEventAttributes markerRecordedEventAttributes\n  260: optional WorkflowExecutionSignaledEventAttributes workflowExecutionSignaledEventAttributes\n  270: optional WorkflowExecutionTerminatedEventAttributes workflowExecutionTerminatedEventAttributes\n  280: optional WorkflowExecutionCancelRequestedEventAttributes workflowExecutionCancelRequestedEventAttributes\n  290: optional WorkflowExecutionCanceledEventAttributes workflowExecutionCanceledEventAttributes\n  300: optional RequestCancelExternalWorkflowExecutionInitiatedEventAttributes requestCancelExternalWorkflowExecutionInitiatedEventAttributes\n  310: optional RequestCancelExternalWorkflowExecutionFailedEventAttributes requestCancelExternalWorkflowExecutionFailedEventAttributes\n  320: optional ExternalWorkflowExecutionCancelRequestedEventAttributes externalWorkflowExecutionCancelRequestedEventAttributes\n  330: optional WorkflowExecutionContinuedAsNewEventAttributes workflowExecutionContinuedAsNewEventAttributes\n  340: optional StartChildWorkflowExecutionInitiatedEventAttributes startChildWorkflowExecutionInitiatedEventAttributes\n  350: optional StartChildWorkflowExecutionFailedEventAttributes startChildWorkflowExecutionFailedEventAttributes\n  360: optional ChildWorkflowExecutionStartedEventAttributes childWorkflowExecutionStartedEventAttributes\n  370: optional ChildWorkflowExecutionCompletedEventAttributes childWorkflowExecutionCompletedEventAttributes\n  380: optional ChildWorkflowExecutionFailedEventAttributes childWorkflowExecutionFailedEventAttributes\n  390: optional ChildWorkflowExecutionCanceledEventAttributes childWorkflowExecutionCanceledEventAttributes\n  400: optional ChildWorkflowExecutionTimedOutEventAttributes childWorkflowExecutionTimedOutEventAttributes\n  410: optional ChildWorkflowExecutionTerminatedEventAttributes childWorkflowExecutionTerminatedEventAttributes\n  420: optional SignalExternalWorkflowExecutionInitiatedEventAttributes signalExternalWorkflowExecutionInitiatedEventAttributes\n  430: optional SignalExternalWorkflowExecutionFailedEventAttributes signalExternalWorkflowExecutionFailedEventAttributes\n  440: optional ExternalWorkflowExecutionSignaledEventAttributes externalWorkflowExecutionSignaledEventAttributes\n  450: optional UpsertWorkflowSearchAttributesEventAttributes upsertWorkflowSearchAttributesEventAttributes\n}\n\nstruct History {\n  10: optional list<HistoryEvent> events\n}\n\nstruct WorkflowExecutionFilter {\n  10: optional string workflowId\n  20: optional string runId\n}\n\nstruct WorkflowTypeFilter {\n  10: optional string name\n}\n\nstruct StartTimeFilter {\n  10: optional i64 (js.type = \"Long\") earliestTime\n  20: optional i64 (js.type = \"Long\") latestTime\n}\n\nstruct DomainInfo {\n  10: optional string name\n  20: optional DomainStatus status\n  30: optional string description\n  40: optional string ownerEmail\n  // A key-value map for any customized purpose\n  50: optional map<string,string> data\n  60: optional string uuid\n}\n\nstruct DomainConfiguration {\n  10: optional i32 workflowExecutionRetentionPeriodInDays\n  20: optional bool emitMetric\n  70: optional BadBinaries badBinaries\n  80: optional ArchivalStatus historyArchivalStatus\n  90: optional string historyArchivalURI\n  100: optional ArchivalStatus visibilityArchivalStatus\n  110: optional string visibilityArchivalURI\n}\n\nstruct FailoverInfo {\n    10: optional i64 (js.type = \"Long\") failoverVersion\n    20: optional i64 (js.type = \"Long\") failoverStartTimestamp\n    30: optional i64 (js.type = \"Long\") failoverExpireTimestamp\n    40: optional i32 completedShardCount\n    50: optional list<i32> pendingShards\n}\n\nstruct BadBinaries{\n  10: optional map<string, BadBinaryInfo> binaries\n}\n\nstruct BadBinaryInfo{\n  10: optional string reason\n  20: optional string operator\n  30: optional i64 (js.type = \"Long\") createdTimeNano\n}\n\nstruct UpdateDomainInfo {\n  10: optional string description\n  20: optional string ownerEmail\n  // A key-value map for any customized purpose\n  30: optional map<string,string> data\n}\n\nstruct ClusterReplicationConfiguration {\n 10: optional string clusterName\n}\n\nstruct DomainReplicationConfiguration {\n 10: optional string activeClusterName\n 20: optional list<ClusterReplicationConfiguration> clusters\n}\n\nstruct RegisterDomainRequest {\n  10: optional string name\n  20: optional string description\n  30: optional string ownerEmail\n  40: optional i32 workflowExecutionRetentionPeriodInDays\n  50: optional bool emitMetric = true\n  60: optional list<ClusterReplicationConfiguration> clusters\n  70: optional string activeClusterName\n  // A key-value map for any customized purpose\n  80: optional map<string,string> data\n  90: optional string securityToken\n  120: optional bool isGlobalDomain\n  130: optional ArchivalStatus historyArchivalStatus\n  140: optional string historyArchivalURI\n  150: optional ArchivalStatus visibilityArchivalStatus\n  160: optional string visibilityArchivalURI\n}\n\nstruct ListDomainsRequest {\n  10: optional i32 pageSize\n  20: optional binary nextPageToken\n}\n\nstruct ListDomainsResponse {\n  10: optional list<DescribeDomainResponse> domains\n  20: optional binary nextPageToken\n}\n\nstruct DescribeDomainRequest {\n  10: optional string name\n  20: optional string uuid\n}\n\nstruct DescribeDomainResponse {\n  10: optional DomainInfo domainInfo\n  20: optional DomainConfiguration configuration\n  30: optional DomainReplicationConfiguration replicationConfiguration\n  40: optional i64 (js.type = \"Long\") failoverVersion\n  50: optional bool isGlobalDomain\n  60: optional FailoverInfo failoverInfo\n}\n\nstruct UpdateDomainRequest {\n 10: optional string name\n 20: optional UpdateDomainInfo updatedInfo\n 30: optional DomainConfiguration configuration\n 40: optional DomainReplicationConfiguration replicationConfiguration\n 50: optional string securityToken\n 60: optional string deleteBadBinary\n 70: optional i32 failoverTimeoutInSeconds\n}\n\nstruct UpdateDomainResponse {\n  10: optional DomainInfo domainInfo\n  20: optional DomainConfiguration configuration\n  30: optional DomainReplicationConfiguration replicationConfiguration\n  40: optional i64 (js.type = \"Long\") failoverVersion\n  50: optional bool isGlobalDomain\n}\n\nstruct DeprecateDomainRequest {\n 10: optional string name\n 20: optional string securityToken\n}\n\nstruct StartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n  80: optional string identity\n  90: optional string requestId\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n//  110: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  120: optional RetryPolicy retryPolicy\n  130: optional string cronSchedule\n  140: optional Memo memo\n  141: optional SearchAttributes searchAttributes\n  150: optional Header header\n  160: optional i32 delayStartSeconds\n  170: optional i32 jitterStartSeconds\n}\n\nstruct StartWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct RestartWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct PollForDecisionTaskRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional string identity\n  40: optional string binaryChecksum\n}\n\nstruct PollForDecisionTaskResponse {\n  10: optional binary taskToken\n  20: optional WorkflowExecution workflowExecution\n  30: optional WorkflowType workflowType\n  40: optional i64 (js.type = \"Long\") previousStartedEventId\n  50: optional i64 (js.type = \"Long\") startedEventId\n  51: optional i64 (js.type = 'Long') attempt\n  54: optional i64 (js.type = \"Long\") backlogCountHint\n  60: optional History history\n  70: optional binary nextPageToken\n  80: optional WorkflowQuery query\n  90: optional TaskList WorkflowExecutionTaskList\n  100: optional i64 (js.type = \"Long\") scheduledTimestamp\n  110: optional i64 (js.type = \"Long\") startedTimestamp\n  120: optional map<string, WorkflowQuery> queries\n  130: optional i64 (js.type = 'Long') nextEventId\n}\n\nstruct StickyExecutionAttributes {\n  10: optional TaskList workerTaskList\n  20: optional i32 scheduleToStartTimeoutSeconds\n}\n\nstruct RespondDecisionTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional list<Decision> decisions\n  30: optional binary executionContext\n  40: optional string identity\n  50: optional StickyExecutionAttributes stickyAttributes\n  60: optional bool returnNewDecisionTask\n  70: optional bool forceCreateNewDecisionTask\n  80: optional string binaryChecksum\n  90: optional map<string, WorkflowQueryResult> queryResults\n}\n\nstruct RespondDecisionTaskCompletedResponse {\n  10: optional PollForDecisionTaskResponse decisionTask\n  20: optional map<string,ActivityLocalDispatchInfo> activitiesToDispatchLocally\n}\n\nstruct RespondDecisionTaskFailedRequest {\n  10: optional binary taskToken\n  20: optional DecisionTaskFailedCause cause\n  30: optional binary details\n  40: optional string identity\n  50: optional string binaryChecksum\n}\n\nstruct PollForActivityTaskRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional string identity\n  40: optional TaskListMetadata taskListMetadata\n}\n\nstruct PollForActivityTaskResponse {\n  10:  optional binary taskToken\n  20:  optional WorkflowExecution workflowExecution\n  30:  optional string activityId\n  40:  optional ActivityType activityType\n  50:  optional binary input\n  70:  optional i64 (js.type = \"Long\") scheduledTimestamp\n  80:  optional i32 scheduleToCloseTimeoutSeconds\n  90:  optional i64 (js.type = \"Long\") startedTimestamp\n  100: optional i32 startToCloseTimeoutSeconds\n  110: optional i32 heartbeatTimeoutSeconds\n  120: optional i32 attempt\n  130: optional i64 (js.type = \"Long\") scheduledTimestampOfThisAttempt\n  140: optional binary heartbeatDetails\n  150: optional WorkflowType workflowType\n  160: optional string workflowDomain\n  170: optional Header header\n}\n\nstruct RecordActivityTaskHeartbeatRequest {\n  10: optional binary taskToken\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RecordActivityTaskHeartbeatByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary details\n  60: optional string identity\n}\n\nstruct RecordActivityTaskHeartbeatResponse {\n  10: optional bool cancelRequested\n}\n\nstruct RespondActivityTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional binary result\n  30: optional string identity\n}\n\nstruct RespondActivityTaskFailedRequest {\n  10: optional binary taskToken\n  20: optional string reason\n  30: optional binary details\n  40: optional string identity\n}\n\nstruct RespondActivityTaskCanceledRequest {\n  10: optional binary taskToken\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RespondActivityTaskCompletedByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary result\n  60: optional string identity\n}\n\nstruct RespondActivityTaskFailedByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional string reason\n  60: optional binary details\n  70: optional string identity\n}\n\nstruct RespondActivityTaskCanceledByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary details\n  60: optional string identity\n}\n\nstruct RequestCancelWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string identity\n  40: optional string requestId\n  50: optional string cause\n  60: optional string firstExecutionRunID\n}\n\nstruct GetWorkflowExecutionHistoryRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional i32 maximumPageSize\n  40: optional binary nextPageToken\n  50: optional bool waitForNewEvent\n  60: optional HistoryEventFilterType HistoryEventFilterType\n  70: optional bool skipArchival\n}\n\nstruct GetWorkflowExecutionHistoryResponse {\n  10: optional History history\n  11: optional list<DataBlob> rawHistory\n  20: optional binary nextPageToken\n  30: optional bool archived\n}\n\nstruct SignalWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string signalName\n  40: optional binary input\n  50: optional string identity\n  60: optional string requestId\n  70: optional binary control\n}\n\nstruct SignalWithStartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n  80: optional string identity\n  90: optional string requestId\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  110: optional string signalName\n  120: optional binary signalInput\n  130: optional binary control\n  140: optional RetryPolicy retryPolicy\n  150: optional string cronSchedule\n  160: optional Memo memo\n  161: optional SearchAttributes searchAttributes\n  170: optional Header header\n  180: optional i32 delayStartSeconds\n  190: optional i32 jitterStartSeconds\n}\nstruct RestartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional string identity\n}\nstruct TerminateWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional binary details\n  50: optional string identity\n  60: optional string firstExecutionRunID\n}\n\nstruct ResetWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional i64 (js.type = \"Long\") decisionFinishEventId\n  50: optional string requestId\n  60: optional bool skipSignalReapply\n}\n\nstruct ResetWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct ListOpenWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 maximumPageSize\n  30: optional binary nextPageToken\n  40: optional StartTimeFilter StartTimeFilter\n  50: optional WorkflowExecutionFilter executionFilter\n  60: optional WorkflowTypeFilter typeFilter\n}\n\nstruct ListOpenWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListClosedWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 maximumPageSize\n  30: optional binary nextPageToken\n  40: optional StartTimeFilter StartTimeFilter\n  50: optional WorkflowExecutionFilter executionFilter\n  60: optional WorkflowTypeFilter typeFilter\n  70: optional WorkflowExecutionCloseStatus statusFilter\n}\n\nstruct ListClosedWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 pageSize\n  30: optional binary nextPageToken\n  40: optional string query\n}\n\nstruct ListWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListArchivedWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 pageSize\n  30: optional binary nextPageToken\n  40: optional string query\n}\n\nstruct ListArchivedWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct CountWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional string query\n}\n\nstruct CountWorkflowExecutionsResponse {\n  10: optional i64 count\n}\n\nstruct GetSearchAttributesResponse {\n  10: optional map<string, IndexedValueType> keys\n}\n\nstruct QueryWorkflowRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional WorkflowQuery query\n  // QueryRejectCondition can used to reject the query if workflow state does not satisify condition\n  40: optional QueryRejectCondition queryRejectCondition\n  50: optional QueryConsistencyLevel queryConsistencyLevel\n}\n\nstruct QueryRejected {\n  10: optional WorkflowExecutionCloseStatus closeStatus\n}\n\nstruct QueryWorkflowResponse {\n  10: optional binary queryResult\n  20: optional QueryRejected queryRejected\n}\n\nstruct WorkflowQuery {\n  10: optional string queryType\n  20: optional binary queryArgs\n}\n\nstruct ResetStickyTaskListRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct ResetStickyTaskListResponse {\n    // The reason to keep this response is to allow returning\n    // information in the future.\n}\n\nstruct RespondQueryTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional QueryTaskCompletedType completedType\n  30: optional binary queryResult\n  40: optional string errorMessage\n  50: optional WorkerVersionInfo workerVersionInfo\n}\n\nstruct WorkflowQueryResult {\n  10: optional QueryResultType resultType\n  20: optional binary answer\n  30: optional string errorMessage\n}\n\nstruct DescribeWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct PendingActivityInfo {\n  10: optional string activityID\n  20: optional ActivityType activityType\n  30: optional PendingActivityState state\n  40: optional binary heartbeatDetails\n  50: optional i64 (js.type = \"Long\") lastHeartbeatTimestamp\n  60: optional i64 (js.type = \"Long\") lastStartedTimestamp\n  70: optional i32 attempt\n  80: optional i32 maximumAttempts\n  90: optional i64 (js.type = \"Long\") scheduledTimestamp\n  100: optional i64 (js.type = \"Long\") expirationTimestamp\n  110: optional string lastFailureReason\n  120: optional string lastWorkerIdentity\n  130: optional binary lastFailureDetails\n}\n\nstruct PendingDecisionInfo {\n  10: optional PendingDecisionState state\n  20: optional i64 (js.type = \"Long\") scheduledTimestamp\n  30: optional i64 (js.type = \"Long\") startedTimestamp\n  40: optional i64 attempt\n  50: optional i64 (js.type = \"Long\") originalScheduledTimestamp\n}\n\nstruct PendingChildExecutionInfo {\n  1: optional string domain\n  10: optional string workflowID\n  20: optional string runID\n  30: optional string workflowTypName\n  40: optional i64 (js.type = \"Long\") initiatedID\n  50: optional ParentClosePolicy parentClosePolicy\n}\n\nstruct DescribeWorkflowExecutionResponse {\n  10: optional WorkflowExecutionConfiguration executionConfiguration\n  20: optional WorkflowExecutionInfo workflowExecutionInfo\n  30: optional list<PendingActivityInfo> pendingActivities\n  40: optional list<PendingChildExecutionInfo> pendingChildren\n  50: optional PendingDecisionInfo pendingDecision\n}\n\nstruct DescribeTaskListRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional TaskListType taskListType\n  40: optional bool includeTaskListStatus\n}\n\nstruct DescribeTaskListResponse {\n  10: optional list<PollerInfo> pollers\n  20: optional TaskListStatus taskListStatus\n}\n\nstruct GetTaskListsByDomainRequest {\n  10: optional string domainName\n}\n\nstruct GetTaskListsByDomainResponse {\n  10: optional map<string,DescribeTaskListResponse> decisionTaskListMap\n  20: optional map<string,DescribeTaskListResponse> activityTaskListMap\n}\n\nstruct ListTaskListPartitionsRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n}\n\nstruct TaskListPartitionMetadata {\n  10: optional string key\n  20: optional string ownerHostName\n}\n\nstruct ListTaskListPartitionsResponse {\n  10: optional list<TaskListPartitionMetadata> activityTaskListPartitions\n  20: optional list<TaskListPartitionMetadata> decisionTaskListPartitions\n}\n\nstruct TaskListStatus {\n  10: optional i64 (js.type = \"Long\") backlogCountHint\n  20: optional i64 (js.type = \"Long\") readLevel\n  30: optional i64 (js.type = \"Long\") ackLevel\n  35: optional double ratePerSecond\n  40: optional TaskIDBlock taskIDBlock\n}\n\nstruct TaskIDBlock {\n  10: optional i64 (js.type = \"Long\")  startID\n  20: optional i64 (js.type = \"Long\")  endID\n}\n\n//At least one of the parameters needs to be provided\nstruct DescribeHistoryHostRequest {\n  10: optional string               hostAddress //ip:port\n  20: optional i32                  shardIdForHost\n  30: optional WorkflowExecution    executionForHost\n}\n\nstruct RemoveTaskRequest {\n  10: optional i32                      shardID\n  20: optional i32                      type\n  30: optional i64 (js.type = \"Long\")   taskID\n  40: optional i64 (js.type = \"Long\")   visibilityTimestamp\n  50: optional string                   clusterName\n}\n\nstruct CloseShardRequest {\n  10: optional i32               shardID\n}\n\nstruct ResetQueueRequest {\n  10: optional i32    shardID\n  20: optional string clusterName\n  30: optional i32    type\n}\n\nstruct DescribeQueueRequest {\n  10: optional i32    shardID\n  20: optional string clusterName\n  30: optional i32    type\n}\n\nstruct DescribeQueueResponse {\n  10: optional list<string> processingQueueStates\n}\n\nstruct DescribeShardDistributionRequest {\n  10: optional i32 pageSize\n  20: optional i32 pageID\n}\n\nstruct DescribeShardDistributionResponse {\n  10: optional i32              numberOfShards\n\n  // ShardID to Address (ip:port) map\n  20: optional map<i32, string> shards\n}\n\nstruct DescribeHistoryHostResponse{\n  10: optional i32                  numberOfShards\n  20: optional list<i32>            shardIDs\n  30: optional DomainCacheInfo      domainCache\n  40: optional string               shardControllerStatus\n  50: optional string               address\n}\n\nstruct DomainCacheInfo{\n  10: optional i64 numOfItemsInCacheByID\n  20: optional i64 numOfItemsInCacheByName\n}\n\nenum TaskListType {\n  /*\n   * Decision type of tasklist\n   */\n  Decision,\n  /*\n   * Activity type of tasklist\n   */\n  Activity,\n}\n\nstruct PollerInfo {\n  // Unix Nano\n  10: optional i64 (js.type = \"Long\")  lastAccessTime\n  20: optional string identity\n  30: optional double ratePerSecond\n}\n\nstruct RetryPolicy {\n  // Interval of the first retry. If coefficient is 1.0 then it is used for all retries.\n  10: optional i32 initialIntervalInSeconds\n\n  // Coefficient used to calculate the next retry interval.\n  // The next retry interval is previous interval multiplied by the coefficient.\n  // Must be 1 or larger.\n  20: optional double backoffCoefficient\n\n  // Maximum interval between retries. Exponential backoff leads to interval increase.\n  // This value is the cap of the increase. Default is 100x of initial interval.\n  30: optional i32 maximumIntervalInSeconds\n\n  // Maximum number of attempts. When exceeded the retries stop even if not expired yet.\n  // Must be 1 or bigger. Default is unlimited.\n  40: optional i32 maximumAttempts\n\n  // Non-Retriable errors. Will stop retrying if error matches this list.\n  50: optional list<string> nonRetriableErrorReasons\n\n  // Expiration time for the whole retry process.\n  60: optional i32 expirationIntervalInSeconds\n}\n\n// HistoryBranchRange represents a piece of range for a branch.\nstruct HistoryBranchRange{\n  // branchID of original branch forked from\n  10: optional string branchID\n  // beinning node for the range, inclusive\n  20: optional i64 beginNodeID\n  // ending node for the range, exclusive\n  30: optional i64 endNodeID\n}\n\n// For history persistence to serialize/deserialize branch details\nstruct HistoryBranch{\n  10: optional string treeID\n  20: optional string branchID\n  30: optional list<HistoryBranchRange> ancestors\n}\n\n// VersionHistoryItem contains signal eventID and the corresponding version\nstruct VersionHistoryItem{\n  10: optional i64 (js.type = \"Long\") eventID\n  20: optional i64 (js.type = \"Long\") version\n}\n\n// VersionHistory contains the version history of a branch\nstruct VersionHistory{\n  10: optional binary branchToken\n  20: optional list<VersionHistoryItem> items\n}\n\n// VersionHistories contains all version histories from all branches\nstruct VersionHistories{\n  10: optional i32 currentVersionHistoryIndex\n  20: optional list<VersionHistory> histories\n}\n\n// ReapplyEventsRequest is the request for reapply events API\nstruct ReapplyEventsRequest{\n  10: optional string domainName\n  20: optional WorkflowExecution workflowExecution\n  30: optional DataBlob events\n}\n\n// SupportedClientVersions contains the support versions for client library\nstruct SupportedClientVersions{\n  10: optional string goSdk\n  20: optional string javaSdk\n}\n\n// ClusterInfo contains information about cadence cluster\nstruct ClusterInfo{\n  10: optional SupportedClientVersions supportedClientVersions\n}\n\nstruct RefreshWorkflowTasksRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct FeatureFlags {\n\t10: optional bool WorkflowExecutionAlreadyCompletedErrorEnabled\n}\n\nenum CrossClusterTaskType {\n  StartChildExecution\n  CancelExecution\n  SignalExecution\n  RecordChildWorkflowExecutionComplete\n  ApplyParentClosePolicy\n}\n\nenum CrossClusterTaskFailedCause {\n  DOMAIN_NOT_ACTIVE\n  DOMAIN_NOT_EXISTS\n  WORKFLOW_ALREADY_RUNNING\n  WORKFLOW_NOT_EXISTS\n  WORKFLOW_ALREADY_COMPLETED\n  UNCATEGORIZED\n}\n\nenum GetTaskFailedCause {\n  SERVICE_BUSY\n  TIMEOUT\n  SHARD_OWNERSHIP_LOST\n  UNCATEGORIZED\n}\n\nstruct CrossClusterTaskInfo {\n  10: optional string domainID\n  20: optional string workflowID\n  30: optional string runID\n  40: optional CrossClusterTaskType taskType\n  50: optional i16 taskState\n  60: optional i64 (js.type = \"Long\") taskID\n  70: optional i64 (js.type = \"Long\") visibilityTimestamp\n}\n\nstruct CrossClusterStartChildExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string requestID\n  30: optional i64 (js.type = \"Long\") initiatedEventID\n  40: optional StartChildWorkflowExecutionInitiatedEventAttributes initiatedEventAttributes\n  // targetRunID is for scheduling first decision task\n  // targetWorkflowID is available in initiatedEventAttributes\n  50: optional string targetRunID\n}\n\nstruct CrossClusterStartChildExecutionResponseAttributes {\n  10: optional string runID\n}\n\nstruct CrossClusterCancelExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional string requestID\n  50: optional i64 (js.type = \"Long\") initiatedEventID\n  60: optional bool childWorkflowOnly\n}\n\nstruct CrossClusterCancelExecutionResponseAttributes {\n}\n\nstruct CrossClusterSignalExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional string requestID\n  50: optional i64 (js.type = \"Long\") initiatedEventID\n  60: optional bool childWorkflowOnly\n  70: optional string signalName\n  80: optional binary signalInput\n  90: optional binary control\n}\n\nstruct CrossClusterSignalExecutionResponseAttributes {\n}\n\nstruct CrossClusterRecordChildWorkflowExecutionCompleteRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional i64 (js.type = \"Long\") initiatedEventID\n  50: optional HistoryEvent completionEvent\n}\n\nstruct CrossClusterRecordChildWorkflowExecutionCompleteResponseAttributes {\n}\n\nstruct ApplyParentClosePolicyAttributes {\n  10: optional string childDomainID\n  20: optional string childWorkflowID\n  30: optional string childRunID\n  40: optional ParentClosePolicy parentClosePolicy\n}\n\nstruct ApplyParentClosePolicyStatus {\n  10: optional bool completed\n  20: optional CrossClusterTaskFailedCause failedCause\n}\n\nstruct ApplyParentClosePolicyRequest {\n  10: optional ApplyParentClosePolicyAttributes child\n  20: optional ApplyParentClosePolicyStatus status\n}\n\nstruct CrossClusterApplyParentClosePolicyRequestAttributes {\n  10: optional list<ApplyParentClosePolicyRequest> children\n}\n\nstruct ApplyParentClosePolicyResult {\n  10: optional ApplyParentClosePolicyAttributes child\n  20: optional CrossClusterTaskFailedCause failedCause\n}\n\nstruct CrossClusterApplyParentClosePolicyResponseAttributes {\n  10: optional list<ApplyParentClosePolicyResult> childrenStatus\n}\n\nstruct CrossClusterTaskRequest {\n  10: optional CrossClusterTaskInfo taskInfo\n  20: optional CrossClusterStartChildExecutionRequestAttributes startChildExecutionAttributes\n  30: optional CrossClusterCancelExecutionRequestAttributes cancelExecutionAttributes\n  40: optional CrossClusterSignalExecutionRequestAttributes signalExecutionAttributes\n  50: optional CrossClusterRecordChildWorkflowExecutionCompleteRequestAttributes recordChildWorkflowExecutionCompleteAttributes\n  60: optional CrossClusterApplyParentClosePolicyRequestAttributes applyParentClosePolicyAttributes\n}\n\nstruct CrossClusterTaskResponse {\n  10: optional i64 (js.type = \"Long\") taskID\n  20: optional CrossClusterTaskType taskType\n  30: optional i16 taskState\n  40: optional CrossClusterTaskFailedCause failedCause\n  50: optional CrossClusterStartChildExecutionResponseAttributes startChildExecutionAttributes\n  60: optional CrossClusterCancelExecutionResponseAttributes cancelExecutionAttributes\n  70: optional CrossClusterSignalExecutionResponseAttributes signalExecutionAttributes\n  80: optional CrossClusterRecordChildWorkflowExecutionCompleteResponseAttributes recordChildWorkflowExecutionCompleteAttributes\n  90: optional CrossClusterApplyParentClosePolicyResponseAttributes applyParentClosePolicyAttributes\n}\n\nstruct GetCrossClusterTasksRequest {\n  10: optional list<i32> shardIDs\n  20: optional string targetCluster\n}\n\nstruct GetCrossClusterTasksResponse {\n  10: optional map<i32, list<CrossClusterTaskRequest>> tasksByShard\n  20: optional map<i32, GetTaskFailedCause> failedCauseByShard\n}\n\nstruct RespondCrossClusterTasksCompletedRequest {\n  10: optional i32 shardID\n  20: optional string targetCluster\n  30: optional list<CrossClusterTaskResponse> taskResponses\n  40: optional bool fetchNewTasks\n}\n\nstruct RespondCrossClusterTasksCompletedResponse {\n  10: optional list<CrossClusterTaskRequest> tasks\n}\n"
+const rawIDL = "// Copyright (c) 2017 Uber Technologies, Inc.\n//\n// Permission is hereby granted, free of charge, to any person obtaining a copy\n// of this software and associated documentation files (the \"Software\"), to deal\n// in the Software without restriction, including without limitation the rights\n// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n// copies of the Software, and to permit persons to whom the Software is\n// furnished to do so, subject to the following conditions:\n//\n// The above copyright notice and this permission notice shall be included in\n// all copies or substantial portions of the Software.\n//\n// THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\n// THE SOFTWARE.\n\nnamespace java com.uber.cadence\n\nexception BadRequestError {\n  1: required string message\n}\n\nexception InternalServiceError {\n  1: required string message\n}\n\nexception InternalDataInconsistencyError {\n  1: required string message\n}\n\nexception DomainAlreadyExistsError {\n  1: required string message\n}\n\nexception WorkflowExecutionAlreadyStartedError {\n  10: optional string message\n  20: optional string startRequestId\n  30: optional string runId\n}\n\nexception WorkflowExecutionAlreadyCompletedError {\n  1: required string message\n}\n\nexception EntityNotExistsError {\n  1: required string message\n  2: optional string currentCluster\n  3: optional string activeCluster\n}\n\nexception ServiceBusyError {\n  1: required string message\n  2: optional string reason\n}\n\nexception CancellationAlreadyRequestedError {\n  1: required string message\n}\n\nexception QueryFailedError {\n  1: required string message\n}\n\nexception DomainNotActiveError {\n  1: required string message\n  2: required string domainName\n  3: required string currentCluster\n  4: required string activeCluster\n}\n\nexception LimitExceededError {\n  1: required string message\n}\n\nexception AccessDeniedError {\n  1: required string message\n}\n\nexception RetryTaskV2Error {\n  1: required string message\n  2: optional string domainId\n  3: optional string workflowId\n  4: optional string runId\n  5: optional i64 (js.type = \"Long\") startEventId\n  6: optional i64 (js.type = \"Long\") startEventVersion\n  7: optional i64 (js.type = \"Long\") endEventId\n  8: optional i64 (js.type = \"Long\") endEventVersion\n}\n\nexception ClientVersionNotSupportedError {\n  1: required string featureVersion\n  2: required string clientImpl\n  3: required string supportedVersions\n}\n\nexception FeatureNotEnabledError {\n  1: required string featureFlag\n}\n\nexception CurrentBranchChangedError {\n  10: required string message\n  20: required binary currentBranchToken\n}\n\nexception RemoteSyncMatchedError {\n  10: required string message\n}\n\nexception StickyWorkerUnavailableError {\n  1: required string message\n}\n\nexception TaskListNotOwnedByHostError {\n    1: required string ownedByIdentity\n    2: required string myIdentity\n    3: required string tasklistName\n}\n\nenum WorkflowIdReusePolicy {\n  /*\n   * allow start a workflow execution using the same workflow ID,\n   * when workflow not running, and the last execution close state is in\n   * [terminated, cancelled, timeouted, failed].\n   */\n  AllowDuplicateFailedOnly,\n  /*\n   * allow start a workflow execution using the same workflow ID,\n   * when workflow not running.\n   */\n  AllowDuplicate,\n  /*\n   * do not allow start a workflow execution using the same workflow ID at all\n   */\n  RejectDuplicate,\n  /*\n   * if a workflow is running using the same workflow ID, terminate it and start a new one\n   */\n  TerminateIfRunning,\n}\n\nenum DomainStatus {\n  REGISTERED,\n  DEPRECATED,\n  DELETED,\n}\n\nenum TimeoutType {\n  START_TO_CLOSE,\n  SCHEDULE_TO_START,\n  SCHEDULE_TO_CLOSE,\n  HEARTBEAT,\n}\n\nenum ParentClosePolicy {\n\tABANDON,\n\tREQUEST_CANCEL,\n\tTERMINATE,\n}\n\n\n// whenever this list of decision is changed\n// do change the mutableStateBuilder.go\n// function shouldBufferEvent\n// to make sure wo do the correct event ordering\nenum DecisionType {\n  ScheduleActivityTask,\n  RequestCancelActivityTask,\n  StartTimer,\n  CompleteWorkflowExecution,\n  FailWorkflowExecution,\n  CancelTimer,\n  CancelWorkflowExecution,\n  RequestCancelExternalWorkflowExecution,\n  RecordMarker,\n  ContinueAsNewWorkflowExecution,\n  StartChildWorkflowExecution,\n  SignalExternalWorkflowExecution,\n  UpsertWorkflowSearchAttributes,\n}\n\nenum EventType {\n  WorkflowExecutionStarted,\n  WorkflowExecutionCompleted,\n  WorkflowExecutionFailed,\n  WorkflowExecutionTimedOut,\n  DecisionTaskScheduled,\n  DecisionTaskStarted,\n  DecisionTaskCompleted,\n  DecisionTaskTimedOut\n  DecisionTaskFailed,\n  ActivityTaskScheduled,\n  ActivityTaskStarted,\n  ActivityTaskCompleted,\n  ActivityTaskFailed,\n  ActivityTaskTimedOut,\n  ActivityTaskCancelRequested,\n  RequestCancelActivityTaskFailed,\n  ActivityTaskCanceled,\n  TimerStarted,\n  TimerFired,\n  CancelTimerFailed,\n  TimerCanceled,\n  WorkflowExecutionCancelRequested,\n  WorkflowExecutionCanceled,\n  RequestCancelExternalWorkflowExecutionInitiated,\n  RequestCancelExternalWorkflowExecutionFailed,\n  ExternalWorkflowExecutionCancelRequested,\n  MarkerRecorded,\n  WorkflowExecutionSignaled,\n  WorkflowExecutionTerminated,\n  WorkflowExecutionContinuedAsNew,\n  StartChildWorkflowExecutionInitiated,\n  StartChildWorkflowExecutionFailed,\n  ChildWorkflowExecutionStarted,\n  ChildWorkflowExecutionCompleted,\n  ChildWorkflowExecutionFailed,\n  ChildWorkflowExecutionCanceled,\n  ChildWorkflowExecutionTimedOut,\n  ChildWorkflowExecutionTerminated,\n  SignalExternalWorkflowExecutionInitiated,\n  SignalExternalWorkflowExecutionFailed,\n  ExternalWorkflowExecutionSignaled,\n  UpsertWorkflowSearchAttributes,\n}\n\nenum DecisionTaskFailedCause {\n  UNHANDLED_DECISION,\n  BAD_SCHEDULE_ACTIVITY_ATTRIBUTES,\n  BAD_REQUEST_CANCEL_ACTIVITY_ATTRIBUTES,\n  BAD_START_TIMER_ATTRIBUTES,\n  BAD_CANCEL_TIMER_ATTRIBUTES,\n  BAD_RECORD_MARKER_ATTRIBUTES,\n  BAD_COMPLETE_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_FAIL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_CANCEL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_REQUEST_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_CONTINUE_AS_NEW_ATTRIBUTES,\n  START_TIMER_DUPLICATE_ID,\n  RESET_STICKY_TASKLIST,\n  WORKFLOW_WORKER_UNHANDLED_FAILURE,\n  BAD_SIGNAL_WORKFLOW_EXECUTION_ATTRIBUTES,\n  BAD_START_CHILD_EXECUTION_ATTRIBUTES,\n  FORCE_CLOSE_DECISION,\n  FAILOVER_CLOSE_DECISION,\n  BAD_SIGNAL_INPUT_SIZE,\n  RESET_WORKFLOW,\n  BAD_BINARY,\n  SCHEDULE_ACTIVITY_DUPLICATE_ID,\n  BAD_SEARCH_ATTRIBUTES,\n}\n\nenum DecisionTaskTimedOutCause {\n  TIMEOUT,\n  RESET,\n}\n\nenum CancelExternalWorkflowExecutionFailedCause {\n  UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,\n  WORKFLOW_ALREADY_COMPLETED,\n}\n\nenum SignalExternalWorkflowExecutionFailedCause {\n  UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,\n  WORKFLOW_ALREADY_COMPLETED,\n}\n\nenum ChildWorkflowExecutionFailedCause {\n  WORKFLOW_ALREADY_RUNNING,\n}\n\n// TODO: when migrating to gRPC, add a running / none status,\n//  currently, customer is using null / nil as an indication\n//  that workflow is still running\nenum WorkflowExecutionCloseStatus {\n  COMPLETED,\n  FAILED,\n  CANCELED,\n  TERMINATED,\n  CONTINUED_AS_NEW,\n  TIMED_OUT,\n}\n\nenum QueryTaskCompletedType {\n  COMPLETED,\n  FAILED,\n}\n\nenum QueryResultType {\n  ANSWERED,\n  FAILED,\n}\n\nenum PendingActivityState {\n  SCHEDULED,\n  STARTED,\n  CANCEL_REQUESTED,\n}\n\nenum PendingDecisionState {\n  SCHEDULED,\n  STARTED,\n}\n\nenum HistoryEventFilterType {\n  ALL_EVENT,\n  CLOSE_EVENT,\n}\n\nenum TaskListKind {\n  NORMAL,\n  STICKY,\n}\n\nenum ArchivalStatus {\n  DISABLED,\n  ENABLED,\n}\n\nenum IndexedValueType {\n  STRING,\n  KEYWORD,\n  INT,\n  DOUBLE,\n  BOOL,\n  DATETIME,\n}\n\nstruct Header {\n    10: optional map<string, binary> fields\n}\n\nstruct WorkflowType {\n  10: optional string name\n}\n\nstruct ActivityType {\n  10: optional string name\n}\n\nstruct TaskList {\n  10: optional string name\n  20: optional TaskListKind kind\n}\n\nenum EncodingType {\n  ThriftRW,\n  JSON,\n}\n\nenum QueryRejectCondition {\n  // NOT_OPEN indicates that query should be rejected if workflow is not open\n  NOT_OPEN\n  // NOT_COMPLETED_CLEANLY indicates that query should be rejected if workflow did not complete cleanly\n  NOT_COMPLETED_CLEANLY\n}\n\nenum QueryConsistencyLevel {\n  // EVENTUAL indicates that query should be eventually consistent\n  EVENTUAL\n  // STRONG indicates that any events that came before query should be reflected in workflow state before running query\n  STRONG\n}\n\nstruct DataBlob {\n  10: optional EncodingType EncodingType\n  20: optional binary Data\n}\n\nstruct TaskListMetadata {\n  10: optional double maxTasksPerSecond\n}\n\nstruct WorkflowExecution {\n  10: optional string workflowId\n  20: optional string runId\n}\n\nstruct Memo {\n  10: optional map<string,binary> fields\n}\n\nstruct SearchAttributes {\n  10: optional map<string,binary> indexedFields\n}\n\nstruct WorkerVersionInfo {\n  10: optional string impl\n  20: optional string featureVersion\n}\n\nstruct WorkflowExecutionInfo {\n  10: optional WorkflowExecution execution\n  20: optional WorkflowType type\n  30: optional i64 (js.type = \"Long\") startTime\n  40: optional i64 (js.type = \"Long\") closeTime\n  50: optional WorkflowExecutionCloseStatus closeStatus\n  60: optional i64 (js.type = \"Long\") historyLength\n  70: optional string parentDomainId\n  71: optional string parentDomainName\n  72: optional i64 parentInitatedId\n  80: optional WorkflowExecution parentExecution\n  90: optional i64 (js.type = \"Long\") executionTime\n  100: optional Memo memo\n  101: optional SearchAttributes searchAttributes\n  110: optional ResetPoints autoResetPoints\n  120: optional string taskList\n  130: optional bool isCron\n  140: optional i64 (js.type = \"Long\") updateTime\n  150: optional map<string, string> partitionConfig\n}\n\nstruct WorkflowExecutionConfiguration {\n  10: optional TaskList taskList\n  20: optional i32 executionStartToCloseTimeoutSeconds\n  30: optional i32 taskStartToCloseTimeoutSeconds\n//  40: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n}\n\nstruct TransientDecisionInfo {\n  10: optional HistoryEvent scheduledEvent\n  20: optional HistoryEvent startedEvent\n}\n\nstruct ScheduleActivityTaskDecisionAttributes {\n  10: optional string activityId\n  20: optional ActivityType activityType\n  25: optional string domain\n  30: optional TaskList taskList\n  40: optional binary input\n  45: optional i32 scheduleToCloseTimeoutSeconds\n  50: optional i32 scheduleToStartTimeoutSeconds\n  55: optional i32 startToCloseTimeoutSeconds\n  60: optional i32 heartbeatTimeoutSeconds\n  70: optional RetryPolicy retryPolicy\n  80: optional Header header\n  90: optional bool requestLocalDispatch\n}\n\nstruct ActivityLocalDispatchInfo{\n  10: optional string activityId\n  20: optional i64 (js.type = \"Long\") scheduledTimestamp\n  30: optional i64 (js.type = \"Long\") startedTimestamp\n  40: optional i64 (js.type = \"Long\") scheduledTimestampOfThisAttempt\n  50: optional binary taskToken\n}\n\nstruct RequestCancelActivityTaskDecisionAttributes {\n  10: optional string activityId\n}\n\nstruct StartTimerDecisionAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startToFireTimeoutSeconds\n}\n\nstruct CompleteWorkflowExecutionDecisionAttributes {\n  10: optional binary result\n}\n\nstruct FailWorkflowExecutionDecisionAttributes {\n  10: optional string reason\n  20: optional binary details\n}\n\nstruct CancelTimerDecisionAttributes {\n  10: optional string timerId\n}\n\nstruct CancelWorkflowExecutionDecisionAttributes {\n  10: optional binary details\n}\n\nstruct RequestCancelExternalWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional string runId\n  40: optional binary control\n  50: optional bool childWorkflowOnly\n}\n\nstruct SignalExternalWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional string signalName\n  40: optional binary input\n  50: optional binary control\n  60: optional bool childWorkflowOnly\n}\n\nstruct UpsertWorkflowSearchAttributesDecisionAttributes {\n  10: optional SearchAttributes searchAttributes\n}\n\nstruct RecordMarkerDecisionAttributes {\n  10: optional string markerName\n  20: optional binary details\n  30: optional Header header\n}\n\nstruct ContinueAsNewWorkflowExecutionDecisionAttributes {\n  10: optional WorkflowType workflowType\n  20: optional TaskList taskList\n  30: optional binary input\n  40: optional i32 executionStartToCloseTimeoutSeconds\n  50: optional i32 taskStartToCloseTimeoutSeconds\n  60: optional i32 backoffStartIntervalInSeconds\n  70: optional RetryPolicy retryPolicy\n  80: optional ContinueAsNewInitiator initiator\n  90: optional string failureReason\n  100: optional binary failureDetails\n  110: optional binary lastCompletionResult\n  120: optional string cronSchedule\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n  160: optional i32 jitterStartSeconds\n}\n\nstruct StartChildWorkflowExecutionDecisionAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n//  80: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  81: optional ParentClosePolicy parentClosePolicy\n  90: optional binary control\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  110: optional RetryPolicy retryPolicy\n  120: optional string cronSchedule\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n}\n\nstruct Decision {\n  10:  optional DecisionType decisionType\n  20:  optional ScheduleActivityTaskDecisionAttributes scheduleActivityTaskDecisionAttributes\n  25:  optional StartTimerDecisionAttributes startTimerDecisionAttributes\n  30:  optional CompleteWorkflowExecutionDecisionAttributes completeWorkflowExecutionDecisionAttributes\n  35:  optional FailWorkflowExecutionDecisionAttributes failWorkflowExecutionDecisionAttributes\n  40:  optional RequestCancelActivityTaskDecisionAttributes requestCancelActivityTaskDecisionAttributes\n  50:  optional CancelTimerDecisionAttributes cancelTimerDecisionAttributes\n  60:  optional CancelWorkflowExecutionDecisionAttributes cancelWorkflowExecutionDecisionAttributes\n  70:  optional RequestCancelExternalWorkflowExecutionDecisionAttributes requestCancelExternalWorkflowExecutionDecisionAttributes\n  80:  optional RecordMarkerDecisionAttributes recordMarkerDecisionAttributes\n  90:  optional ContinueAsNewWorkflowExecutionDecisionAttributes continueAsNewWorkflowExecutionDecisionAttributes\n  100: optional StartChildWorkflowExecutionDecisionAttributes startChildWorkflowExecutionDecisionAttributes\n  110: optional SignalExternalWorkflowExecutionDecisionAttributes signalExternalWorkflowExecutionDecisionAttributes\n  120: optional UpsertWorkflowSearchAttributesDecisionAttributes upsertWorkflowSearchAttributesDecisionAttributes\n}\n\nstruct WorkflowExecutionStartedEventAttributes {\n  10: optional WorkflowType workflowType\n  12: optional string parentWorkflowDomain\n  14: optional WorkflowExecution parentWorkflowExecution\n  16: optional i64 (js.type = \"Long\") parentInitiatedEventId\n  20: optional TaskList taskList\n  30: optional binary input\n  40: optional i32 executionStartToCloseTimeoutSeconds\n  50: optional i32 taskStartToCloseTimeoutSeconds\n//  52: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  54: optional string continuedExecutionRunId\n  55: optional ContinueAsNewInitiator initiator\n  56: optional string continuedFailureReason\n  57: optional binary continuedFailureDetails\n  58: optional binary lastCompletionResult\n  59: optional string originalExecutionRunId // This is the runID when the WorkflowExecutionStarted event is written\n  60: optional string identity\n  61: optional string firstExecutionRunId // This is the very first runID along the chain of ContinueAsNew and Reset.\n  62: optional i64 (js.type = \"Long\") firstScheduledTimeNano\n  70: optional RetryPolicy retryPolicy\n  80: optional i32 attempt\n  90: optional i64 (js.type = \"Long\") expirationTimestamp\n  100: optional string cronSchedule\n  110: optional i32 firstDecisionTaskBackoffSeconds\n  120: optional Memo memo\n  121: optional SearchAttributes searchAttributes\n  130: optional ResetPoints prevAutoResetPoints\n  140: optional Header header\n  150: optional map<string, string> partitionConfig\n  160: optional string requestId\n}\n\nstruct ResetPoints{\n  10: optional list<ResetPointInfo> points\n}\n\n struct ResetPointInfo{\n  10: optional string binaryChecksum\n  20: optional string runId\n  30: optional i64 firstDecisionCompletedId\n  40: optional i64 (js.type = \"Long\") createdTimeNano\n  50: optional i64 (js.type = \"Long\") expiringTimeNano //the time that the run is deleted due to retention\n  60: optional bool resettable                         // false if the resset point has pending childWFs/reqCancels/signalExternals.\n}\n\nstruct WorkflowExecutionCompletedEventAttributes {\n  10: optional binary result\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct WorkflowExecutionFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct WorkflowExecutionTimedOutEventAttributes {\n  10: optional TimeoutType timeoutType\n}\n\nenum ContinueAsNewInitiator {\n  Decider,\n  RetryPolicy,\n  CronSchedule,\n}\n\nstruct WorkflowExecutionContinuedAsNewEventAttributes {\n  10: optional string newExecutionRunId\n  20: optional WorkflowType workflowType\n  30: optional TaskList taskList\n  40: optional binary input\n  50: optional i32 executionStartToCloseTimeoutSeconds\n  60: optional i32 taskStartToCloseTimeoutSeconds\n  70: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  80: optional i32 backoffStartIntervalInSeconds\n  90: optional ContinueAsNewInitiator initiator\n  100: optional string failureReason\n  110: optional binary failureDetails\n  120: optional binary lastCompletionResult\n  130: optional Header header\n  140: optional Memo memo\n  150: optional SearchAttributes searchAttributes\n}\n\nstruct DecisionTaskScheduledEventAttributes {\n  10: optional TaskList taskList\n  20: optional i32 startToCloseTimeoutSeconds\n  30: optional i64 (js.type = \"Long\") attempt\n}\n\nstruct DecisionTaskStartedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional string identity\n  30: optional string requestId\n}\n\nstruct DecisionTaskCompletedEventAttributes {\n  10: optional binary executionContext\n  20: optional i64 (js.type = \"Long\") scheduledEventId\n  30: optional i64 (js.type = \"Long\") startedEventId\n  40: optional string identity\n  50: optional string binaryChecksum\n}\n\nstruct DecisionTaskTimedOutEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional TimeoutType timeoutType\n  // for reset workflow\n  40: optional string baseRunId\n  50: optional string newRunId\n  60: optional i64 (js.type = \"Long\") forkEventVersion\n  70: optional string reason\n  80: optional DecisionTaskTimedOutCause cause\n  90: optional string requestId\n}\n\nstruct DecisionTaskFailedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional DecisionTaskFailedCause cause\n  35: optional binary details\n  40: optional string identity\n  50: optional string reason\n  // for reset workflow\n  60: optional string baseRunId\n  70: optional string newRunId\n  80: optional i64 (js.type = \"Long\") forkEventVersion\n  90: optional string binaryChecksum\n  100: optional string requestId\n}\n\nstruct ActivityTaskScheduledEventAttributes {\n  10: optional string activityId\n  20: optional ActivityType activityType\n  25: optional string domain\n  30: optional TaskList taskList\n  40: optional binary input\n  45: optional i32 scheduleToCloseTimeoutSeconds\n  50: optional i32 scheduleToStartTimeoutSeconds\n  55: optional i32 startToCloseTimeoutSeconds\n  60: optional i32 heartbeatTimeoutSeconds\n  90: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  110: optional RetryPolicy retryPolicy\n  120: optional Header header\n}\n\nstruct ActivityTaskStartedEventAttributes {\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional string identity\n  30: optional string requestId\n  40: optional i32 attempt\n  50: optional string lastFailureReason\n  60: optional binary lastFailureDetails\n}\n\nstruct ActivityTaskCompletedEventAttributes {\n  10: optional binary result\n  20: optional i64 (js.type = \"Long\") scheduledEventId\n  30: optional i64 (js.type = \"Long\") startedEventId\n  40: optional string identity\n}\n\nstruct ActivityTaskFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") scheduledEventId\n  40: optional i64 (js.type = \"Long\") startedEventId\n  50: optional string identity\n}\n\nstruct ActivityTaskTimedOutEventAttributes {\n  05: optional binary details\n  10: optional i64 (js.type = \"Long\") scheduledEventId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional TimeoutType timeoutType\n  // For retry activity, it may have a failure before timeout. It's important to keep those information for debug.\n  // Client can also provide the info for making next decision\n  40: optional string lastFailureReason\n  50: optional binary lastFailureDetails\n}\n\nstruct ActivityTaskCancelRequestedEventAttributes {\n  10: optional string activityId\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct RequestCancelActivityTaskFailedEventAttributes{\n  10: optional string activityId\n  20: optional string cause\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct ActivityTaskCanceledEventAttributes {\n  10: optional binary details\n  20: optional i64 (js.type = \"Long\") latestCancelRequestedEventId\n  30: optional i64 (js.type = \"Long\") scheduledEventId\n  40: optional i64 (js.type = \"Long\") startedEventId\n  50: optional string identity\n}\n\nstruct TimerStartedEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startToFireTimeoutSeconds\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct TimerFiredEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct TimerCanceledEventAttributes {\n  10: optional string timerId\n  20: optional i64 (js.type = \"Long\") startedEventId\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional string identity\n}\n\nstruct CancelTimerFailedEventAttributes {\n  10: optional string timerId\n  20: optional string cause\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional string identity\n}\n\nstruct WorkflowExecutionCancelRequestedEventAttributes {\n  10: optional string cause\n  20: optional i64 (js.type = \"Long\") externalInitiatedEventId\n  30: optional WorkflowExecution externalWorkflowExecution\n  40: optional string identity\n  50: optional string requestId\n}\n\nstruct WorkflowExecutionCanceledEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional binary details\n}\n\nstruct MarkerRecordedEventAttributes {\n  10: optional string markerName\n  20: optional binary details\n  30: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  40: optional Header header\n}\n\nstruct WorkflowExecutionSignaledEventAttributes {\n  10: optional string signalName\n  20: optional binary input\n  30: optional string identity\n  40: optional string requestId\n}\n\nstruct WorkflowExecutionTerminatedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RequestCancelExternalWorkflowExecutionInitiatedEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional binary control\n  50: optional bool childWorkflowOnly\n}\n\nstruct RequestCancelExternalWorkflowExecutionFailedEventAttributes {\n  10: optional CancelExternalWorkflowExecutionFailedCause cause\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional binary control\n}\n\nstruct ExternalWorkflowExecutionCancelRequestedEventAttributes {\n  10: optional i64 (js.type = \"Long\") initiatedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n}\n\nstruct SignalExternalWorkflowExecutionInitiatedEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional string signalName\n  50: optional binary input\n  60: optional binary control\n  70: optional bool childWorkflowOnly\n}\n\nstruct SignalExternalWorkflowExecutionFailedEventAttributes {\n  10: optional SignalExternalWorkflowExecutionFailedCause cause\n  20: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional binary control\n}\n\nstruct ExternalWorkflowExecutionSignaledEventAttributes {\n  10: optional i64 (js.type = \"Long\") initiatedEventId\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional binary control\n}\n\nstruct UpsertWorkflowSearchAttributesEventAttributes {\n  10: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  20: optional SearchAttributes searchAttributes\n}\n\nstruct StartChildWorkflowExecutionInitiatedEventAttributes {\n  10:  optional string domain\n  20:  optional string workflowId\n  30:  optional WorkflowType workflowType\n  40:  optional TaskList taskList\n  50:  optional binary input\n  60:  optional i32 executionStartToCloseTimeoutSeconds\n  70:  optional i32 taskStartToCloseTimeoutSeconds\n//  80:  optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  81:  optional ParentClosePolicy parentClosePolicy\n  90:  optional binary control\n  100: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n  110: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  120: optional RetryPolicy retryPolicy\n  130: optional string cronSchedule\n  140: optional Header header\n  150: optional Memo memo\n  160: optional SearchAttributes searchAttributes\n  170: optional i32 delayStartSeconds\n  180: optional i32 jitterStartSeconds\n  190: optional i64 (js.type = \"Long\") firstRunAtTimestamp\n}\n\nstruct StartChildWorkflowExecutionFailedEventAttributes {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional ChildWorkflowExecutionFailedCause cause\n  50: optional binary control\n  60: optional i64 (js.type = \"Long\") initiatedEventId\n  70: optional i64 (js.type = \"Long\") decisionTaskCompletedEventId\n}\n\nstruct ChildWorkflowExecutionStartedEventAttributes {\n  10: optional string domain\n  20: optional i64 (js.type = \"Long\") initiatedEventId\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional Header header\n}\n\nstruct ChildWorkflowExecutionCompletedEventAttributes {\n  10: optional binary result\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionFailedEventAttributes {\n  10: optional string reason\n  20: optional binary details\n  30: optional string domain\n  40: optional WorkflowExecution workflowExecution\n  50: optional WorkflowType workflowType\n  60: optional i64 (js.type = \"Long\") initiatedEventId\n  70: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionCanceledEventAttributes {\n  10: optional binary details\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionTimedOutEventAttributes {\n  10: optional TimeoutType timeoutType\n  20: optional string domain\n  30: optional WorkflowExecution workflowExecution\n  40: optional WorkflowType workflowType\n  50: optional i64 (js.type = \"Long\") initiatedEventId\n  60: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct ChildWorkflowExecutionTerminatedEventAttributes {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional WorkflowType workflowType\n  40: optional i64 (js.type = \"Long\") initiatedEventId\n  50: optional i64 (js.type = \"Long\") startedEventId\n}\n\nstruct HistoryEvent {\n  10:  optional i64 (js.type = \"Long\") eventId\n  20:  optional i64 (js.type = \"Long\") timestamp\n  30:  optional EventType eventType\n  35:  optional i64 (js.type = \"Long\") version\n  36:  optional i64 (js.type = \"Long\") taskId\n  40:  optional WorkflowExecutionStartedEventAttributes workflowExecutionStartedEventAttributes\n  50:  optional WorkflowExecutionCompletedEventAttributes workflowExecutionCompletedEventAttributes\n  60:  optional WorkflowExecutionFailedEventAttributes workflowExecutionFailedEventAttributes\n  70:  optional WorkflowExecutionTimedOutEventAttributes workflowExecutionTimedOutEventAttributes\n  80:  optional DecisionTaskScheduledEventAttributes decisionTaskScheduledEventAttributes\n  90:  optional DecisionTaskStartedEventAttributes decisionTaskStartedEventAttributes\n  100: optional DecisionTaskCompletedEventAttributes decisionTaskCompletedEventAttributes\n  110: optional DecisionTaskTimedOutEventAttributes decisionTaskTimedOutEventAttributes\n  120: optional DecisionTaskFailedEventAttributes decisionTaskFailedEventAttributes\n  130: optional ActivityTaskScheduledEventAttributes activityTaskScheduledEventAttributes\n  140: optional ActivityTaskStartedEventAttributes activityTaskStartedEventAttributes\n  150: optional ActivityTaskCompletedEventAttributes activityTaskCompletedEventAttributes\n  160: optional ActivityTaskFailedEventAttributes activityTaskFailedEventAttributes\n  170: optional ActivityTaskTimedOutEventAttributes activityTaskTimedOutEventAttributes\n  180: optional TimerStartedEventAttributes timerStartedEventAttributes\n  190: optional TimerFiredEventAttributes timerFiredEventAttributes\n  200: optional ActivityTaskCancelRequestedEventAttributes activityTaskCancelRequestedEventAttributes\n  210: optional RequestCancelActivityTaskFailedEventAttributes requestCancelActivityTaskFailedEventAttributes\n  220: optional ActivityTaskCanceledEventAttributes activityTaskCanceledEventAttributes\n  230: optional TimerCanceledEventAttributes timerCanceledEventAttributes\n  240: optional CancelTimerFailedEventAttributes cancelTimerFailedEventAttributes\n  250: optional MarkerRecordedEventAttributes markerRecordedEventAttributes\n  260: optional WorkflowExecutionSignaledEventAttributes workflowExecutionSignaledEventAttributes\n  270: optional WorkflowExecutionTerminatedEventAttributes workflowExecutionTerminatedEventAttributes\n  280: optional WorkflowExecutionCancelRequestedEventAttributes workflowExecutionCancelRequestedEventAttributes\n  290: optional WorkflowExecutionCanceledEventAttributes workflowExecutionCanceledEventAttributes\n  300: optional RequestCancelExternalWorkflowExecutionInitiatedEventAttributes requestCancelExternalWorkflowExecutionInitiatedEventAttributes\n  310: optional RequestCancelExternalWorkflowExecutionFailedEventAttributes requestCancelExternalWorkflowExecutionFailedEventAttributes\n  320: optional ExternalWorkflowExecutionCancelRequestedEventAttributes externalWorkflowExecutionCancelRequestedEventAttributes\n  330: optional WorkflowExecutionContinuedAsNewEventAttributes workflowExecutionContinuedAsNewEventAttributes\n  340: optional StartChildWorkflowExecutionInitiatedEventAttributes startChildWorkflowExecutionInitiatedEventAttributes\n  350: optional StartChildWorkflowExecutionFailedEventAttributes startChildWorkflowExecutionFailedEventAttributes\n  360: optional ChildWorkflowExecutionStartedEventAttributes childWorkflowExecutionStartedEventAttributes\n  370: optional ChildWorkflowExecutionCompletedEventAttributes childWorkflowExecutionCompletedEventAttributes\n  380: optional ChildWorkflowExecutionFailedEventAttributes childWorkflowExecutionFailedEventAttributes\n  390: optional ChildWorkflowExecutionCanceledEventAttributes childWorkflowExecutionCanceledEventAttributes\n  400: optional ChildWorkflowExecutionTimedOutEventAttributes childWorkflowExecutionTimedOutEventAttributes\n  410: optional ChildWorkflowExecutionTerminatedEventAttributes childWorkflowExecutionTerminatedEventAttributes\n  420: optional SignalExternalWorkflowExecutionInitiatedEventAttributes signalExternalWorkflowExecutionInitiatedEventAttributes\n  430: optional SignalExternalWorkflowExecutionFailedEventAttributes signalExternalWorkflowExecutionFailedEventAttributes\n  440: optional ExternalWorkflowExecutionSignaledEventAttributes externalWorkflowExecutionSignaledEventAttributes\n  450: optional UpsertWorkflowSearchAttributesEventAttributes upsertWorkflowSearchAttributesEventAttributes\n}\n\nstruct History {\n  10: optional list<HistoryEvent> events\n}\n\nstruct WorkflowExecutionFilter {\n  10: optional string workflowId\n  20: optional string runId\n}\n\nstruct WorkflowTypeFilter {\n  10: optional string name\n}\n\nstruct StartTimeFilter {\n  10: optional i64 (js.type = \"Long\") earliestTime\n  20: optional i64 (js.type = \"Long\") latestTime\n}\n\nstruct DomainInfo {\n  10: optional string name\n  20: optional DomainStatus status\n  30: optional string description\n  40: optional string ownerEmail\n  // A key-value map for any customized purpose\n  50: optional map<string,string> data\n  60: optional string uuid\n}\n\nstruct DomainConfiguration {\n  10: optional i32 workflowExecutionRetentionPeriodInDays\n  20: optional bool emitMetric\n  60: optional IsolationGroupConfiguration isolationgroups\n  70: optional BadBinaries badBinaries\n  80: optional ArchivalStatus historyArchivalStatus\n  90: optional string historyArchivalURI\n  100: optional ArchivalStatus visibilityArchivalStatus\n  110: optional string visibilityArchivalURI\n  120: optional AsyncWorkflowConfiguration AsyncWorkflowConfiguration\n}\n\nstruct FailoverInfo {\n    10: optional i64 (js.type = \"Long\") failoverVersion\n    20: optional i64 (js.type = \"Long\") failoverStartTimestamp\n    30: optional i64 (js.type = \"Long\") failoverExpireTimestamp\n    40: optional i32 completedShardCount\n    50: optional list<i32> pendingShards\n}\n\nstruct BadBinaries{\n  10: optional map<string, BadBinaryInfo> binaries\n}\n\nstruct BadBinaryInfo{\n  10: optional string reason\n  20: optional string operator\n  30: optional i64 (js.type = \"Long\") createdTimeNano\n}\n\nstruct UpdateDomainInfo {\n  10: optional string description\n  20: optional string ownerEmail\n  // A key-value map for any customized purpose\n  30: optional map<string,string> data\n}\n\nstruct ClusterReplicationConfiguration {\n 10: optional string clusterName\n}\n\nstruct DomainReplicationConfiguration {\n 10: optional string activeClusterName\n 20: optional list<ClusterReplicationConfiguration> clusters\n}\n\nstruct RegisterDomainRequest {\n  10: optional string name\n  20: optional string description\n  30: optional string ownerEmail\n  40: optional i32 workflowExecutionRetentionPeriodInDays\n  50: optional bool emitMetric = true\n  60: optional list<ClusterReplicationConfiguration> clusters\n  70: optional string activeClusterName\n  // A key-value map for any customized purpose\n  80: optional map<string,string> data\n  90: optional string securityToken\n  120: optional bool isGlobalDomain\n  130: optional ArchivalStatus historyArchivalStatus\n  140: optional string historyArchivalURI\n  150: optional ArchivalStatus visibilityArchivalStatus\n  160: optional string visibilityArchivalURI\n}\n\nstruct ListDomainsRequest {\n  10: optional i32 pageSize\n  20: optional binary nextPageToken\n}\n\nstruct ListDomainsResponse {\n  10: optional list<DescribeDomainResponse> domains\n  20: optional binary nextPageToken\n}\n\nstruct DescribeDomainRequest {\n  10: optional string name\n  20: optional string uuid\n}\n\nstruct DescribeDomainResponse {\n  10: optional DomainInfo domainInfo\n  20: optional DomainConfiguration configuration\n  30: optional DomainReplicationConfiguration replicationConfiguration\n  40: optional i64 (js.type = \"Long\") failoverVersion\n  50: optional bool isGlobalDomain\n  60: optional FailoverInfo failoverInfo\n}\n\nstruct UpdateDomainRequest {\n 10: optional string name\n 20: optional UpdateDomainInfo updatedInfo\n 30: optional DomainConfiguration configuration\n 40: optional DomainReplicationConfiguration replicationConfiguration\n 50: optional string securityToken\n 60: optional string deleteBadBinary\n 70: optional i32 failoverTimeoutInSeconds\n}\n\nstruct UpdateDomainResponse {\n  10: optional DomainInfo domainInfo\n  20: optional DomainConfiguration configuration\n  30: optional DomainReplicationConfiguration replicationConfiguration\n  40: optional i64 (js.type = \"Long\") failoverVersion\n  50: optional bool isGlobalDomain\n}\n\nstruct DeprecateDomainRequest {\n 10: optional string name\n 20: optional string securityToken\n}\n\nstruct StartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n  80: optional string identity\n  90: optional string requestId\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n//  110: optional ChildPolicy childPolicy -- Removed but reserve the IDL order number\n  120: optional RetryPolicy retryPolicy\n  130: optional string cronSchedule\n  140: optional Memo memo\n  141: optional SearchAttributes searchAttributes\n  150: optional Header header\n  160: optional i32 delayStartSeconds\n  170: optional i32 jitterStartSeconds\n  180: optional i64 (js.type = \"Long\") firstRunAtTimestamp\n}\n\nstruct StartWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct StartWorkflowExecutionAsyncRequest {\n  10: optional StartWorkflowExecutionRequest request\n}\n\nstruct StartWorkflowExecutionAsyncResponse {\n}\n\nstruct RestartWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct DiagnoseWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string identity\n}\n\nstruct DiagnoseWorkflowExecutionResponse {\n  10: optional string domain\n  20: optional WorkflowExecution diagnosticWorkflowExecution\n}\n\nstruct PollForDecisionTaskRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional string identity\n  40: optional string binaryChecksum\n}\n\nstruct PollForDecisionTaskResponse {\n  10: optional binary taskToken\n  20: optional WorkflowExecution workflowExecution\n  30: optional WorkflowType workflowType\n  40: optional i64 (js.type = \"Long\") previousStartedEventId\n  50: optional i64 (js.type = \"Long\") startedEventId\n  51: optional i64 (js.type = 'Long') attempt\n  54: optional i64 (js.type = \"Long\") backlogCountHint\n  60: optional History history\n  70: optional binary nextPageToken\n  80: optional WorkflowQuery query\n  90: optional TaskList WorkflowExecutionTaskList\n  100: optional i64 (js.type = \"Long\") scheduledTimestamp\n  110: optional i64 (js.type = \"Long\") startedTimestamp\n  120: optional map<string, WorkflowQuery> queries\n  130: optional i64 (js.type = 'Long') nextEventId\n  140: optional i64 (js.type = 'Long') totalHistoryBytes\n  150: optional AutoConfigHint autoConfigHint\n}\n\nstruct StickyExecutionAttributes {\n  10: optional TaskList workerTaskList\n  20: optional i32 scheduleToStartTimeoutSeconds\n}\n\nstruct RespondDecisionTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional list<Decision> decisions\n  30: optional binary executionContext\n  40: optional string identity\n  50: optional StickyExecutionAttributes stickyAttributes\n  60: optional bool returnNewDecisionTask\n  70: optional bool forceCreateNewDecisionTask\n  80: optional string binaryChecksum\n  90: optional map<string, WorkflowQueryResult> queryResults\n}\n\nstruct RespondDecisionTaskCompletedResponse {\n  10: optional PollForDecisionTaskResponse decisionTask\n  20: optional map<string,ActivityLocalDispatchInfo> activitiesToDispatchLocally\n}\n\nstruct RespondDecisionTaskFailedRequest {\n  10: optional binary taskToken\n  20: optional DecisionTaskFailedCause cause\n  30: optional binary details\n  40: optional string identity\n  50: optional string binaryChecksum\n}\n\nstruct PollForActivityTaskRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional string identity\n  40: optional TaskListMetadata taskListMetadata\n}\n\nstruct PollForActivityTaskResponse {\n  10:  optional binary taskToken\n  20:  optional WorkflowExecution workflowExecution\n  30:  optional string activityId\n  40:  optional ActivityType activityType\n  50:  optional binary input\n  70:  optional i64 (js.type = \"Long\") scheduledTimestamp\n  80:  optional i32 scheduleToCloseTimeoutSeconds\n  90:  optional i64 (js.type = \"Long\") startedTimestamp\n  100: optional i32 startToCloseTimeoutSeconds\n  110: optional i32 heartbeatTimeoutSeconds\n  120: optional i32 attempt\n  130: optional i64 (js.type = \"Long\") scheduledTimestampOfThisAttempt\n  140: optional binary heartbeatDetails\n  150: optional WorkflowType workflowType\n  160: optional string workflowDomain\n  170: optional Header header\n  180: optional AutoConfigHint autoConfigHint\n}\n\nstruct RecordActivityTaskHeartbeatRequest {\n  10: optional binary taskToken\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RecordActivityTaskHeartbeatByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary details\n  60: optional string identity\n}\n\nstruct RecordActivityTaskHeartbeatResponse {\n  10: optional bool cancelRequested\n}\n\nstruct RespondActivityTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional binary result\n  30: optional string identity\n}\n\nstruct RespondActivityTaskFailedRequest {\n  10: optional binary taskToken\n  20: optional string reason\n  30: optional binary details\n  40: optional string identity\n}\n\nstruct RespondActivityTaskCanceledRequest {\n  10: optional binary taskToken\n  20: optional binary details\n  30: optional string identity\n}\n\nstruct RespondActivityTaskCompletedByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary result\n  60: optional string identity\n}\n\nstruct RespondActivityTaskFailedByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional string reason\n  60: optional binary details\n  70: optional string identity\n}\n\nstruct RespondActivityTaskCanceledByIDRequest {\n  10: optional string domain\n  20: optional string workflowID\n  30: optional string runID\n  40: optional string activityID\n  50: optional binary details\n  60: optional string identity\n}\n\nstruct RequestCancelWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string identity\n  40: optional string requestId\n  50: optional string cause\n  60: optional string firstExecutionRunID\n}\n\nstruct GetWorkflowExecutionHistoryRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional i32 maximumPageSize\n  40: optional binary nextPageToken\n  50: optional bool waitForNewEvent\n  60: optional HistoryEventFilterType HistoryEventFilterType\n  70: optional bool skipArchival\n}\n\nstruct GetWorkflowExecutionHistoryResponse {\n  10: optional History history\n  11: optional list<DataBlob> rawHistory\n  20: optional binary nextPageToken\n  30: optional bool archived\n}\n\nstruct SignalWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string signalName\n  40: optional binary input\n  50: optional string identity\n  60: optional string requestId\n  70: optional binary control\n}\n\nstruct SignalWithStartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional string workflowId\n  30: optional WorkflowType workflowType\n  40: optional TaskList taskList\n  50: optional binary input\n  60: optional i32 executionStartToCloseTimeoutSeconds\n  70: optional i32 taskStartToCloseTimeoutSeconds\n  80: optional string identity\n  90: optional string requestId\n  100: optional WorkflowIdReusePolicy workflowIdReusePolicy\n  110: optional string signalName\n  120: optional binary signalInput\n  130: optional binary control\n  140: optional RetryPolicy retryPolicy\n  150: optional string cronSchedule\n  160: optional Memo memo\n  161: optional SearchAttributes searchAttributes\n  170: optional Header header\n  180: optional i32 delayStartSeconds\n  190: optional i32 jitterStartSeconds\n  200: optional i64 (js.type = \"Long\") firstRunAtTimestamp\n}\n\nstruct SignalWithStartWorkflowExecutionAsyncRequest {\n  10: optional SignalWithStartWorkflowExecutionRequest request\n}\n\nstruct SignalWithStartWorkflowExecutionAsyncResponse {\n}\n\nstruct RestartWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional string identity\n}\nstruct TerminateWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional binary details\n  50: optional string identity\n  60: optional string firstExecutionRunID\n}\n\nstruct ResetWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution workflowExecution\n  30: optional string reason\n  40: optional i64 (js.type = \"Long\") decisionFinishEventId\n  50: optional string requestId\n  60: optional bool skipSignalReapply\n}\n\nstruct ResetWorkflowExecutionResponse {\n  10: optional string runId\n}\n\nstruct ListOpenWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 maximumPageSize\n  30: optional binary nextPageToken\n  40: optional StartTimeFilter StartTimeFilter\n  50: optional WorkflowExecutionFilter executionFilter\n  60: optional WorkflowTypeFilter typeFilter\n}\n\nstruct ListOpenWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListClosedWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 maximumPageSize\n  30: optional binary nextPageToken\n  40: optional StartTimeFilter StartTimeFilter\n  50: optional WorkflowExecutionFilter executionFilter\n  60: optional WorkflowTypeFilter typeFilter\n  70: optional WorkflowExecutionCloseStatus statusFilter\n}\n\nstruct ListClosedWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 pageSize\n  30: optional binary nextPageToken\n  40: optional string query\n}\n\nstruct ListWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct ListArchivedWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional i32 pageSize\n  30: optional binary nextPageToken\n  40: optional string query\n}\n\nstruct ListArchivedWorkflowExecutionsResponse {\n  10: optional list<WorkflowExecutionInfo> executions\n  20: optional binary nextPageToken\n}\n\nstruct CountWorkflowExecutionsRequest {\n  10: optional string domain\n  20: optional string query\n}\n\nstruct CountWorkflowExecutionsResponse {\n  10: optional i64 count\n}\n\nstruct GetSearchAttributesResponse {\n  10: optional map<string, IndexedValueType> keys\n}\n\nstruct QueryWorkflowRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n  30: optional WorkflowQuery query\n  // QueryRejectCondition can used to reject the query if workflow state does not satisify condition\n  40: optional QueryRejectCondition queryRejectCondition\n  50: optional QueryConsistencyLevel queryConsistencyLevel\n}\n\nstruct QueryRejected {\n  10: optional WorkflowExecutionCloseStatus closeStatus\n}\n\nstruct QueryWorkflowResponse {\n  10: optional binary queryResult\n  20: optional QueryRejected queryRejected\n}\n\nstruct WorkflowQuery {\n  10: optional string queryType\n  20: optional binary queryArgs\n}\n\nstruct ResetStickyTaskListRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct ResetStickyTaskListResponse {\n    // The reason to keep this response is to allow returning\n    // information in the future.\n}\n\nstruct RespondQueryTaskCompletedRequest {\n  10: optional binary taskToken\n  20: optional QueryTaskCompletedType completedType\n  30: optional binary queryResult\n  40: optional string errorMessage\n  50: optional WorkerVersionInfo workerVersionInfo\n}\n\nstruct WorkflowQueryResult {\n  10: optional QueryResultType resultType\n  20: optional binary answer\n  30: optional string errorMessage\n}\n\nstruct DescribeWorkflowExecutionRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct PendingActivityInfo {\n  10: optional string activityID\n  20: optional ActivityType activityType\n  30: optional PendingActivityState state\n  40: optional binary heartbeatDetails\n  50: optional i64 (js.type = \"Long\") lastHeartbeatTimestamp\n  60: optional i64 (js.type = \"Long\") lastStartedTimestamp\n  70: optional i32 attempt\n  80: optional i32 maximumAttempts\n  90: optional i64 (js.type = \"Long\") scheduledTimestamp\n  100: optional i64 (js.type = \"Long\") expirationTimestamp\n  110: optional string lastFailureReason\n  120: optional string lastWorkerIdentity\n  130: optional binary lastFailureDetails\n  140: optional string startedWorkerIdentity\n  150: optional i64 (js.type = \"Long\") scheduleID\n}\n\nstruct PendingDecisionInfo {\n  10: optional PendingDecisionState state\n  20: optional i64 (js.type = \"Long\") scheduledTimestamp\n  30: optional i64 (js.type = \"Long\") startedTimestamp\n  40: optional i64 attempt\n  50: optional i64 (js.type = \"Long\") originalScheduledTimestamp\n  60: optional i64 (js.type = \"Long\") scheduleID\n}\n\nstruct PendingChildExecutionInfo {\n  1: optional string domain\n  10: optional string workflowID\n  20: optional string runID\n  30: optional string workflowTypName\n  40: optional i64 (js.type = \"Long\") initiatedID\n  50: optional ParentClosePolicy parentClosePolicy\n}\n\nstruct DescribeWorkflowExecutionResponse {\n  10: optional WorkflowExecutionConfiguration executionConfiguration\n  20: optional WorkflowExecutionInfo workflowExecutionInfo\n  30: optional list<PendingActivityInfo> pendingActivities\n  40: optional list<PendingChildExecutionInfo> pendingChildren\n  50: optional PendingDecisionInfo pendingDecision\n}\n\nstruct DescribeTaskListRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n  30: optional TaskListType taskListType\n  40: optional bool includeTaskListStatus\n}\n\nstruct DescribeTaskListResponse {\n  10: optional list<PollerInfo> pollers\n  20: optional TaskListStatus taskListStatus\n}\n\nstruct GetTaskListsByDomainRequest {\n  10: optional string domainName\n}\n\nstruct GetTaskListsByDomainResponse {\n  10: optional map<string,DescribeTaskListResponse> decisionTaskListMap\n  20: optional map<string,DescribeTaskListResponse> activityTaskListMap\n}\n\nstruct ListTaskListPartitionsRequest {\n  10: optional string domain\n  20: optional TaskList taskList\n}\n\nstruct TaskListPartitionMetadata {\n  10: optional string key\n  20: optional string ownerHostName\n}\n\nstruct ListTaskListPartitionsResponse {\n  10: optional list<TaskListPartitionMetadata> activityTaskListPartitions\n  20: optional list<TaskListPartitionMetadata> decisionTaskListPartitions\n}\n\nstruct TaskListStatus {\n  10: optional i64 (js.type = \"Long\") backlogCountHint\n  20: optional i64 (js.type = \"Long\") readLevel\n  30: optional i64 (js.type = \"Long\") ackLevel\n  35: optional double ratePerSecond\n  40: optional TaskIDBlock taskIDBlock\n}\n\nstruct TaskIDBlock {\n  10: optional i64 (js.type = \"Long\")  startID\n  20: optional i64 (js.type = \"Long\")  endID\n}\n\n//At least one of the parameters needs to be provided\nstruct DescribeHistoryHostRequest {\n  10: optional string               hostAddress //ip:port\n  20: optional i32                  shardIdForHost\n  30: optional WorkflowExecution    executionForHost\n}\n\nstruct RemoveTaskRequest {\n  10: optional i32                      shardID\n  20: optional i32                      type\n  30: optional i64 (js.type = \"Long\")   taskID\n  40: optional i64 (js.type = \"Long\")   visibilityTimestamp\n  50: optional string                   clusterName\n}\n\nstruct CloseShardRequest {\n  10: optional i32               shardID\n}\n\nstruct ResetQueueRequest {\n  10: optional i32    shardID\n  20: optional string clusterName\n  30: optional i32    type\n}\n\nstruct DescribeQueueRequest {\n  10: optional i32    shardID\n  20: optional string clusterName\n  30: optional i32    type\n}\n\nstruct DescribeQueueResponse {\n  10: optional list<string> processingQueueStates\n}\n\nstruct DescribeShardDistributionRequest {\n  10: optional i32 pageSize\n  20: optional i32 pageID\n}\n\nstruct DescribeShardDistributionResponse {\n  10: optional i32              numberOfShards\n\n  // ShardID to Address (ip:port) map\n  20: optional map<i32, string> shards\n}\n\nstruct DescribeHistoryHostResponse{\n  10: optional i32                  numberOfShards\n  20: optional list<i32>            shardIDs\n  30: optional DomainCacheInfo      domainCache\n  40: optional string               shardControllerStatus\n  50: optional string               address\n}\n\nstruct DomainCacheInfo{\n  10: optional i64 numOfItemsInCacheByID\n  20: optional i64 numOfItemsInCacheByName\n}\n\nenum TaskListType {\n  /*\n   * Decision type of tasklist\n   */\n  Decision,\n  /*\n   * Activity type of tasklist\n   */\n  Activity,\n}\n\nstruct PollerInfo {\n  // Unix Nano\n  10: optional i64 (js.type = \"Long\")  lastAccessTime\n  20: optional string identity\n  30: optional double ratePerSecond\n}\n\nstruct RetryPolicy {\n  // Interval of the first retry. If coefficient is 1.0 then it is used for all retries.\n  10: optional i32 initialIntervalInSeconds\n\n  // Coefficient used to calculate the next retry interval.\n  // The next retry interval is previous interval multiplied by the coefficient.\n  // Must be 1 or larger.\n  20: optional double backoffCoefficient\n\n  // Maximum interval between retries. Exponential backoff leads to interval increase.\n  // This value is the cap of the increase. Default is 100x of initial interval.\n  30: optional i32 maximumIntervalInSeconds\n\n  // Maximum number of attempts. When exceeded the retries stop even if not expired yet.\n  // Must be 1 or bigger. Default is unlimited.\n  40: optional i32 maximumAttempts\n\n  // Non-Retriable errors. Will stop retrying if error matches this list.\n  50: optional list<string> nonRetriableErrorReasons\n\n  // Expiration time for the whole retry process.\n  60: optional i32 expirationIntervalInSeconds\n}\n\n// HistoryBranchRange represents a piece of range for a branch.\nstruct HistoryBranchRange{\n  // branchID of original branch forked from\n  10: optional string branchID\n  // beinning node for the range, inclusive\n  20: optional i64 beginNodeID\n  // ending node for the range, exclusive\n  30: optional i64 endNodeID\n}\n\n// For history persistence to serialize/deserialize branch details\nstruct HistoryBranch{\n  10: optional string treeID\n  20: optional string branchID\n  30: optional list<HistoryBranchRange> ancestors\n}\n\n// VersionHistoryItem contains signal eventID and the corresponding version\nstruct VersionHistoryItem{\n  10: optional i64 (js.type = \"Long\") eventID\n  20: optional i64 (js.type = \"Long\") version\n}\n\n// VersionHistory contains the version history of a branch\nstruct VersionHistory{\n  10: optional binary branchToken\n  20: optional list<VersionHistoryItem> items\n}\n\n// VersionHistories contains all version histories from all branches\nstruct VersionHistories{\n  10: optional i32 currentVersionHistoryIndex\n  20: optional list<VersionHistory> histories\n}\n\n// ReapplyEventsRequest is the request for reapply events API\nstruct ReapplyEventsRequest{\n  10: optional string domainName\n  20: optional WorkflowExecution workflowExecution\n  30: optional DataBlob events\n}\n\n// SupportedClientVersions contains the support versions for client library\nstruct SupportedClientVersions{\n  10: optional string goSdk\n  20: optional string javaSdk\n}\n\n// ClusterInfo contains information about cadence cluster\nstruct ClusterInfo{\n  10: optional SupportedClientVersions supportedClientVersions\n}\n\nstruct RefreshWorkflowTasksRequest {\n  10: optional string domain\n  20: optional WorkflowExecution execution\n}\n\nstruct FeatureFlags {\n\t10: optional bool WorkflowExecutionAlreadyCompletedErrorEnabled\n}\n\nenum CrossClusterTaskType {\n  StartChildExecution\n  CancelExecution\n  SignalExecution\n  RecordChildWorkflowExecutionComplete\n  ApplyParentClosePolicy\n}\n\nenum CrossClusterTaskFailedCause {\n  DOMAIN_NOT_ACTIVE\n  DOMAIN_NOT_EXISTS\n  WORKFLOW_ALREADY_RUNNING\n  WORKFLOW_NOT_EXISTS\n  WORKFLOW_ALREADY_COMPLETED\n  UNCATEGORIZED\n}\n\nenum GetTaskFailedCause {\n  SERVICE_BUSY\n  TIMEOUT\n  SHARD_OWNERSHIP_LOST\n  UNCATEGORIZED\n}\n\nstruct CrossClusterTaskInfo {\n  10: optional string domainID\n  20: optional string workflowID\n  30: optional string runID\n  40: optional CrossClusterTaskType taskType\n  50: optional i16 taskState\n  60: optional i64 (js.type = \"Long\") taskID\n  70: optional i64 (js.type = \"Long\") visibilityTimestamp\n}\n\nstruct CrossClusterStartChildExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string requestID\n  30: optional i64 (js.type = \"Long\") initiatedEventID\n  40: optional StartChildWorkflowExecutionInitiatedEventAttributes initiatedEventAttributes\n  // targetRunID is for scheduling first decision task\n  // targetWorkflowID is available in initiatedEventAttributes\n  50: optional string targetRunID\n  60: optional map<string, string> partitionConfig\n}\n\nstruct CrossClusterStartChildExecutionResponseAttributes {\n  10: optional string runID\n}\n\nstruct CrossClusterCancelExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional string requestID\n  50: optional i64 (js.type = \"Long\") initiatedEventID\n  60: optional bool childWorkflowOnly\n}\n\nstruct CrossClusterCancelExecutionResponseAttributes {\n}\n\nstruct CrossClusterSignalExecutionRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional string requestID\n  50: optional i64 (js.type = \"Long\") initiatedEventID\n  60: optional bool childWorkflowOnly\n  70: optional string signalName\n  80: optional binary signalInput\n  90: optional binary control\n}\n\nstruct CrossClusterSignalExecutionResponseAttributes {\n}\n\nstruct CrossClusterRecordChildWorkflowExecutionCompleteRequestAttributes {\n  10: optional string targetDomainID\n  20: optional string targetWorkflowID\n  30: optional string targetRunID\n  40: optional i64 (js.type = \"Long\") initiatedEventID\n  50: optional HistoryEvent completionEvent\n}\n\nstruct CrossClusterRecordChildWorkflowExecutionCompleteResponseAttributes {\n}\n\nstruct ApplyParentClosePolicyAttributes {\n  10: optional string childDomainID\n  20: optional string childWorkflowID\n  30: optional string childRunID\n  40: optional ParentClosePolicy parentClosePolicy\n}\n\nstruct ApplyParentClosePolicyStatus {\n  10: optional bool completed\n  20: optional CrossClusterTaskFailedCause failedCause\n}\n\nstruct ApplyParentClosePolicyRequest {\n  10: optional ApplyParentClosePolicyAttributes child\n  20: optional ApplyParentClosePolicyStatus status\n}\n\nstruct CrossClusterApplyParentClosePolicyRequestAttributes {\n  10: optional list<ApplyParentClosePolicyRequest> children\n}\n\nstruct ApplyParentClosePolicyResult {\n  10: optional ApplyParentClosePolicyAttributes child\n  20: optional CrossClusterTaskFailedCause failedCause\n}\n\nstruct CrossClusterApplyParentClosePolicyResponseAttributes {\n  10: optional list<ApplyParentClosePolicyResult> childrenStatus\n}\n\nstruct CrossClusterTaskRequest {\n  10: optional CrossClusterTaskInfo taskInfo\n  20: optional CrossClusterStartChildExecutionRequestAttributes startChildExecutionAttributes\n  30: optional CrossClusterCancelExecutionRequestAttributes cancelExecutionAttributes\n  40: optional CrossClusterSignalExecutionRequestAttributes signalExecutionAttributes\n  50: optional CrossClusterRecordChildWorkflowExecutionCompleteRequestAttributes recordChildWorkflowExecutionCompleteAttributes\n  60: optional CrossClusterApplyParentClosePolicyRequestAttributes applyParentClosePolicyAttributes\n}\n\nstruct CrossClusterTaskResponse {\n  10: optional i64 (js.type = \"Long\") taskID\n  20: optional CrossClusterTaskType taskType\n  30: optional i16 taskState\n  40: optional CrossClusterTaskFailedCause failedCause\n  50: optional CrossClusterStartChildExecutionResponseAttributes startChildExecutionAttributes\n  60: optional CrossClusterCancelExecutionResponseAttributes cancelExecutionAttributes\n  70: optional CrossClusterSignalExecutionResponseAttributes signalExecutionAttributes\n  80: optional CrossClusterRecordChildWorkflowExecutionCompleteResponseAttributes recordChildWorkflowExecutionCompleteAttributes\n  90: optional CrossClusterApplyParentClosePolicyResponseAttributes applyParentClosePolicyAttributes\n}\n\nstruct GetCrossClusterTasksRequest {\n  10: optional list<i32> shardIDs\n  20: optional string targetCluster\n}\n\nstruct GetCrossClusterTasksResponse {\n  10: optional map<i32, list<CrossClusterTaskRequest>> tasksByShard\n  20: optional map<i32, GetTaskFailedCause> failedCauseByShard\n}\n\nstruct RespondCrossClusterTasksCompletedRequest {\n  10: optional i32 shardID\n  20: optional string targetCluster\n  30: optional list<CrossClusterTaskResponse> taskResponses\n  40: optional bool fetchNewTasks\n}\n\nstruct RespondCrossClusterTasksCompletedResponse {\n  10: optional list<CrossClusterTaskRequest> tasks\n}\n\nenum IsolationGroupState {\n  INVALID,\n  HEALTHY,\n  DRAINED,\n}\n\nstruct IsolationGroupPartition {\n  10: optional string name\n  20: optional IsolationGroupState state\n}\n\nstruct IsolationGroupConfiguration {\n  10: optional list<IsolationGroupPartition> isolationGroups\n}\n\nstruct AsyncWorkflowConfiguration {\n  10: optional bool enabled\n  // PredefinedQueueName is the name of the predefined queue in cadence server config's asyncWorkflowQueues\n  20: optional string predefinedQueueName\n  // queueType is the type of the queue if predefined_queue_name is not used\n  30: optional string queueType\n  // queueConfig is the configuration for the queue if predefined_queue_name is not used\n  40: optional DataBlob queueConfig\n}\n\n/**\n* Any is a logical duplicate of google.protobuf.Any.\n*\n* The intent of the type is the same, but it is not intended to be directly\n* compatible with google.protobuf.Any or any Thrift equivalent - this blob is\n* RPC-type agnostic by design (as the underlying data may be transported over\n* proto or thrift), and the data-bytes may be in any encoding.\n*\n* This is intentionally different from DataBlob, which supports only a handful\n* of known encodings so it can be interpreted everywhere.  Any supports literally\n* any contents, and needs to be considered opaque until it is given to something\n* that is expecting it.\n*\n* See ValueType to interpret the contents.\n**/\nstruct Any {\n  // Type-string describing value's contents, and intentionally avoiding the\n  // name \"type\" as it is often a special term.\n  // This should usually be a hard-coded string of some kind.\n  10: optional string ValueType\n  // Arbitrarily-encoded bytes, to be deserialized by a runtime implementation.\n  // The contents are described by ValueType.\n  20: optional binary Value\n}\n\nstruct AutoConfigHint {\n  10: optional bool enableAutoConfig\n  20: optional i64 pollerWaitTimeInMs\n}\n"

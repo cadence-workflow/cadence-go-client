@@ -28,6 +28,7 @@ import (
 	"reflect"
 
 	"github.com/apache/thrift/lib/go/thrift"
+
 	"go.uber.org/cadence/internal/common"
 )
 

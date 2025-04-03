@@ -21,9 +21,10 @@
 package thrift
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func Payload(p *apiv1.Payload) []byte {
@@ -38,6 +39,13 @@ func Payload(p *apiv1.Payload) []byte {
 		return []byte{}
 	}
 	return p.Data
+}
+
+func Domain(domain string) *string {
+	if domain == "" {
+		return nil
+	}
+	return &domain
 }
 
 func FailureReason(failure *apiv1.Failure) *string {
@@ -84,6 +92,16 @@ func ActivityType(t *apiv1.ActivityType) *shared.ActivityType {
 	}
 	return &shared.ActivityType{
 		Name: &t.Name,
+	}
+}
+
+func AutoConfigHint(t *apiv1.AutoConfigHint) *shared.AutoConfigHint {
+	if t == nil {
+		return nil
+	}
+	return &shared.AutoConfigHint{
+		EnableAutoConfig:   &t.EnableAutoConfig,
+		PollerWaitTimeInMs: &t.PollerWaitTimeInMs,
 	}
 }
 

@@ -33,6 +33,8 @@ import (
 	s "go.uber.org/cadence/.gen/go/shared"
 )
 
+//go:generate mockery --name WorkflowTaskHandler --inpackage --with-expecter --case snake --filename internal_workflow_task_handler_mock.go --boilerplate-file ../LICENSE
+
 type (
 	decisionHeartbeatFunc func(response interface{}, startTime time.Time) (*workflowTask, error)
 
@@ -71,7 +73,7 @@ type (
 
 	// WorkflowTaskHandler represents decision task handlers.
 	WorkflowTaskHandler interface {
-		// Processes the workflow task
+		// ProcessWorkflowTask processes the workflow task
 		// The response could be:
 		// - RespondDecisionTaskCompletedRequest
 		// - RespondDecisionTaskFailedRequest
@@ -84,7 +86,7 @@ type (
 
 	// ActivityTaskHandler represents activity task handlers.
 	ActivityTaskHandler interface {
-		// Executes the activity task
+		// Execute executes the activity task
 		// The response is one of the types:
 		// - RespondActivityTaskCompletedRequest
 		// - RespondActivityTaskFailedRequest

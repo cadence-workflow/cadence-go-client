@@ -28,15 +28,25 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber-go/tally"
-	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"go.uber.org/cadence/.gen/go/shared"
 )
 
+//go:generate mockery --name ServiceInvoker --inpackage --with-expecter --case snake --filename service_invoker_mock.go --boilerplate-file ../LICENSE
+
 type (
+	// RegistryActivityInfo
+	RegistryActivityInfo interface {
+		ActivityType() ActivityType
+		GetFunction() interface{}
+	}
+
 	// ActivityType identifies a activity type.
 	ActivityType struct {
 		Name string
+		Path string
 	}
 
 	// ActivityInfo contains information about currently executing activity.

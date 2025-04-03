@@ -24,6 +24,7 @@ import (
 	"time"
 
 	gogo "github.com/gogo/protobuf/types"
+
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
@@ -206,6 +207,10 @@ var (
 	}
 	ActivityLocalDispatchInfoMap = map[string]*apiv1.ActivityLocalDispatchInfo{
 		ActivityID: &ActivityLocalDispatchInfo,
+	}
+	AutoConfigHint = apiv1.AutoConfigHint{
+		EnableAutoConfig:   true,
+		PollerWaitTimeInMs: 100,
 	}
 	TaskListMetadata = apiv1.TaskListMetadata{
 		MaxTasksPerSecond: &gogo.DoubleValue{Value: RatePerSecond},

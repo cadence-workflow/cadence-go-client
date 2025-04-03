@@ -23,19 +23,22 @@ package internal
 import (
 	"context"
 	"errors"
-	"github.com/marusama/semaphore/v2"
-	"go.uber.org/atomic"
-	"go.uber.org/cadence/internal/common/autoscaler"
-	"go.uber.org/zap"
 	"sync"
 	"time"
+
+	"go.uber.org/atomic"
+	"go.uber.org/zap"
+
+	"go.uber.org/cadence/internal/common/autoscaler"
+	"go.uber.org/cadence/internal/worker"
 )
 
 // defaultPollerScalerCooldownInSeconds
 const (
 	defaultPollerAutoScalerCooldown          = time.Minute
 	defaultPollerAutoScalerTargetUtilization = 0.6
-	defaultMinConcurrentPollerSize           = 1
+	defaultMinConcurrentActivityPollerSize   = 1
+	defaultMinConcurrentDecisionPollerSize   = 2
 )
 
 var (
@@ -50,7 +53,7 @@ type (
 		isDryRun     bool
 		cooldownTime time.Duration
 		logger       *zap.Logger
-		sem          semaphore.Semaphore // resizable semaphore to control number of concurrent pollers
+		permit       worker.Permit
 		ctx          context.Context
 		cancel       context.CancelFunc
 		wg           *sync.WaitGroup // graceful stop
@@ -79,17 +82,17 @@ type (
 func newPollerScaler(
 	options pollerAutoScalerOptions,
 	logger *zap.Logger,
+	permit worker.Permit,
 	hooks ...func()) *pollerAutoScaler {
-	ctx, cancel := context.WithCancel(context.Background())
 	if !options.Enabled {
 		return nil
 	}
-
+	ctx, cancel := context.WithCancel(context.Background())
 	return &pollerAutoScaler{
 		isDryRun:             options.DryRun,
 		cooldownTime:         options.Cooldown,
 		logger:               logger,
-		sem:                  semaphore.New(options.InitCount),
+		permit:               permit,
 		wg:                   &sync.WaitGroup{},
 		ctx:                  ctx,
 		cancel:               cancel,
@@ -105,21 +108,6 @@ func newPollerScaler(
 	}
 }
 
-// Acquire concurrent poll quota
-func (p *pollerAutoScaler) Acquire(resource autoscaler.ResourceUnit) error {
-	return p.sem.Acquire(p.ctx, int(resource))
-}
-
-// Release concurrent poll quota
-func (p *pollerAutoScaler) Release(resource autoscaler.ResourceUnit) {
-	p.sem.Release(int(resource))
-}
-
-// GetCurrent poll quota
-func (p *pollerAutoScaler) GetCurrent() autoscaler.ResourceUnit {
-	return autoscaler.ResourceUnit(p.sem.GetLimit())
-}
-
 // Start an auto-scaler go routine and returns a done to stop it
 func (p *pollerAutoScaler) Start() {
 	logger := p.logger.Sugar()
@@ -131,7 +119,7 @@ func (p *pollerAutoScaler) Start() {
 			case <-p.ctx.Done():
 				return
 			case <-time.After(p.cooldownTime):
-				currentResource := autoscaler.ResourceUnit(p.sem.GetLimit())
+				currentResource := autoscaler.ResourceUnit(p.permit.Quota())
 				currentUsages, err := p.pollerUsageEstimator.Estimate()
 				if err != nil {
 					logger.Warnw("poller autoscaler skip due to estimator error", "error", err)
@@ -144,7 +132,7 @@ func (p *pollerAutoScaler) Start() {
 					"recommend", uint64(proposedResource),
 					"isDryRun", p.isDryRun)
 				if !p.isDryRun {
-					p.sem.SetLimit(int(proposedResource))
+					p.permit.SetQuota(int(proposedResource))
 				}
 				p.pollerUsageEstimator.Reset()
 
@@ -186,9 +174,9 @@ func (m *pollerUsageEstimator) CollectUsage(data interface{}) error {
 func isTaskEmpty(task interface{}) (bool, error) {
 	switch t := task.(type) {
 	case *workflowTask:
-		return t == nil || t.task == nil, nil
+		return t == nil || t.task == nil || len(t.task.TaskToken) == 0, nil
 	case *activityTask:
-		return t == nil || t.task == nil, nil
+		return t == nil || t.task == nil || len(t.task.TaskToken) == 0, nil
 	case *localActivityTask:
 		return t == nil || t.workflowTask == nil, nil
 	default:

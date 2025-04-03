@@ -21,8 +21,9 @@
 package proto
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func Payload(data []byte) *apiv1.Payload {
@@ -73,6 +74,16 @@ func ActivityType(t *shared.ActivityType) *apiv1.ActivityType {
 	}
 	return &apiv1.ActivityType{
 		Name: t.GetName(),
+	}
+}
+
+func AutoConfigHint(t *shared.AutoConfigHint) *apiv1.AutoConfigHint {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.AutoConfigHint{
+		EnableAutoConfig:   t.GetEnableAutoConfig(),
+		PollerWaitTimeInMs: t.GetPollerWaitTimeInMs(),
 	}
 }
 

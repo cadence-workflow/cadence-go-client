@@ -21,6 +21,10 @@
 package internal
 
 import (
+	"context"
+	"fmt"
+	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +33,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
@@ -242,6 +247,30 @@ func (s *workflowShadowerSuite) TestShadowOptionsValidation() {
 	}
 }
 
+func (s *workflowShadowerSuite) TestShadowOptionsWithExcludeTypes() {
+	excludeTypes := []string{"excludedType1", "excludedType2"}
+	options := ShadowOptions{
+		WorkflowTypes: []string{"includedType1", "includedType2"},
+		ExcludeTypes:  excludeTypes,
+		Mode:          ShadowModeNormal,
+	}
+	expectedQuery := fmt.Sprintf(
+		`(WorkflowType = "includedType1" or WorkflowType = "includedType2") and (WorkflowType != "excludedType1" and WorkflowType != "excludedType2") and (CloseTime = missing)`,
+	)
+	shadower, err := NewWorkflowShadower(s.mockService, "testDomain", options, ReplayOptions{}, nil)
+	s.NoError(err)
+	s.mockService.EXPECT().
+		ScanWorkflowExecutions(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, request *shared.ListWorkflowExecutionsRequest, opts ...interface{}) (*shared.ListWorkflowExecutionsResponse, error) {
+			s.Equal(expectedQuery, *request.Query)
+			return &shared.ListWorkflowExecutionsResponse{
+				Executions:    nil,
+				NextPageToken: nil,
+			}, nil
+		}).Times(1)
+	s.NoError(shadower.shadowWorker())
+}
+
 func (s *workflowShadowerSuite) TestShadowWorkerExitCondition_ExpirationTime() {
 	totalWorkflows := 50
 	timePerWorkflow := 7 * time.Second
@@ -408,6 +437,15 @@ func (s *workflowShadowerSuite) TestShadowWorker_ExpectedReplayError() {
 			s.NoError(s.testShadower.shadowWorker())
 		})
 	}
+}
+
+func (s *workflowShadowerSuite) TestWorkflowRegistration() {
+	wfName := s.testShadower.GetRegisteredWorkflows()[0].WorkflowType().Name
+	fnName := getFunctionName(testReplayWorkflow)
+	s.Equal(fnName, wfName)
+
+	fn := s.testShadower.GetRegisteredWorkflows()[0].GetFunction()
+	s.Equal(fnName, runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name())
 }
 
 func newTestWorkflowExecutions(size int) []*shared.WorkflowExecutionInfo {

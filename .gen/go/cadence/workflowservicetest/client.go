@@ -25,10 +25,12 @@ package workflowservicetest
 
 import (
 	context "context"
+
 	gomock "github.com/golang/mock/gomock"
+	yarpc "go.uber.org/yarpc"
+
 	workflowserviceclient "go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	shared "go.uber.org/cadence/.gen/go/shared"
-	yarpc "go.uber.org/yarpc"
 )
 
 // MockClient implements a gomock-compatible mock client for service
@@ -223,6 +225,39 @@ func (mr *_MockClientRecorder) DescribeWorkflowExecution(
 ) *gomock.Call {
 	args := append([]interface{}{ctx, _DescribeRequest}, opts...)
 	return mr.mock.ctrl.RecordCall(mr.mock, "DescribeWorkflowExecution", args...)
+}
+
+// DiagnoseWorkflowExecution responds to a DiagnoseWorkflowExecution call based on the mock expectations. This
+// call will fail if the mock does not expect this call. Use EXPECT to expect
+// a call to this function.
+//
+//	client.EXPECT().DiagnoseWorkflowExecution(gomock.Any(), ...).Return(...)
+//	... := client.DiagnoseWorkflowExecution(...)
+func (m *MockClient) DiagnoseWorkflowExecution(
+	ctx context.Context,
+	_DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.DiagnoseWorkflowExecutionResponse, err error) {
+
+	args := []interface{}{ctx, _DiagnoseRequest}
+	for _, o := range opts {
+		args = append(args, o)
+	}
+	i := 0
+	ret := m.ctrl.Call(m, "DiagnoseWorkflowExecution", args...)
+	success, _ = ret[i].(*shared.DiagnoseWorkflowExecutionResponse)
+	i++
+	err, _ = ret[i].(error)
+	return
+}
+
+func (mr *_MockClientRecorder) DiagnoseWorkflowExecution(
+	ctx interface{},
+	_DiagnoseRequest interface{},
+	opts ...interface{},
+) *gomock.Call {
+	args := append([]interface{}{ctx, _DiagnoseRequest}, opts...)
+	return mr.mock.ctrl.RecordCall(mr.mock, "DiagnoseWorkflowExecution", args...)
 }
 
 // GetClusterInfo responds to a GetClusterInfo call based on the mock expectations. This
@@ -1255,6 +1290,39 @@ func (mr *_MockClientRecorder) SignalWithStartWorkflowExecution(
 	return mr.mock.ctrl.RecordCall(mr.mock, "SignalWithStartWorkflowExecution", args...)
 }
 
+// SignalWithStartWorkflowExecutionAsync responds to a SignalWithStartWorkflowExecutionAsync call based on the mock expectations. This
+// call will fail if the mock does not expect this call. Use EXPECT to expect
+// a call to this function.
+//
+//	client.EXPECT().SignalWithStartWorkflowExecutionAsync(gomock.Any(), ...).Return(...)
+//	... := client.SignalWithStartWorkflowExecutionAsync(...)
+func (m *MockClient) SignalWithStartWorkflowExecutionAsync(
+	ctx context.Context,
+	_SignalWithStartRequest *shared.SignalWithStartWorkflowExecutionAsyncRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.SignalWithStartWorkflowExecutionAsyncResponse, err error) {
+
+	args := []interface{}{ctx, _SignalWithStartRequest}
+	for _, o := range opts {
+		args = append(args, o)
+	}
+	i := 0
+	ret := m.ctrl.Call(m, "SignalWithStartWorkflowExecutionAsync", args...)
+	success, _ = ret[i].(*shared.SignalWithStartWorkflowExecutionAsyncResponse)
+	i++
+	err, _ = ret[i].(error)
+	return
+}
+
+func (mr *_MockClientRecorder) SignalWithStartWorkflowExecutionAsync(
+	ctx interface{},
+	_SignalWithStartRequest interface{},
+	opts ...interface{},
+) *gomock.Call {
+	args := append([]interface{}{ctx, _SignalWithStartRequest}, opts...)
+	return mr.mock.ctrl.RecordCall(mr.mock, "SignalWithStartWorkflowExecutionAsync", args...)
+}
+
 // SignalWorkflowExecution responds to a SignalWorkflowExecution call based on the mock expectations. This
 // call will fail if the mock does not expect this call. Use EXPECT to expect
 // a call to this function.
@@ -1317,6 +1385,39 @@ func (mr *_MockClientRecorder) StartWorkflowExecution(
 ) *gomock.Call {
 	args := append([]interface{}{ctx, _StartRequest}, opts...)
 	return mr.mock.ctrl.RecordCall(mr.mock, "StartWorkflowExecution", args...)
+}
+
+// StartWorkflowExecutionAsync responds to a StartWorkflowExecutionAsync call based on the mock expectations. This
+// call will fail if the mock does not expect this call. Use EXPECT to expect
+// a call to this function.
+//
+//	client.EXPECT().StartWorkflowExecutionAsync(gomock.Any(), ...).Return(...)
+//	... := client.StartWorkflowExecutionAsync(...)
+func (m *MockClient) StartWorkflowExecutionAsync(
+	ctx context.Context,
+	_StartRequest *shared.StartWorkflowExecutionAsyncRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.StartWorkflowExecutionAsyncResponse, err error) {
+
+	args := []interface{}{ctx, _StartRequest}
+	for _, o := range opts {
+		args = append(args, o)
+	}
+	i := 0
+	ret := m.ctrl.Call(m, "StartWorkflowExecutionAsync", args...)
+	success, _ = ret[i].(*shared.StartWorkflowExecutionAsyncResponse)
+	i++
+	err, _ = ret[i].(error)
+	return
+}
+
+func (mr *_MockClientRecorder) StartWorkflowExecutionAsync(
+	ctx interface{},
+	_StartRequest interface{},
+	opts ...interface{},
+) *gomock.Call {
+	args := append([]interface{}{ctx, _StartRequest}, opts...)
+	return mr.mock.ctrl.RecordCall(mr.mock, "StartWorkflowExecutionAsync", args...)
 }
 
 // TerminateWorkflowExecution responds to a TerminateWorkflowExecution call based on the mock expectations. This

@@ -21,9 +21,10 @@
 package compatibility
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	internal "go.uber.org/cadence/internal/compatibility"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 // NewThrift2ProtoAdapter creates an adapter for mapping calls from Thrift to Protobuf types.

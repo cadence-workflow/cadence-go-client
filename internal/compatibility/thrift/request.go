@@ -21,8 +21,9 @@
 package thrift
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func CountWorkflowExecutionsRequest(t *apiv1.CountWorkflowExecutionsRequest) *shared.CountWorkflowExecutionsRequest {
@@ -78,6 +79,17 @@ func DescribeWorkflowExecutionRequest(t *apiv1.DescribeWorkflowExecutionRequest)
 	return &shared.DescribeWorkflowExecutionRequest{
 		Domain:    &t.Domain,
 		Execution: WorkflowExecution(t.WorkflowExecution),
+	}
+}
+
+func DiagnoseWorkflowExecutionRequest(t *apiv1.DiagnoseWorkflowExecutionRequest) *shared.DiagnoseWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &shared.DiagnoseWorkflowExecutionRequest{
+		Domain:            &t.Domain,
+		WorkflowExecution: WorkflowExecution(t.WorkflowExecution),
+		Identity:          &t.Identity,
 	}
 }
 
@@ -462,6 +474,7 @@ func StartWorkflowExecutionRequest(t *apiv1.StartWorkflowExecutionRequest) *shar
 		Header:                              Header(t.Header),
 		DelayStartSeconds:                   durationToSeconds(t.DelayStart),
 		JitterStartSeconds:                  durationToSeconds(t.JitterStart),
+		FirstRunAtTimestamp:                 timeToUnixNano(t.FirstRunAt),
 	}
 }
 

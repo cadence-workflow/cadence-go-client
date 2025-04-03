@@ -24,14 +24,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/zap"
 )
 
 type workflowReplayerSuite struct {
@@ -136,6 +139,17 @@ func (s *workflowReplayerSuite) TestReplayWorkflowHistoryFromFileParent() {
 func (s *workflowReplayerSuite) TestReplayWorkflowHistoryFromFile() {
 	err := s.replayer.ReplayWorkflowHistoryFromJSONFile(s.logger, "testdata/sampleHistory.json")
 	s.NoError(err)
+}
+
+func (s *workflowReplayerSuite) TestActivityRegistration() {
+	name := "test-Activity"
+	s.replayer.RegisterActivityWithOptions(testActivityFunction, RegisterActivityOptions{Name: name})
+	a := s.replayer.GetRegisteredActivities()[0].ActivityType().Name
+	s.Equal(name, a)
+
+	fn := s.replayer.GetRegisteredActivities()[0].GetFunction()
+	s.Equal(reflect.Func, reflect.ValueOf(fn).Kind())
+	s.Equal(getFunctionName(testActivityFunction), runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name())
 }
 
 func testReplayWorkflow(ctx Context) error {

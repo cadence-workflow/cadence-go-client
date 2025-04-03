@@ -21,8 +21,9 @@
 package proto
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func CountWorkflowExecutionsResponse(t *shared.CountWorkflowExecutionsResponse) *apiv1.CountWorkflowExecutionsResponse {
@@ -85,6 +86,16 @@ func DescribeWorkflowExecutionResponse(t *shared.DescribeWorkflowExecutionRespon
 		PendingActivities:      PendingActivityInfoArray(t.PendingActivities),
 		PendingChildren:        PendingChildExecutionInfoArray(t.PendingChildren),
 		PendingDecision:        PendingDecisionInfo(t.PendingDecision),
+	}
+}
+
+func DiagnoseWorkflowExecutionResponse(t *shared.DiagnoseWorkflowExecutionResponse) *apiv1.DiagnoseWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      t.GetDomain(),
+		DiagnosticWorkflowExecution: WorkflowExecution(t.DiagnosticWorkflowExecution),
 	}
 }
 
@@ -199,6 +210,7 @@ func PollForActivityTaskResponse(t *shared.PollForActivityTaskResponse) *apiv1.P
 		WorkflowType:               WorkflowType(t.WorkflowType),
 		WorkflowDomain:             t.GetWorkflowDomain(),
 		Header:                     Header(t.Header),
+		AutoConfigHint:             AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -222,6 +234,8 @@ func PollForDecisionTaskResponse(t *shared.PollForDecisionTaskResponse) *apiv1.P
 		StartedTime:               unixNanoToTime(t.StartedTimestamp),
 		Queries:                   WorkflowQueryMap(t.Queries),
 		NextEventId:               t.GetNextEventId(),
+		TotalHistoryBytes:         t.GetTotalHistoryBytes(),
+		AutoConfigHint:            AutoConfigHint(t.AutoConfigHint),
 	}
 }
 

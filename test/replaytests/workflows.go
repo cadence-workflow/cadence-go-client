@@ -25,10 +25,11 @@ import (
 	"errors"
 	"time"
 
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/client"
 	"go.uber.org/cadence/workflow"
-	"go.uber.org/zap"
 )
 
 // Workflow workflow decider

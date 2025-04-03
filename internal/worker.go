@@ -23,14 +23,18 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"go.uber.org/cadence/internal/common/debug"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber-go/tally"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/auth"
-	"go.uber.org/zap"
 )
 
 type (
@@ -105,7 +109,7 @@ type (
 		// optional: Sets the minimum number of goroutines that will concurrently poll the
 		// cadence-server to retrieve decision tasks. If FeatureFlags.PollerAutoScalerEnabled is set to true,
 		// changing this value will NOT affect the rate at which the worker is able to consume tasks from a task list.
-		// Default value is 1
+		// Default value is 2
 		MinConcurrentDecisionTaskPollers int
 
 		// optional: Sets the interval of poller autoscaling, between which poller autoscaler changes the poller count
@@ -126,6 +130,9 @@ type (
 		// Optional: Sets an identify that can be used to track this host for debugging.
 		// default: default identity that include hostname, groupName and process ID.
 		Identity string
+
+		// Optional: Defines the 'zone' or the failure group that the worker belongs to
+		IsolationGroup string
 
 		// Optional: Metrics to be reported. Metrics emitted by the cadence client are not prometheus compatible by
 		// default. To ensure metrics are compatible with prometheus make sure to create tally scope with sanitizer
@@ -258,6 +265,36 @@ type (
 		// Optional: Authorization interface to get the Auth Token
 		// default: No provider
 		Authorization auth.AuthorizationProvider
+
+		// Optional: See WorkerBugPorts for more details
+		//
+		// Deprecated: All bugports are always deprecated and may be removed at any time.
+		WorkerBugPorts WorkerBugPorts
+
+		// Optional: WorkerStats provides a set of methods that can be used to collect
+		// stats on the Worker for debugging purposes.
+		// default: noop implementation provided
+		// Deprecated: in development and very likely to change
+		WorkerStats debug.WorkerStats
+	}
+
+	// WorkerBugPorts allows opt-in enabling of older, possibly buggy behavior, primarily intended to allow temporarily
+	// emulating old behavior until a fix is deployed.
+	// By default, bugs (especially rarely-occurring ones) are fixed and all users are opted into the new behavior.
+	// Back-ported buggy behavior *may* be available via these flags.
+	//
+	// Bugports are always deprecated and may be removed in future versions.
+	// Generally speaking they will *likely* remain in place for one minor version, and then they may be removed to
+	// allow cleaning up the additional code complexity that they cause.
+	// Deprecated: All bugports are always deprecated and may be removed at any time
+	WorkerBugPorts struct {
+		// Optional: Disable strict non-determinism checks for workflow.
+		// There are some non-determinism cases which are missed by original implementation and a fix is on the way.
+		// The fix will be toggleable by this parameter.
+		// Default: false, which means strict non-determinism checks are enabled.
+		//
+		// Deprecated: All bugports are always deprecated and may be removed at any time
+		DisableStrictNonDeterminismCheck bool
 	}
 )
 
@@ -293,7 +330,7 @@ func NewWorker(
 	domain string,
 	taskList string,
 	options WorkerOptions,
-) *aggregatedWorker {
+) (*aggregatedWorker, error) {
 	return newAggregatedWorker(service, domain, taskList, options)
 }
 
@@ -342,4 +379,13 @@ func ReplayWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName string) 
 func ReplayPartialWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName string, lastEventID int64) error {
 	r := NewWorkflowReplayer()
 	return r.ReplayPartialWorkflowHistoryFromJSONFile(logger, jsonfileName, lastEventID)
+}
+
+// Validate sanity validation of WorkerOptions
+func (o WorkerOptions) Validate() error {
+	// decision task pollers must be >= 2 or unset if sticky tasklist is enabled https://github.com/uber-go/cadence-client/issues/1369
+	if !o.DisableStickyExecution && (o.MaxConcurrentDecisionTaskPollers == 1 || o.MinConcurrentDecisionTaskPollers == 1) {
+		return fmt.Errorf("DecisionTaskPollers must be >= 2 or use default value")
+	}
+	return nil
 }

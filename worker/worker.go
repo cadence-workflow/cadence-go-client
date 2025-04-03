@@ -24,6 +24,9 @@ package worker
 
 import (
 	"context"
+	"io"
+
+	"go.uber.org/zap"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shared"
@@ -31,7 +34,6 @@ import (
 	"go.uber.org/cadence/internal"
 	"go.uber.org/cadence/internal/common/auth"
 	"go.uber.org/cadence/workflow"
-	"go.uber.org/zap"
 )
 
 type (
@@ -77,6 +79,14 @@ type (
 		// This method panics if workflowFunc doesn't comply with the expected format or tries to register the same workflow
 		// type name twice. Use workflow.RegisterOptions.DisableAlreadyRegisteredCheck to allow multiple registrations.
 		RegisterWorkflowWithOptions(w interface{}, options workflow.RegisterOptions)
+
+		// GetRegisteredWorkflows returns information on all workflows registered on the worker.
+		// the RegistryInfo interface can be used to read workflow names, paths or retrieve the workflow functions.
+		// The workflow name is by default the method name. However, if the workflow was registered
+		// with options (see Worker.RegisterWorkflowWithOptions), the workflow may have customized name.
+		// For chained registries, this returns a combined list of all registered workflows from the
+		// worker instance that calls this method to the global registry. In this case, the list may contain duplicate names.
+		GetRegisteredWorkflows() []workflow.RegistryInfo
 	}
 
 	// ActivityRegistry exposes activity registration functions to consumers.
@@ -129,6 +139,14 @@ type (
 		// which might be useful for integration tests.
 		// worker.RegisterActivityWithOptions(barActivity, RegisterActivityOptions{DisableAlreadyRegisteredCheck: true})
 		RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
+
+		// GetRegisteredActivities returns information on all activities registered on the worker.
+		// the RegistryInfo interface can be used to read activity names, paths or retrieve the activity functions.
+		// The activity name is by default the method name. However, if the workflow was registered
+		// with options (see Worker.RegisterWorkflowWithOptions), the workflow may have customized name.
+		// For chained registries, this returns a combined list of all registered activities from the
+		// worker instance that calls this method to the global registry. In this case, the list may contain duplicate names.
+		GetRegisteredActivities() []activity.RegistryInfo
 	}
 
 	// WorkflowReplayer supports replaying a workflow from its event history.
@@ -140,6 +158,7 @@ type (
 	// to ensure that new deployments are not going to break open workflows.
 	WorkflowReplayer interface {
 		WorkflowRegistry
+		ActivityRegistry
 
 		// ReplayWorkflowHistory executes a single decision task for the given json history file.
 		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
@@ -151,6 +170,8 @@ type (
 		// See https://github.com/uber/cadence/blob/master/tools/cli/README.md for full documentation
 		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
 		// The logger is an optional parameter. Defaults to the noop logger.
+		//
+		// Deprecated: prefer ReplayWorkflowHistoryFromJSON
 		ReplayWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName string) error
 
 		// ReplayPartialWorkflowHistoryFromJSONFile executes a single decision task for the json history file upto provided
@@ -159,12 +180,31 @@ type (
 		// See https://github.com/uber/cadence/blob/master/tools/cli/README.md for full documentation
 		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
 		// The logger is an optional parameter. Defaults to the noop logger.
+		//
+		// Deprecated: prefer ReplayPartialWorkflowHistoryFromJSON
 		ReplayPartialWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName string, lastEventID int64) error
 
 		// ReplayWorkflowExecution loads a workflow execution history from the Cadence service and executes a single decision task for it.
 		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
 		// The logger is the only optional parameter. Defaults to the noop logger.
 		ReplayWorkflowExecution(ctx context.Context, service workflowserviceclient.Interface, logger *zap.Logger, domain string, execution workflow.Execution) error
+
+		// ReplayWorkflowHistoryFromJSON executes a single decision task for the json history file downloaded from the cli.
+		// To download the history file:
+		//  cadence workflow showid <workflow_id> -of <output_filename>
+		// See https://github.com/uber/cadence/blob/master/tools/cli/README.md for full documentation
+		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
+		// The logger is an optional parameter. Defaults to the noop logger.
+		ReplayWorkflowHistoryFromJSON(logger *zap.Logger, reader io.Reader) error
+
+		// ReplayPartialWorkflowHistoryFromJSON executes a single decision task for the json history file upto provided
+		// lastEventID(inclusive), downloaded from the cli.
+		// To download the history file:
+		//   cadence workflow showid <workflow_id> -of <output_filename>
+		// See https://github.com/uber/cadence/blob/master/tools/cli/README.md for full documentation
+		// Use for testing the backwards compatibility of code changes and troubleshooting workflows in a debugger.
+		// The logger is an optional parameter. Defaults to the noop logger.
+		ReplayPartialWorkflowHistoryFromJSON(logger *zap.Logger, reader io.Reader, lastEventID int64) error
 	}
 
 	// WorkflowShadower retrieves and replays workflow history from Cadence service to determine if there's any nondeterministic changes in the workflow definition
@@ -196,6 +236,9 @@ type (
 
 	// AuthorizationProvider is the interface that contains the method to get the auth token
 	AuthorizationProvider = auth.AuthorizationProvider
+
+	// OAuthConfig allows to configure external OAuth token provider.
+	OAuthConfig = internal.OAuthAuthorizerConfig
 )
 
 const (
@@ -226,7 +269,21 @@ const (
 	ShadowModeContinuous = internal.ShadowModeContinuous
 )
 
-// New creates an instance of worker for managing workflow and activity executions.
+// Deprecated: use NewV2 instead since this implementation will panic on error
+func New(
+	service workflowserviceclient.Interface,
+	domain string,
+	taskList string,
+	options Options,
+) Worker {
+	w, err := internal.NewWorker(service, domain, taskList, options)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
+
+// NewV2 returns an instance of worker for managing workflow and activity executions and an error.
 //
 //	service  - thrift connection to the cadence server
 //	domain   - the name of the cadence domain
@@ -234,12 +291,12 @@ const (
 //	           identifies group of workflow and activity implementations that are
 //	           hosted by a single worker process
 //	options  - configure any worker specific options like logger, metrics, identity
-func New(
+func NewV2(
 	service workflowserviceclient.Interface,
 	domain string,
 	taskList string,
 	options Options,
-) Worker {
+) (Worker, error) {
 	return internal.NewWorker(service, domain, taskList, options)
 }
 
@@ -331,4 +388,15 @@ func SetBinaryChecksum(checksum string) {
 // NewAdminJwtAuthorizationProvider creates a JwtAuthorizationProvider instance.
 func NewAdminJwtAuthorizationProvider(privateKey []byte) AuthorizationProvider {
 	return internal.NewAdminJwtAuthorizationProvider(privateKey)
+}
+
+// NewOAuthAuthorizationProvider asks for a token from external OAuth provider
+func NewOAuthAuthorizationProvider(config OAuthConfig) AuthorizationProvider {
+	return internal.NewOAuthAuthorizationProvider(config)
+}
+
+// AugmentWorkerOptions fill all unset worker Options fields with their default values
+// Use as getter for default worker options
+func AugmentWorkerOptions(options Options) Options {
+	return internal.AugmentWorkerOptions(options)
 }

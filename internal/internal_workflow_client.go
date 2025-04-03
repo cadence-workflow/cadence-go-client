@@ -33,7 +33,6 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/pborman/uuid"
-	"github.com/uber-go/tally"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -42,9 +41,11 @@ import (
 	"go.uber.org/cadence/internal/common/metrics"
 )
 
+//go:generate mockery --name HistoryEventIterator --output ../mocks --boilerplate-file ../LICENSE
+//go:generate mockery --name WorkflowRun --output ../mocks --boilerplate-file ../LICENSE
+
 // Assert that structs do indeed implement the interfaces
 var _ Client = (*workflowClient)(nil)
-var _ DomainClient = (*domainClient)(nil)
 
 const (
 	defaultDecisionTaskTimeoutInSecs = 10
@@ -67,14 +68,6 @@ type (
 		contextPropagators []ContextPropagator
 		tracer             opentracing.Tracer
 		featureFlags       FeatureFlags
-	}
-
-	// domainClient is the client for managing domains.
-	domainClient struct {
-		workflowService workflowserviceclient.Interface
-		metricsScope    tally.Scope
-		identity        string
-		featureFlags    FeatureFlags
 	}
 
 	// WorkflowRun represents a started non child workflow
@@ -155,86 +148,9 @@ func (wc *workflowClient) StartWorkflow(
 	workflowFunc interface{},
 	args ...interface{},
 ) (*WorkflowExecution, error) {
-	workflowID := options.ID
-	if len(workflowID) == 0 {
-		workflowID = uuid.NewRandom().String()
-	}
-
-	if options.TaskList == "" {
-		return nil, errors.New("missing TaskList")
-	}
-
-	executionTimeout := common.Int32Ceil(options.ExecutionStartToCloseTimeout.Seconds())
-	if executionTimeout <= 0 {
-		return nil, errors.New("missing or invalid ExecutionStartToCloseTimeout")
-	}
-
-	decisionTaskTimeout := common.Int32Ceil(options.DecisionTaskStartToCloseTimeout.Seconds())
-	if decisionTaskTimeout < 0 {
-		return nil, errors.New("negative DecisionTaskStartToCloseTimeout provided")
-	}
-	if decisionTaskTimeout == 0 {
-		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
-	}
-
-	// Validate type and its arguments.
-	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, args, wc.dataConverter, wc.registry)
+	startRequest, err := wc.getWorkflowStartRequest(ctx, "StartWorkflow", options, workflowFunc, args...)
 	if err != nil {
 		return nil, err
-	}
-
-	memo, err := getWorkflowMemo(options.Memo, wc.dataConverter)
-	if err != nil {
-		return nil, err
-	}
-
-	searchAttr, err := serializeSearchAttributes(options.SearchAttributes)
-	if err != nil {
-		return nil, err
-	}
-
-	delayStartSeconds := common.Int32Ceil(options.DelayStart.Seconds())
-	if delayStartSeconds < 0 {
-		return nil, errors.New("Invalid DelayStart option")
-	}
-
-	jitterStartSeconds := common.Int32Ceil(options.JitterStart.Seconds())
-	if jitterStartSeconds < 0 {
-		return nil, errors.New("Invalid JitterStart option")
-	}
-
-	// create a workflow start span and attach it to the context object.
-	// N.B. we need to finish this immediately as jaeger does not give us a way
-	// to recreate a span given a span context - which means we will run into
-	// issues during replay. we work around this by creating and ending the
-	// workflow start span and passing in that context to the workflow. So
-	// everything beginning with the StartWorkflowExecutionRequest will be
-	// parented by the created start workflow span.
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("StartWorkflow-%s", workflowType.Name), workflowID)
-	span.Finish()
-
-	// get workflow headers from the context
-	header := wc.getWorkflowHeader(ctx)
-
-	// run propagators to extract information about tracing and other stuff, store in headers field
-	startRequest := &s.StartWorkflowExecutionRequest{
-		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
-		WorkflowId:                          common.StringPtr(workflowID),
-		WorkflowType:                        workflowTypePtr(*workflowType),
-		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
-		Input:                               input,
-		ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(executionTimeout),
-		TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(decisionTaskTimeout),
-		Identity:                            common.StringPtr(wc.identity),
-		WorkflowIdReusePolicy:               options.WorkflowIDReusePolicy.toThriftPtr(),
-		RetryPolicy:                         convertRetryPolicy(options.RetryPolicy),
-		CronSchedule:                        common.StringPtr(options.CronSchedule),
-		Memo:                                memo,
-		SearchAttributes:                    searchAttr,
-		Header:                              header,
-		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
-		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
 	}
 
 	var response *s.StartWorkflowExecutionResponse
@@ -255,13 +171,57 @@ func (wc *workflowClient) StartWorkflow(
 	}
 
 	if wc.metricsScope != nil {
-		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, workflowType.Name)
+		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, *startRequest.WorkflowType.Name)
 		scope.Counter(metrics.WorkflowStartCounter).Inc(1)
 	}
 
 	executionInfo := &WorkflowExecution{
-		ID:    workflowID,
-		RunID: response.GetRunId()}
+		ID:    *startRequest.WorkflowId,
+		RunID: response.GetRunId(),
+	}
+	return executionInfo, nil
+}
+
+// StartWorkflowAsync behaves like StartWorkflow except that the request is queued and processed by Cadence backend asynchronously.
+// See StartWorkflow for details about inputs and usage.
+func (wc *workflowClient) StartWorkflowAsync(
+	ctx context.Context,
+	options StartWorkflowOptions,
+	workflowFunc interface{},
+	args ...interface{},
+) (*WorkflowExecutionAsync, error) {
+	startRequest, err := wc.getWorkflowStartRequest(ctx, "StartWorkflowAsync", options, workflowFunc, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	asyncStartRequest := &s.StartWorkflowExecutionAsyncRequest{
+		Request: startRequest,
+	}
+
+	// Start creating workflow request.
+	err = backoff.Retry(ctx,
+		func() error {
+			tchCtx, cancel, opt := newChannelContext(ctx, wc.featureFlags)
+			defer cancel()
+
+			var err1 error
+			_, err1 = wc.workflowService.StartWorkflowExecutionAsync(tchCtx, asyncStartRequest, opt...)
+			return err1
+		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if wc.metricsScope != nil {
+		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, *startRequest.WorkflowType.Name)
+		scope.Counter(metrics.WorkflowStartAsyncCounter).Inc(1)
+	}
+
+	executionInfo := &WorkflowExecutionAsync{
+		ID: *startRequest.WorkflowId,
+	}
 	return executionInfo, nil
 }
 
@@ -343,88 +303,18 @@ func (wc *workflowClient) SignalWorkflow(ctx context.Context, workflowID string,
 
 // SignalWithStartWorkflow sends a signal to a running workflow.
 // If the workflow is not running or not found, it starts the workflow and then sends the signal in transaction.
-func (wc *workflowClient) SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{},
-	options StartWorkflowOptions, workflowFunc interface{}, workflowArgs ...interface{}) (*WorkflowExecution, error) {
+func (wc *workflowClient) SignalWithStartWorkflow(
+	ctx context.Context,
+	workflowID, signalName string,
+	signalArg interface{},
+	options StartWorkflowOptions,
+	workflowFunc interface{},
+	workflowArgs ...interface{},
+) (*WorkflowExecution, error) {
 
-	signalInput, err := encodeArg(wc.dataConverter, signalArg)
+	signalWithStartRequest, err := wc.getSignalWithStartRequest(ctx, "SignalWithStartWorkflow", workflowID, signalName, signalArg, options, workflowFunc, workflowArgs...)
 	if err != nil {
 		return nil, err
-	}
-
-	if workflowID == "" {
-		workflowID = uuid.NewRandom().String()
-	}
-
-	if options.TaskList == "" {
-		return nil, errors.New("missing TaskList")
-	}
-
-	executionTimeout := common.Int32Ceil(options.ExecutionStartToCloseTimeout.Seconds())
-	if executionTimeout <= 0 {
-		return nil, errors.New("missing or invalid ExecutionStartToCloseTimeout")
-	}
-
-	decisionTaskTimeout := common.Int32Ceil(options.DecisionTaskStartToCloseTimeout.Seconds())
-	if decisionTaskTimeout < 0 {
-		return nil, errors.New("negative DecisionTaskStartToCloseTimeout provided")
-	}
-	if decisionTaskTimeout == 0 {
-		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
-	}
-
-	// Validate type and its arguments.
-	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, workflowArgs, wc.dataConverter, wc.registry)
-	if err != nil {
-		return nil, err
-	}
-
-	memo, err := getWorkflowMemo(options.Memo, wc.dataConverter)
-	if err != nil {
-		return nil, err
-	}
-
-	searchAttr, err := serializeSearchAttributes(options.SearchAttributes)
-	if err != nil {
-		return nil, err
-	}
-
-	delayStartSeconds := common.Int32Ceil(options.DelayStart.Seconds())
-	if delayStartSeconds < 0 {
-		return nil, errors.New("Invalid DelayStart option")
-	}
-
-	jitterStartSeconds := common.Int32Ceil(options.JitterStart.Seconds())
-	if jitterStartSeconds < 0 {
-		return nil, errors.New("Invalid JitterStart option")
-	}
-
-	// create a workflow start span and attach it to the context object. finish it immediately
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("SignalWithStartWorkflow-%s", workflowType.Name), workflowID)
-	span.Finish()
-
-	// get workflow headers from the context
-	header := wc.getWorkflowHeader(ctx)
-
-	signalWithStartRequest := &s.SignalWithStartWorkflowExecutionRequest{
-		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
-		WorkflowId:                          common.StringPtr(workflowID),
-		WorkflowType:                        workflowTypePtr(*workflowType),
-		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
-		Input:                               input,
-		ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(executionTimeout),
-		TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(decisionTaskTimeout),
-		SignalName:                          common.StringPtr(signalName),
-		SignalInput:                         signalInput,
-		Identity:                            common.StringPtr(wc.identity),
-		RetryPolicy:                         convertRetryPolicy(options.RetryPolicy),
-		CronSchedule:                        common.StringPtr(options.CronSchedule),
-		Memo:                                memo,
-		SearchAttributes:                    searchAttr,
-		WorkflowIdReusePolicy:               options.WorkflowIDReusePolicy.toThriftPtr(),
-		Header:                              header,
-		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
-		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
 	}
 
 	var response *s.StartWorkflowExecutionResponse
@@ -445,13 +335,59 @@ func (wc *workflowClient) SignalWithStartWorkflow(ctx context.Context, workflowI
 	}
 
 	if wc.metricsScope != nil {
-		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, workflowType.Name)
+		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, *signalWithStartRequest.WorkflowType.Name)
 		scope.Counter(metrics.WorkflowSignalWithStartCounter).Inc(1)
 	}
 
 	executionInfo := &WorkflowExecution{
 		ID:    options.ID,
-		RunID: response.GetRunId()}
+		RunID: response.GetRunId(),
+	}
+	return executionInfo, nil
+}
+
+// SignalWithStartWorkflowAsync behaves like SignalWithStartWorkflow except that the request is queued and processed by Cadence backend asynchronously.
+// See SignalWithStartWorkflow for details about inputs and usage.
+func (wc *workflowClient) SignalWithStartWorkflowAsync(
+	ctx context.Context,
+	workflowID, signalName string,
+	signalArg interface{},
+	options StartWorkflowOptions,
+	workflowFunc interface{},
+	workflowArgs ...interface{},
+) (*WorkflowExecutionAsync, error) {
+
+	signalWithStartRequest, err := wc.getSignalWithStartRequest(ctx, "SignalWithStartWorkflow", workflowID, signalName, signalArg, options, workflowFunc, workflowArgs...)
+	if err != nil {
+		return nil, err
+	}
+
+	asyncSignalWithStartRequest := &s.SignalWithStartWorkflowExecutionAsyncRequest{
+		Request: signalWithStartRequest,
+	}
+
+	err = backoff.Retry(ctx,
+		func() error {
+			tchCtx, cancel, opt := newChannelContext(ctx, wc.featureFlags)
+			defer cancel()
+
+			var err1 error
+			_, err1 = wc.workflowService.SignalWithStartWorkflowExecutionAsync(tchCtx, asyncSignalWithStartRequest, opt...)
+			return err1
+		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if wc.metricsScope != nil {
+		scope := wc.metricsScope.GetTaggedScope(tagTaskList, options.TaskList, tagWorkflowType, *signalWithStartRequest.WorkflowType.Name)
+		scope.Counter(metrics.WorkflowSignalWithStartAsyncCounter).Inc(1)
+	}
+
+	executionInfo := &WorkflowExecutionAsync{
+		ID: options.ID,
+	}
 	return executionInfo, nil
 }
 
@@ -1060,61 +996,207 @@ func (wc *workflowClient) getWorkflowHeader(ctx context.Context) *s.Header {
 	return header
 }
 
-// Register a domain with cadence server
-// The errors it can throw:
-//   - DomainAlreadyExistsError
-//   - BadRequestError
-//   - InternalServiceError
-func (dc *domainClient) Register(ctx context.Context, request *s.RegisterDomainRequest) error {
-	return backoff.Retry(ctx,
-		func() error {
-			tchCtx, cancel, opt := newChannelContext(ctx, dc.featureFlags)
-			defer cancel()
-			return dc.workflowService.RegisterDomain(tchCtx, request, opt...)
-		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
-}
-
-// Describe a domain. The domain has 3 part of information
-// DomainInfo - Which has Name, Status, Description, Owner Email
-// DomainConfiguration - Configuration like Workflow Execution Retention Period In Days, Whether to emit metrics.
-// ReplicationConfiguration - replication config like clusters and active cluster name
-// The errors it can throw:
-//   - EntityNotExistsError
-//   - BadRequestError
-//   - InternalServiceError
-func (dc *domainClient) Describe(ctx context.Context, name string) (*s.DescribeDomainResponse, error) {
-	request := &s.DescribeDomainRequest{
-		Name: common.StringPtr(name),
+func (wc *workflowClient) getWorkflowStartRequest(
+	ctx context.Context,
+	tracePrefix string,
+	options StartWorkflowOptions,
+	workflowFunc interface{},
+	args ...interface{},
+) (*s.StartWorkflowExecutionRequest, error) {
+	workflowID := options.ID
+	if len(workflowID) == 0 {
+		workflowID = uuid.NewRandom().String()
 	}
 
-	var response *s.DescribeDomainResponse
-	err := backoff.Retry(ctx,
-		func() error {
-			tchCtx, cancel, opt := newChannelContext(ctx, dc.featureFlags)
-			defer cancel()
-			var err error
-			response, err = dc.workflowService.DescribeDomain(tchCtx, request, opt...)
-			return err
-		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
+	if options.TaskList == "" {
+		return nil, errors.New("missing TaskList")
+	}
+
+	executionTimeout := common.Int32Ceil(options.ExecutionStartToCloseTimeout.Seconds())
+	if executionTimeout <= 0 {
+		return nil, errors.New("missing or invalid ExecutionStartToCloseTimeout")
+	}
+
+	decisionTaskTimeout := common.Int32Ceil(options.DecisionTaskStartToCloseTimeout.Seconds())
+	if decisionTaskTimeout < 0 {
+		return nil, errors.New("negative DecisionTaskStartToCloseTimeout provided")
+	}
+	if decisionTaskTimeout == 0 {
+		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
+	}
+
+	// Validate type and its arguments.
+	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, args, wc.dataConverter, wc.registry)
 	if err != nil {
 		return nil, err
 	}
-	return response, nil
+
+	memo, err := getWorkflowMemo(options.Memo, wc.dataConverter)
+	if err != nil {
+		return nil, err
+	}
+
+	searchAttr, err := serializeSearchAttributes(options.SearchAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	delayStartSeconds := common.Int32Ceil(options.DelayStart.Seconds())
+	if delayStartSeconds < 0 {
+		return nil, errors.New("Invalid DelayStart option")
+	}
+
+	jitterStartSeconds := common.Int32Ceil(options.JitterStart.Seconds())
+	if jitterStartSeconds < 0 {
+		return nil, errors.New("Invalid JitterStart option")
+	}
+
+	firstRunAtTimestamp := options.FirstRunAt.UnixNano()
+	if options.FirstRunAt.IsZero() {
+		firstRunAtTimestamp = 0
+	}
+	if firstRunAtTimestamp < 0 {
+		return nil, errors.New("Invalid FirstRunAt option")
+	}
+
+	// create a workflow start span and attach it to the context object.
+	// N.B. we need to finish this immediately as jaeger does not give us a way
+	// to recreate a span given a span context - which means we will run into
+	// issues during replay. we work around this by creating and ending the
+	// workflow start span and passing in that context to the workflow. So
+	// everything beginning with the StartWorkflowExecutionRequest will be
+	// parented by the created start workflow span.
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	span.Finish()
+
+	// get workflow headers from the context
+	header := wc.getWorkflowHeader(ctx)
+
+	// run propagators to extract information about tracing and other stuff, store in headers field
+	startRequest := &s.StartWorkflowExecutionRequest{
+		Domain:                              common.StringPtr(wc.domain),
+		RequestId:                           common.StringPtr(uuid.New()),
+		WorkflowId:                          common.StringPtr(workflowID),
+		WorkflowType:                        workflowTypePtr(*workflowType),
+		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
+		Input:                               input,
+		ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(executionTimeout),
+		TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(decisionTaskTimeout),
+		Identity:                            common.StringPtr(wc.identity),
+		WorkflowIdReusePolicy:               options.WorkflowIDReusePolicy.toThriftPtr(),
+		RetryPolicy:                         convertRetryPolicy(options.RetryPolicy),
+		CronSchedule:                        common.StringPtr(options.CronSchedule),
+		Memo:                                memo,
+		SearchAttributes:                    searchAttr,
+		Header:                              header,
+		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
+		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
+		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
+	}
+
+	return startRequest, nil
 }
 
-// Update a domain.
-// The errors it can throw:
-//   - EntityNotExistsError
-//   - BadRequestError
-//   - InternalServiceError
-func (dc *domainClient) Update(ctx context.Context, request *s.UpdateDomainRequest) error {
-	return backoff.Retry(ctx,
-		func() error {
-			tchCtx, cancel, opt := newChannelContext(ctx, dc.featureFlags)
-			defer cancel()
-			_, err := dc.workflowService.UpdateDomain(tchCtx, request, opt...)
-			return err
-		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
+func (wc *workflowClient) getSignalWithStartRequest(
+	ctx context.Context,
+	tracePrefix, workflowID, signalName string,
+	signalArg interface{},
+	options StartWorkflowOptions,
+	workflowFunc interface{},
+	workflowArgs ...interface{},
+) (*s.SignalWithStartWorkflowExecutionRequest, error) {
+
+	signalInput, err := encodeArg(wc.dataConverter, signalArg)
+	if err != nil {
+		return nil, err
+	}
+
+	if workflowID == "" {
+		workflowID = uuid.NewRandom().String()
+	}
+
+	if options.TaskList == "" {
+		return nil, errors.New("missing TaskList")
+	}
+
+	executionTimeout := common.Int32Ceil(options.ExecutionStartToCloseTimeout.Seconds())
+	if executionTimeout <= 0 {
+		return nil, errors.New("missing or invalid ExecutionStartToCloseTimeout")
+	}
+
+	decisionTaskTimeout := common.Int32Ceil(options.DecisionTaskStartToCloseTimeout.Seconds())
+	if decisionTaskTimeout < 0 {
+		return nil, errors.New("negative DecisionTaskStartToCloseTimeout provided")
+	}
+	if decisionTaskTimeout == 0 {
+		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
+	}
+
+	// Validate type and its arguments.
+	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, workflowArgs, wc.dataConverter, wc.registry)
+	if err != nil {
+		return nil, err
+	}
+
+	memo, err := getWorkflowMemo(options.Memo, wc.dataConverter)
+	if err != nil {
+		return nil, err
+	}
+
+	searchAttr, err := serializeSearchAttributes(options.SearchAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	delayStartSeconds := common.Int32Ceil(options.DelayStart.Seconds())
+	if delayStartSeconds < 0 {
+		return nil, errors.New("Invalid DelayStart option")
+	}
+
+	jitterStartSeconds := common.Int32Ceil(options.JitterStart.Seconds())
+	if jitterStartSeconds < 0 {
+		return nil, errors.New("Invalid JitterStart option")
+	}
+
+	firstRunAtTimestamp := options.FirstRunAt.UnixNano()
+	if options.FirstRunAt.IsZero() {
+		firstRunAtTimestamp = 0
+	}
+	if firstRunAtTimestamp < 0 {
+		return nil, errors.New("Invalid FirstRunAt option")
+	}
+
+	// create a workflow start span and attach it to the context object. finish it immediately
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	span.Finish()
+
+	// get workflow headers from the context
+	header := wc.getWorkflowHeader(ctx)
+
+	signalWithStartRequest := &s.SignalWithStartWorkflowExecutionRequest{
+		Domain:                              common.StringPtr(wc.domain),
+		RequestId:                           common.StringPtr(uuid.New()),
+		WorkflowId:                          common.StringPtr(workflowID),
+		WorkflowType:                        workflowTypePtr(*workflowType),
+		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
+		Input:                               input,
+		ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(executionTimeout),
+		TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(decisionTaskTimeout),
+		SignalName:                          common.StringPtr(signalName),
+		SignalInput:                         signalInput,
+		Identity:                            common.StringPtr(wc.identity),
+		RetryPolicy:                         convertRetryPolicy(options.RetryPolicy),
+		CronSchedule:                        common.StringPtr(options.CronSchedule),
+		Memo:                                memo,
+		SearchAttributes:                    searchAttr,
+		WorkflowIdReusePolicy:               options.WorkflowIDReusePolicy.toThriftPtr(),
+		Header:                              header,
+		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
+		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
+		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
+	}
+
+	return signalWithStartRequest, nil
 }
 
 func getRunID(runID string) *string {

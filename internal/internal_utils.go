@@ -32,12 +32,15 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/metrics"
-	"go.uber.org/yarpc"
 )
 
 const (
@@ -352,4 +355,140 @@ func getTimeoutTypeFromErrReason(reason string) (s.TimeoutType, error) {
 		return 0, err
 	}
 	return timeoutType, nil
+}
+
+func estimateHistorySize(logger *zap.Logger, event *s.HistoryEvent) int {
+	sum := historySizeEstimationBuffer
+	switch event.GetEventType() {
+	case s.EventTypeWorkflowExecutionStarted:
+		if event.WorkflowExecutionStartedEventAttributes != nil {
+			sum += len(event.WorkflowExecutionStartedEventAttributes.Input)
+			sum += len(event.WorkflowExecutionStartedEventAttributes.ContinuedFailureDetails)
+			sum += len(event.WorkflowExecutionStartedEventAttributes.LastCompletionResult)
+			sum += sizeOf(event.WorkflowExecutionStartedEventAttributes.Memo.GetFields())
+			sum += sizeOf(event.WorkflowExecutionStartedEventAttributes.Header.GetFields())
+			sum += sizeOf(event.WorkflowExecutionStartedEventAttributes.SearchAttributes.GetIndexedFields())
+		}
+	case s.EventTypeWorkflowExecutionCompleted:
+		if event.WorkflowExecutionCompletedEventAttributes != nil {
+			sum += len(event.WorkflowExecutionCompletedEventAttributes.Result)
+		}
+	case s.EventTypeWorkflowExecutionSignaled:
+		if event.WorkflowExecutionSignaledEventAttributes != nil {
+			sum += len(event.WorkflowExecutionSignaledEventAttributes.Input)
+		}
+	case s.EventTypeWorkflowExecutionFailed:
+		if event.WorkflowExecutionFailedEventAttributes != nil {
+			sum += len(event.WorkflowExecutionFailedEventAttributes.Details)
+		}
+	case s.EventTypeDecisionTaskStarted:
+		if event.DecisionTaskStartedEventAttributes != nil {
+			sum += getLengthOfStringPointer(event.DecisionTaskStartedEventAttributes.Identity)
+		}
+	case s.EventTypeDecisionTaskCompleted:
+		if event.DecisionTaskCompletedEventAttributes != nil {
+			sum += len(event.DecisionTaskCompletedEventAttributes.ExecutionContext)
+			sum += getLengthOfStringPointer(event.DecisionTaskCompletedEventAttributes.Identity)
+			sum += getLengthOfStringPointer(event.DecisionTaskCompletedEventAttributes.BinaryChecksum)
+		}
+	case s.EventTypeDecisionTaskFailed:
+		if event.DecisionTaskFailedEventAttributes != nil {
+			sum += len(event.DecisionTaskFailedEventAttributes.Details)
+		}
+	case s.EventTypeActivityTaskScheduled:
+		if event.ActivityTaskScheduledEventAttributes != nil {
+			sum += len(event.ActivityTaskScheduledEventAttributes.Input)
+			sum += sizeOf(event.ActivityTaskScheduledEventAttributes.Header.GetFields())
+		}
+	case s.EventTypeActivityTaskStarted:
+		if event.ActivityTaskStartedEventAttributes != nil {
+			sum += len(event.ActivityTaskStartedEventAttributes.LastFailureDetails)
+		}
+	case s.EventTypeActivityTaskCompleted:
+		if event.ActivityTaskCompletedEventAttributes != nil {
+			sum += len(event.ActivityTaskCompletedEventAttributes.Result)
+			sum += getLengthOfStringPointer(event.ActivityTaskCompletedEventAttributes.Identity)
+		}
+	case s.EventTypeActivityTaskFailed:
+		if event.ActivityTaskFailedEventAttributes != nil {
+			sum += len(event.ActivityTaskFailedEventAttributes.Details)
+		}
+	case s.EventTypeActivityTaskTimedOut:
+		if event.ActivityTaskTimedOutEventAttributes != nil {
+			sum += len(event.ActivityTaskTimedOutEventAttributes.Details)
+			sum += len(event.ActivityTaskTimedOutEventAttributes.LastFailureDetails)
+		}
+	case s.EventTypeActivityTaskCanceled:
+		if event.ActivityTaskCanceledEventAttributes != nil {
+			sum += len(event.ActivityTaskCanceledEventAttributes.Details)
+		}
+	case s.EventTypeMarkerRecorded:
+		if event.MarkerRecordedEventAttributes != nil {
+			sum += len(event.MarkerRecordedEventAttributes.Details)
+		}
+	case s.EventTypeWorkflowExecutionTerminated:
+		if event.WorkflowExecutionTerminatedEventAttributes != nil {
+			sum += len(event.WorkflowExecutionTerminatedEventAttributes.Details)
+		}
+	case s.EventTypeWorkflowExecutionCanceled:
+		if event.WorkflowExecutionCanceledEventAttributes != nil {
+			sum += len(event.WorkflowExecutionCanceledEventAttributes.Details)
+		}
+	case s.EventTypeWorkflowExecutionContinuedAsNew:
+		if event.WorkflowExecutionContinuedAsNewEventAttributes != nil {
+			sum += len(event.WorkflowExecutionContinuedAsNewEventAttributes.Input)
+			sum += len(event.WorkflowExecutionContinuedAsNewEventAttributes.FailureDetails)
+			sum += len(event.WorkflowExecutionContinuedAsNewEventAttributes.LastCompletionResult)
+			sum += sizeOf(event.WorkflowExecutionContinuedAsNewEventAttributes.Memo.GetFields())
+			sum += sizeOf(event.WorkflowExecutionContinuedAsNewEventAttributes.Header.GetFields())
+			sum += sizeOf(event.WorkflowExecutionContinuedAsNewEventAttributes.SearchAttributes.GetIndexedFields())
+		}
+	case s.EventTypeStartChildWorkflowExecutionInitiated:
+		if event.StartChildWorkflowExecutionInitiatedEventAttributes != nil {
+			sum += len(event.StartChildWorkflowExecutionInitiatedEventAttributes.Input)
+			sum += len(event.StartChildWorkflowExecutionInitiatedEventAttributes.Control)
+			sum += sizeOf(event.StartChildWorkflowExecutionInitiatedEventAttributes.Memo.GetFields())
+			sum += sizeOf(event.StartChildWorkflowExecutionInitiatedEventAttributes.Header.GetFields())
+			sum += sizeOf(event.StartChildWorkflowExecutionInitiatedEventAttributes.SearchAttributes.GetIndexedFields())
+		}
+	case s.EventTypeChildWorkflowExecutionCompleted:
+		if event.ChildWorkflowExecutionCompletedEventAttributes != nil {
+			sum += len(event.ChildWorkflowExecutionCompletedEventAttributes.Result)
+		}
+	case s.EventTypeChildWorkflowExecutionFailed:
+		if event.ChildWorkflowExecutionFailedEventAttributes != nil {
+			sum += len(event.ChildWorkflowExecutionFailedEventAttributes.Details)
+			sum += getLengthOfStringPointer(event.ChildWorkflowExecutionFailedEventAttributes.Reason)
+		}
+	case s.EventTypeChildWorkflowExecutionCanceled:
+		if event.ChildWorkflowExecutionCanceledEventAttributes != nil {
+			sum += len(event.ChildWorkflowExecutionCanceledEventAttributes.Details)
+		}
+	case s.EventTypeSignalExternalWorkflowExecutionInitiated:
+		if event.SignalExternalWorkflowExecutionInitiatedEventAttributes != nil {
+			sum += len(event.SignalExternalWorkflowExecutionInitiatedEventAttributes.Control)
+			sum += len(event.SignalExternalWorkflowExecutionInitiatedEventAttributes.Input)
+		}
+	default:
+		logger.Debug("unsupported event type for history size estimation", zap.String("Event Type", event.GetEventType().String()))
+	}
+
+	return sum
+}
+
+// simple function to estimate the size of a map[string][]byte
+func sizeOf(o map[string][]byte) int {
+	sum := 0
+	for k, v := range o {
+		sum += len(k) + len(v)
+	}
+	return sum
+}
+
+// simple function to estimate the size of a string pointer
+func getLengthOfStringPointer(s *string) int {
+	if s == nil {
+		return 0
+	}
+	return len(*s)
 }

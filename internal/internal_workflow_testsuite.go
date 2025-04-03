@@ -30,19 +30,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jonboulle/clockwork"
+
+	"go.uber.org/cadence/internal/common/debug"
+
 	"github.com/facebookgo/clock"
 	"github.com/golang/mock/gomock"
 	"github.com/opentracing/opentracing-go"
 	"github.com/robfig/cron"
 	"github.com/stretchr/testify/mock"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/metrics"
-	"go.uber.org/yarpc"
-	"go.uber.org/zap"
 )
 
 const (
@@ -362,6 +367,7 @@ func (env *testWorkflowEnvironmentImpl) newTestWorkflowEnvironmentForChild(param
 	childEnv.testWorkflowEnvironmentShared = env.testWorkflowEnvironmentShared
 	childEnv.workerOptions = env.workerOptions
 	childEnv.workerOptions.DataConverter = params.dataConverter
+	childEnv.workflowInterceptors = env.workflowInterceptors
 	childEnv.registry = env.registry
 
 	if params.workflowID == "" {
@@ -624,10 +630,11 @@ func (env *testWorkflowEnvironmentImpl) executeLocalActivity(
 		},
 	}
 	taskHandler := localActivityTaskHandler{
-		userContext:  env.workerOptions.BackgroundActivityContext,
-		metricsScope: env.metricsScope,
-		logger:       env.logger,
-		tracer:       opentracing.NoopTracer{},
+		userContext:     env.workerOptions.BackgroundActivityContext,
+		metricsScope:    env.metricsScope,
+		logger:          env.logger,
+		tracer:          opentracing.NoopTracer{},
+		activityTracker: debug.NewNoopActivityTracker(),
 	}
 
 	result := taskHandler.executeLocalActivityTask(task)
@@ -1172,7 +1179,7 @@ func getRetryBackoffFromThriftRetryPolicy(tp *shared.RetryPolicy, attempt int32,
 
 func (env *testWorkflowEnvironmentImpl) ExecuteLocalActivity(params executeLocalActivityParams, callback laResultHandler) *localActivityInfo {
 	activityID := getStringID(env.nextID())
-	wOptions := augmentWorkerOptions(env.workerOptions)
+	wOptions := AugmentWorkerOptions(env.workerOptions)
 	ae := &activityExecutor{name: getActivityFunctionName(env.registry, params.ActivityFn), fn: params.ActivityFn}
 	if at, _ := getValidatedActivityFunction(params.ActivityFn, params.InputArgs, env.registry); at != nil {
 		// local activity could be registered, if so use the registered name. This name is only used to find a mock.
@@ -1193,6 +1200,7 @@ func (env *testWorkflowEnvironmentImpl) ExecuteLocalActivity(params executeLocal
 		dataConverter:      wOptions.DataConverter,
 		tracer:             wOptions.Tracer,
 		contextPropagators: wOptions.ContextPropagators,
+		activityTracker:    debug.NewNoopActivityTracker(),
 	}
 
 	env.localActivities[activityID] = task
@@ -1300,7 +1308,16 @@ func (env *testWorkflowEnvironmentImpl) handleLocalActivityResult(result *localA
 	}
 
 	delete(env.localActivities, activityID)
-	lar := &localActivityResultWrapper{err: result.err, result: result.result, backoff: noRetryBackoff}
+	var encodedErr error
+	if result.err != nil {
+		errReason, errDetails := getErrorDetails(result.err, env.GetDataConverter())
+		encodedErr = constructError(errReason, errDetails, env.GetDataConverter())
+	}
+	lar := &localActivityResultWrapper{
+		err:     encodedErr,
+		result:  result.result,
+		backoff: noRetryBackoff,
+	}
 	if result.task.retryPolicy != nil && result.err != nil {
 		lar.backoff = getRetryBackoff(result, env.Now())
 		lar.attempt = task.attempt
@@ -1611,7 +1628,7 @@ func (m *mockWrapper) executeMockWithActualArgs(ctx interface{}, inputArgs []int
 }
 
 func (env *testWorkflowEnvironmentImpl) newTestActivityTaskHandler(taskList string, dataConverter DataConverter) ActivityTaskHandler {
-	wOptions := augmentWorkerOptions(env.workerOptions)
+	wOptions := AugmentWorkerOptions(env.workerOptions)
 	wOptions.DataConverter = dataConverter
 	params := workerExecutionParameters{
 		WorkerOptions:     wOptions,
@@ -1660,7 +1677,7 @@ func (env *testWorkflowEnvironmentImpl) newTestActivityTaskHandler(taskList stri
 		return &activityExecutorWrapper{activityExecutor: ae, env: env}
 	}
 
-	taskHandler := newActivityTaskHandlerWithCustomProvider(env.service, params, registry, getActivity)
+	taskHandler := newActivityTaskHandlerWithCustomProvider(env.service, params, registry, getActivity, clockwork.NewRealClock())
 	return taskHandler
 }
 
@@ -1871,6 +1888,24 @@ func (env *testWorkflowEnvironmentImpl) SignalExternalWorkflow(domainName, workf
 
 func (env *testWorkflowEnvironmentImpl) ExecuteChildWorkflow(params executeWorkflowParams, callback resultHandler, startedHandler func(r WorkflowExecution, e error)) error {
 	return env.executeChildWorkflowWithDelay(0, params, callback, startedHandler)
+}
+
+func (env *testWorkflowEnvironmentImpl) GetRegisteredWorkflows() []RegistryWorkflowInfo {
+	workflows := env.registry.GetRegisteredWorkflows()
+	var result []RegistryWorkflowInfo
+	for _, wf := range workflows {
+		result = append(result, wf)
+	}
+	return result
+}
+
+func (env *testWorkflowEnvironmentImpl) GetRegisteredActivities() []RegistryActivityInfo {
+	activities := env.registry.getRegisteredActivities()
+	var result []RegistryActivityInfo
+	for _, a := range activities {
+		result = append(result, a)
+	}
+	return result
 }
 
 func (env *testWorkflowEnvironmentImpl) executeChildWorkflowWithDelay(delayStart time.Duration, params executeWorkflowParams, callback resultHandler, startedHandler func(r WorkflowExecution, e error)) error {

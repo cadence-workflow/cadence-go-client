@@ -22,19 +22,21 @@ package metrics
 
 // Workflow Creation metrics
 const (
-	CadenceMetricsPrefix             = "cadence-"
-	WorkflowStartCounter             = CadenceMetricsPrefix + "workflow-start"
-	WorkflowCompletedCounter         = CadenceMetricsPrefix + "workflow-completed"
-	WorkflowCanceledCounter          = CadenceMetricsPrefix + "workflow-canceled"
-	WorkflowFailedCounter            = CadenceMetricsPrefix + "workflow-failed"
-	WorkflowContinueAsNewCounter     = CadenceMetricsPrefix + "workflow-continue-as-new"
-	WorkflowEndToEndLatency          = CadenceMetricsPrefix + "workflow-endtoend-latency" // measure workflow execution from start to close
-	WorkflowGetHistoryCounter        = CadenceMetricsPrefix + "workflow-get-history-total"
-	WorkflowGetHistoryFailedCounter  = CadenceMetricsPrefix + "workflow-get-history-failed"
-	WorkflowGetHistorySucceedCounter = CadenceMetricsPrefix + "workflow-get-history-succeed"
-	WorkflowGetHistoryLatency        = CadenceMetricsPrefix + "workflow-get-history-latency"
-	WorkflowSignalWithStartCounter   = CadenceMetricsPrefix + "workflow-signal-with-start"
-	DecisionTimeoutCounter           = CadenceMetricsPrefix + "decision-timeout"
+	CadenceMetricsPrefix                = "cadence-"
+	WorkflowStartCounter                = CadenceMetricsPrefix + "workflow-start"
+	WorkflowStartAsyncCounter           = CadenceMetricsPrefix + "workflow-start-async"
+	WorkflowCompletedCounter            = CadenceMetricsPrefix + "workflow-completed"
+	WorkflowCanceledCounter             = CadenceMetricsPrefix + "workflow-canceled"
+	WorkflowFailedCounter               = CadenceMetricsPrefix + "workflow-failed"
+	WorkflowContinueAsNewCounter        = CadenceMetricsPrefix + "workflow-continue-as-new"
+	WorkflowEndToEndLatency             = CadenceMetricsPrefix + "workflow-endtoend-latency" // measure workflow execution from start to close
+	WorkflowGetHistoryCounter           = CadenceMetricsPrefix + "workflow-get-history-total"
+	WorkflowGetHistoryFailedCounter     = CadenceMetricsPrefix + "workflow-get-history-failed"
+	WorkflowGetHistorySucceedCounter    = CadenceMetricsPrefix + "workflow-get-history-succeed"
+	WorkflowGetHistoryLatency           = CadenceMetricsPrefix + "workflow-get-history-latency"
+	WorkflowSignalWithStartCounter      = CadenceMetricsPrefix + "workflow-signal-with-start"
+	WorkflowSignalWithStartAsyncCounter = CadenceMetricsPrefix + "workflow-signal-with-start-async"
+	DecisionTimeoutCounter              = CadenceMetricsPrefix + "decision-timeout"
 
 	DecisionPollCounter                = CadenceMetricsPrefix + "decision-poll-total"
 	DecisionPollFailedCounter          = CadenceMetricsPrefix + "decision-poll-failed"
@@ -107,4 +109,9 @@ const (
 	ReplayFailedCounter  = CadenceMetricsPrefix + "replay-failed"
 	ReplaySkippedCounter = CadenceMetricsPrefix + "replay-skipped"
 	ReplayLatency        = CadenceMetricsPrefix + "replay-latency"
+
+	EstimatedHistorySize     = CadenceMetricsPrefix + "estimated-history-size"
+	ServerSideHistorySize    = CadenceMetricsPrefix + "server-side-history-size"
+	ConcurrentTaskQuota      = CadenceMetricsPrefix + "concurrent-task-quota"
+	PollerRequestBufferUsage = CadenceMetricsPrefix + "poller-request-buffer-usage"
 )

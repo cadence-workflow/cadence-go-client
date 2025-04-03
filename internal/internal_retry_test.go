@@ -21,10 +21,12 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	s "go.uber.org/cadence/.gen/go/shared"
 )
 
@@ -72,4 +74,50 @@ func TestErrRetries(t *testing.T) {
 			assert.False(t, retryable, "%T should be fatal", err)
 		}
 	})
+}
+
+func TestRetryWhileTransientError(t *testing.T) {
+	testcases := []struct {
+		name          string
+		errors        []error
+		expectedError error
+	}{
+		{
+			name:          "Immediately return success",
+			errors:        []error{nil},
+			expectedError: nil,
+		},
+		{
+			name:          "Success after retriable error",
+			errors:        []error{&s.InternalServiceError{}, nil},
+			expectedError: nil,
+		},
+		{
+			name:          "AccessDenied should not be retried",
+			errors:        []error{&s.AccessDeniedError{}},
+			expectedError: &s.AccessDeniedError{},
+		},
+		{
+			name:          "Multiple errors until non-retriable",
+			errors:        []error{&s.InternalServiceError{}, &s.InternalServiceError{}, &s.AccessDeniedError{}},
+			expectedError: &s.AccessDeniedError{},
+		},
+	}
+
+	for _, tt := range testcases {
+		t.Run(tt.name, func(t *testing.T) {
+			i := 0
+			err := retryWhileTransientError(
+				context.Background(),
+				func() error {
+					e := tt.errors[i]
+					i++
+					return e
+				},
+			)
+
+			assert.Equal(t, len(tt.errors), i, "all errors expected to be consumed")
+			assert.Equal(t, tt.expectedError, err)
+		})
+	}
 }

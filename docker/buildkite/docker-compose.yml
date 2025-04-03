@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   cassandra:
-    image: cassandra:3.11
+    image: cassandra:4.1.3
     ports:
       - "9042:9042"
     networks:
@@ -81,6 +81,8 @@ services:
       dockerfile: ./docker/buildkite/Dockerfile
     environment:
       - "GO111MODULE=on"
+      - BUILDKITE_BRANCH
+      - BUILDKITE_COMMIT
     volumes:
       - ../../:/go/src/go.uber.org/cadence
     networks:
@@ -110,11 +112,9 @@ services:
       - BUILDKITE_BUILD_CREATOR_EMAIL
       - BUILDKITE_BUILD_CREATOR_TEAMS
       - BUILDKITE_PULL_REQUEST_REPO
-      - COVERALLS_TOKEN
       - "GO111MODULE=on"
     volumes:
       - ../../:/go/src/go.uber.org/cadence
-      - /usr/bin/buildkite-agent:/usr/bin/buildkite-agent
 
 networks:
   services-network:

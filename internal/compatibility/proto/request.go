@@ -21,8 +21,9 @@
 package proto
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func CountWorkflowExecutionsRequest(t *shared.CountWorkflowExecutionsRequest) *apiv1.CountWorkflowExecutionsRequest {
@@ -77,6 +78,17 @@ func DescribeWorkflowExecutionRequest(t *shared.DescribeWorkflowExecutionRequest
 	return &apiv1.DescribeWorkflowExecutionRequest{
 		Domain:            t.GetDomain(),
 		WorkflowExecution: WorkflowExecution(t.Execution),
+	}
+}
+
+func DiagnoseWorkflowExecutionRequest(t *shared.DiagnoseWorkflowExecutionRequest) *apiv1.DiagnoseWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.DiagnoseWorkflowExecutionRequest{
+		Domain:            t.GetDomain(),
+		WorkflowExecution: WorkflowExecution(t.GetWorkflowExecution()),
+		Identity:          t.GetIdentity(),
 	}
 }
 
@@ -409,10 +421,21 @@ func SignalWithStartWorkflowExecutionRequest(t *shared.SignalWithStartWorkflowEx
 			Header:                       Header(t.Header),
 			DelayStart:                   secondsToDuration(t.DelayStartSeconds),
 			JitterStart:                  secondsToDuration(t.JitterStartSeconds),
+			FirstRunAt:                   unixNanoToTime(t.FirstRunAtTimestamp),
 		},
 		SignalName:  t.GetSignalName(),
 		SignalInput: Payload(t.SignalInput),
 		Control:     t.Control,
+	}
+}
+
+func SignalWithStartWorkflowExecutionAsyncRequest(t *shared.SignalWithStartWorkflowExecutionAsyncRequest) *apiv1.SignalWithStartWorkflowExecutionAsyncRequest {
+	if t == nil {
+		return nil
+	}
+
+	return &apiv1.SignalWithStartWorkflowExecutionAsyncRequest{
+		Request: SignalWithStartWorkflowExecutionRequest(t.GetRequest()),
 	}
 }
 
@@ -453,6 +476,16 @@ func StartWorkflowExecutionRequest(t *shared.StartWorkflowExecutionRequest) *api
 		Header:                       Header(t.Header),
 		DelayStart:                   secondsToDuration(t.DelayStartSeconds),
 		JitterStart:                  secondsToDuration(t.JitterStartSeconds),
+		FirstRunAt:                   unixNanoToTime(t.FirstRunAtTimestamp),
+	}
+}
+
+func StartWorkflowExecutionAsyncRequest(t *shared.StartWorkflowExecutionAsyncRequest) *apiv1.StartWorkflowExecutionAsyncRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.StartWorkflowExecutionAsyncRequest{
+		Request: StartWorkflowExecutionRequest(t.GetRequest()),
 	}
 }
 

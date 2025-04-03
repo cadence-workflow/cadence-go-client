@@ -21,8 +21,9 @@
 package proto
 
 import (
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/cadence/.gen/go/shared"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func TaskListKind(t *shared.TaskListKind) apiv1.TaskListKind {
@@ -363,6 +364,8 @@ func CancelExternalWorkflowExecutionFailedCause(t *shared.CancelExternalWorkflow
 	switch *t {
 	case shared.CancelExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution:
 		return apiv1.CancelExternalWorkflowExecutionFailedCause_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION
+	case shared.CancelExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted:
+		return apiv1.CancelExternalWorkflowExecutionFailedCause_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_WORKFLOW_ALREADY_COMPLETED
 	}
 	panic("unexpected enum value")
 }
@@ -374,6 +377,8 @@ func SignalExternalWorkflowExecutionFailedCause(t *shared.SignalExternalWorkflow
 	switch *t {
 	case shared.SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution:
 		return apiv1.SignalExternalWorkflowExecutionFailedCause_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION
+	case shared.SignalExternalWorkflowExecutionFailedCauseWorkflowAlreadyCompleted:
+		return apiv1.SignalExternalWorkflowExecutionFailedCause_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_WORKFLOW_ALREADY_COMPLETED
 	}
 	panic("unexpected enum value")
 }

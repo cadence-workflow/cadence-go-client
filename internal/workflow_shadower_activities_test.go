@@ -27,14 +27,16 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shadower"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/zap/zaptest"
 )
 
 type workflowShadowerActivitiesSuite struct {
@@ -60,7 +62,7 @@ func (s *workflowShadowerActivitiesSuite) SetupTest() {
 
 	s.controller = gomock.NewController(s.T())
 	s.mockService = workflowservicetest.NewMockClient(s.controller)
-	s.SetLogger(zaptest.NewLogger(s.T()))
+	s.SetLogger(testlogger.NewZap(s.T()))
 
 	s.env = s.NewTestActivityEnvironment()
 	s.testReplayer = NewWorkflowReplayer()
@@ -72,7 +74,7 @@ func (s *workflowShadowerActivitiesSuite) SetupTest() {
 	activityContext = context.WithValue(activityContext, workflowReplayerContextKey, s.testReplayer)
 	s.env.SetWorkerOptions(WorkerOptions{
 		BackgroundActivityContext: activityContext,
-		Logger:                    zaptest.NewLogger(s.T()),
+		Logger:                    testlogger.NewZap(s.T()),
 	})
 	s.env.RegisterActivityWithOptions(scanWorkflowActivity, RegisterActivityOptions{
 		Name: shadower.ScanWorkflowActivityName,

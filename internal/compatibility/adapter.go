@@ -23,12 +23,14 @@ package compatibility
 import (
 	"context"
 
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+	"go.uber.org/yarpc"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/compatibility/proto"
 	"go.uber.org/cadence/internal/compatibility/thrift"
-	"go.uber.org/yarpc"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 type thrift2protoAdapter struct {
@@ -70,6 +72,11 @@ func (a thrift2protoAdapter) DescribeTaskList(ctx context.Context, request *shar
 func (a thrift2protoAdapter) DescribeWorkflowExecution(ctx context.Context, request *shared.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DescribeWorkflowExecutionResponse, error) {
 	response, err := a.workflow.DescribeWorkflowExecution(ctx, proto.DescribeWorkflowExecutionRequest(request), opts...)
 	return thrift.DescribeWorkflowExecutionResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.workflow.DiagnoseWorkflowExecution(ctx, proto.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return thrift.DiagnoseWorkflowExecutionResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) GetClusterInfo(ctx context.Context, opts ...yarpc.CallOption) (*shared.ClusterInfo, error) {
@@ -217,6 +224,11 @@ func (a thrift2protoAdapter) SignalWithStartWorkflowExecution(ctx context.Contex
 	return thrift.SignalWithStartWorkflowExecutionResponse(response), thrift.Error(err)
 }
 
+func (a thrift2protoAdapter) SignalWithStartWorkflowExecutionAsync(ctx context.Context, request *shared.SignalWithStartWorkflowExecutionAsyncRequest, opts ...yarpc.CallOption) (*shared.SignalWithStartWorkflowExecutionAsyncResponse, error) {
+	response, err := a.workflow.SignalWithStartWorkflowExecutionAsync(ctx, proto.SignalWithStartWorkflowExecutionAsyncRequest(request), opts...)
+	return thrift.SignalWithStartWorkflowExecutionAsyncResponse(response), thrift.Error(err)
+}
+
 func (a thrift2protoAdapter) SignalWorkflowExecution(ctx context.Context, request *shared.SignalWorkflowExecutionRequest, opts ...yarpc.CallOption) error {
 	_, err := a.workflow.SignalWorkflowExecution(ctx, proto.SignalWorkflowExecutionRequest(request), opts...)
 	return thrift.Error(err)
@@ -225,6 +237,11 @@ func (a thrift2protoAdapter) SignalWorkflowExecution(ctx context.Context, reques
 func (a thrift2protoAdapter) StartWorkflowExecution(ctx context.Context, request *shared.StartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.StartWorkflowExecutionResponse, error) {
 	response, err := a.workflow.StartWorkflowExecution(ctx, proto.StartWorkflowExecutionRequest(request), opts...)
 	return thrift.StartWorkflowExecutionResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) StartWorkflowExecutionAsync(ctx context.Context, request *shared.StartWorkflowExecutionAsyncRequest, opts ...yarpc.CallOption) (*shared.StartWorkflowExecutionAsyncResponse, error) {
+	response, err := a.workflow.StartWorkflowExecutionAsync(ctx, proto.StartWorkflowExecutionAsyncRequest(request), opts...)
+	return thrift.StartWorkflowExecutionAsyncResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) TerminateWorkflowExecution(ctx context.Context, request *shared.TerminateWorkflowExecutionRequest, opts ...yarpc.CallOption) error {
@@ -315,6 +332,10 @@ func (a workflowAPIthriftAdapter) TerminateWorkflowExecution(ctx context.Context
 func (a workflowAPIthriftAdapter) DescribeWorkflowExecution(ctx context.Context, request *apiv1.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*apiv1.DescribeWorkflowExecutionResponse, error) {
 	response, err := a.service.DescribeWorkflowExecution(ctx, thrift.DescribeWorkflowExecutionRequest(request), opts...)
 	return proto.DescribeWorkflowExecutionResponse(response), proto.Error(err)
+}
+func (a workflowAPIthriftAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *apiv1.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*apiv1.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.service.DiagnoseWorkflowExecution(ctx, thrift.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return proto.DiagnoseWorkflowExecutionResponse(response), proto.Error(err)
 }
 func (a workflowAPIthriftAdapter) QueryWorkflow(ctx context.Context, request *apiv1.QueryWorkflowRequest, opts ...yarpc.CallOption) (*apiv1.QueryWorkflowResponse, error) {
 	response, err := a.service.QueryWorkflow(ctx, thrift.QueryWorkflowRequest(request), opts...)

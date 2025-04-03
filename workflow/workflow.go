@@ -22,9 +22,10 @@ package workflow
 
 import (
 	"github.com/uber-go/tally"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/encoded"
 	"go.uber.org/cadence/internal"
-	"go.uber.org/zap"
 )
 
 type (
@@ -37,6 +38,9 @@ type (
 
 	// Execution Details.
 	Execution = internal.WorkflowExecution
+
+	// ExecutionAsync Details.
+	ExecutionAsync = internal.WorkflowExecutionAsync
 
 	// Version represents a change version. See GetVersion call.
 	Version = internal.Version
@@ -53,6 +57,8 @@ type (
 
 	// Info information about currently executing workflow
 	Info = internal.WorkflowInfo
+
+	RegistryInfo = internal.RegistryWorkflowInfo
 )
 
 // Register - registers a workflow function with the framework.
@@ -216,6 +222,16 @@ func GetMetricsScope(ctx Context) tally.Scope {
 	return internal.GetMetricsScope(ctx)
 }
 
+// GetTotalHistoryBytes returns the current history size of that workflow
+func GetTotalHistoryBytes(ctx Context) int64 {
+	return internal.GetTotalEstimatedHistoryBytes(ctx)
+}
+
+// GetHistoryCount returns the current number of history event of that workflow
+func GetHistoryCount(ctx Context) int64 {
+	return internal.GetHistoryCount(ctx)
+}
+
 // RequestCancelExternalWorkflow can be used to request cancellation of an external workflow.
 // Input workflowID is the workflow ID of target workflow.
 // Input runID indicates the instance of a workflow. Input runID is optional (default is ""). When runID is not specified,
@@ -249,65 +265,87 @@ func GetSignalChannel(ctx Context, signalName string) Channel {
 	return internal.GetSignalChannel(ctx, signalName)
 }
 
-// SideEffect executes the provided function once, records its result into the workflow history. The recorded result on
-// history will be returned without executing the provided function during replay. This guarantees the deterministic
-// requirement for workflow as the exact same result will be returned in replay.
-// Common use case is to run some short non-deterministic code in workflow, like getting random number or new UUID.
-// The only way to fail SideEffect is to panic which causes decision task failure. The decision task after timeout is
-// rescheduled and re-executed giving SideEffect another chance to succeed.
+// SideEffect executes the provided callback, and records its result into the workflow history.
+// During replay the recorded result will be returned instead, so the callback can do non-deterministic
+// things (such as reading files or getting random numbers) without breaking determinism during replay.
 //
-// Caution: do not use SideEffect to modify closures. Always retrieve result from SideEffect's encoded return value.
-// For example this code is BROKEN:
+// As there is no error return, the callback's code is assumed to be reliable.
+// If you cannot retrieve the value for some reason, panicking and failing the decision task
+// will cause it to be retried, possibly succeeding on another machine.
+// For better error handling, use ExecuteLocalActivity instead.
+//
+// Caution: the callback MUST NOT call any blocking or history-creating APIs,
+// e.g. workflow.Sleep or ExecuteActivity or calling .Get on any future.
+// This will (potentially) work during the initial recording of history, but will
+// fail when replaying because the data is not available when the call occurs
+// (it becomes available later).
+//
+// In other words, in general: use this *only* for code that does not need the workflow.Context.
+// Incorrect context-using calls are not currently prevented in tests or during execution,
+// but they should be eventually.
+//
+//	// Bad example: this will work until a replay occurs,
+//	// but then the workflow will fail to replay with a non-deterministic error.
+//	var out string
+//	err := workflow.SideEffect(func(ctx workflow.Context) interface{} {
+//		var signal data
+//		err := workflow.GetSignalChannel(ctx, "signal").Receive(ctx, &signal)
+//		_ = err // ignore err for the example
+//		return signal
+//	}).Get(&out)
+//	workflow.GetLogger(ctx).Info(out)
+//
+// Caution: do not use SideEffect to modify values outside the callback.
+// Always retrieve result from SideEffect's encoded return value.
+// For example this code will break during replay:
 //
 //	// Bad example:
 //	var random int
 //	workflow.SideEffect(func(ctx workflow.Context) interface{} {
-//	       random = rand.Intn(100)
-//	       return nil
+//		random = rand.Intn(100) // this only occurs when recording history, not during replay
+//		return nil
 //	})
 //	// random will always be 0 in replay, thus this code is non-deterministic
 //	if random < 50 {
-//	       ....
+//		....
 //	} else {
-//	       ....
+//		....
 //	}
 //
-// On replay the provided function is not executed, the random will always be 0, and the workflow could takes a
-// different path breaking the determinism.
+// On replay the provided function is not executed, the `random` var will always be 0,
+// and the workflow could take a different path and break determinism.
 //
-// Here is the correct way to use SideEffect:
+// The only safe way to use SideEffect is to read from the returned encoded.Value:
 //
 //	// Good example:
 //	encodedRandom := SideEffect(func(ctx workflow.Context) interface{} {
-//	      return rand.Intn(100)
+//		return rand.Intn(100)
 //	})
 //	var random int
 //	encodedRandom.Get(&random)
 //	if random < 50 {
-//	       ....
+//		....
 //	} else {
-//	       ....
+//		....
 //	}
 func SideEffect(ctx Context, f func(ctx Context) interface{}) encoded.Value {
 	return internal.SideEffect(ctx, f)
 }
 
-// MutableSideEffect executes the provided function once, then it looks up the history for the value with the given id.
-// If there is no existing value, then it records the function result as a value with the given id on history;
-// otherwise, it compares whether the existing value from history has changed from the new function result by calling the
-// provided equals function. If they are equal, it returns the value without recording a new one in history;
+// MutableSideEffect is similar to SideEffect, but it only records changed values per ID instead of every call.
+// Changes are detected by calling the provided "equals" func - return true to mark a result
+// as the same as before, and not record the new value.  The first call per ID is always "changed" and will always be recorded.
 //
-//	otherwise, it records the new value with the same id on history.
+// This is intended for things you want to *check* frequently, but which *change* only occasionally, as non-changing
+// results will not add anything to your history.  This helps keep those workflows under its size/count limits, and
+// can help keep replays more efficient than when using SideEffect or ExecuteLocalActivity (due to not storing duplicated data).
 //
-// Caution: do not use MutableSideEffect to modify closures. Always retrieve result from MutableSideEffect's encoded
-// return value.
+// Caution: the callback MUST NOT block or call any history-modifying events, or replays will be broken.
+// See SideEffect docs for more details.
 //
-// The difference between MutableSideEffect() and SideEffect() is that every new SideEffect() call in non-replay will
-// result in a new marker being recorded on history. However, MutableSideEffect() only records a new marker if the value
-// changed. During replay, MutableSideEffect() will not execute the function again, but it will return the exact same
-// value as it was returning during the non-replay run.
-//
-// One good use case of MutableSideEffect() is to access dynamically changing config without breaking determinism.
+// Caution: do not use MutableSideEffect to modify closures.
+// Always retrieve result from MutableSideEffect's encoded return value.
+// See SideEffect docs for more details.
 func MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, equals func(a, b interface{}) bool) encoded.Value {
 	return internal.MutableSideEffect(ctx, id, f, equals)
 }

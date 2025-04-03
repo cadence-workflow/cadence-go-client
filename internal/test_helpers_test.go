@@ -23,8 +23,9 @@ package internal
 import (
 	"testing"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/golang/mock/gomock"
-	"go.uber.org/zap/zaptest"
 )
 
 // A collection of cross-test helpers.
@@ -33,7 +34,7 @@ import (
 // Creates a new workflow environment with the correct logger / testing.T configured.
 func newTestWorkflowEnv(t *testing.T) *TestWorkflowEnvironment {
 	s := WorkflowTestSuite{}
-	s.SetLogger(zaptest.NewLogger(t))
+	s.SetLogger(testlogger.NewZap(t))
 	// tally is not set since metrics are not noisy by default, and the test-instance
 	// is largely useless without access to the instance for snapshots.
 	env := s.NewTestWorkflowEnvironment()
@@ -49,5 +50,17 @@ func callOptions() []interface{} {
 		gomock.Any(), // feature version
 		gomock.Any(), // client name
 		gomock.Any(), // feature flags
+	}
+}
+
+// this is the mock for yarpcCallOptions, as gomock requires the num of arguments to be the same.
+// see getYarpcCallOptions for the default case.
+func callOptionsWithIsolationGroupHeader() []interface{} {
+	return []interface{}{
+		gomock.Any(), // library version
+		gomock.Any(), // feature version
+		gomock.Any(), // client name
+		gomock.Any(), // feature flags
+		gomock.Any(), // isolation group header
 	}
 }

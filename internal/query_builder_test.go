@@ -153,6 +153,38 @@ func (s *queryBuilderSuite) TestStartTimeQuery() {
 	}
 }
 
+func (s *queryBuilderSuite) TestExcludeWorkflowTypesQuery() {
+	testCases := []struct {
+		msg           string
+		excludeTypes  []string
+		expectedQuery string
+	}{
+		{
+			msg:           "empty excludeTypes",
+			excludeTypes:  nil,
+			expectedQuery: "",
+		},
+		{
+			msg:           "single excludeType",
+			excludeTypes:  []string{"excludedWorkflowType"},
+			expectedQuery: `(WorkflowType != "excludedWorkflowType")`,
+		},
+		{
+			msg:           "multiple excludeTypes",
+			excludeTypes:  []string{"excludedWorkflowType1", "excludedWorkflowType2"},
+			expectedQuery: `(WorkflowType != "excludedWorkflowType1" and WorkflowType != "excludedWorkflowType2")`,
+		},
+	}
+
+	for _, test := range testCases {
+		s.T().Run(test.msg, func(t *testing.T) {
+			builder := NewQueryBuilder()
+			builder.ExcludeWorkflowTypes(test.excludeTypes)
+			s.Equal(test.expectedQuery, builder.Build())
+		})
+	}
+}
+
 func (s *queryBuilderSuite) TestMultipleFilters() {
 	maxStartTime := time.Now()
 	minStartTime := maxStartTime.Add(-time.Hour)

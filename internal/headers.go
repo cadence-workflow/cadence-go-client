@@ -36,8 +36,24 @@ type HeaderReader interface {
 	ForEachKey(handler func(string, []byte) error) error
 }
 
-// ContextPropagator is an interface that determines what information from
-// context to pass along
+// ContextPropagator determines what information from context to pass along.
+//
+// The information passed is called Headers - a sequence of string to []byte
+// tuples of serialized data that should follow workflow and activity execution
+// around.
+//
+// Inject* methods are used on the way from the process to persistence in
+// Cadence - thus they use HeaderWriter-s to write the metadata. Extract*
+// methods are used on the way from persisted state in Cadence to execution
+// - thus they use HeaderReader-s to read the metadata and fill it in the
+// returned context. Returning error from Extract* methods prevents the
+// successful workflow run.
+//
+// The whole sequence of execution is:
+//
+// Process initiating the workflow -> Inject -> Cadence -> Go Workflow Worker
+// -> ExtractToWorkflow -> Start executing a workflow -> InjectFromWorkflow ->
+// Cadence -> Go Activity Worker -> Extract -> Execute Activity
 type ContextPropagator interface {
 	// Inject injects information from a Go Context into headers
 	Inject(context.Context, HeaderWriter) error

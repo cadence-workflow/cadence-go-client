@@ -24,12 +24,6 @@ package autoscaler
 type (
 	AutoScaler interface {
 		Estimator
-		// Acquire X ResourceUnit of resource
-		Acquire(ResourceUnit) error
-		// Release X ResourceUnit of resource
-		Release(ResourceUnit)
-		// GetCurrent ResourceUnit of resource
-		GetCurrent() ResourceUnit
 		// Start starts the autoscaler go routine that scales the ResourceUnit according to Estimator
 		Start()
 		// Stop stops the autoscaler if started or do nothing if not yet started

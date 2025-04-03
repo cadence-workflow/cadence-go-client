@@ -29,8 +29,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/uber-go/tally"
-	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/zap"
+
+	"go.uber.org/cadence/.gen/go/shared"
 )
 
 type (
@@ -140,6 +141,10 @@ func (t *TestActivityEnvironment) RegisterActivityWithOptions(a interface{}, opt
 	t.impl.RegisterActivityWithOptions(a, options)
 }
 
+func (t *TestActivityEnvironment) GetRegisteredActivities() []RegistryActivityInfo {
+	return t.impl.GetRegisteredActivities()
+}
+
 // ExecuteActivity executes an activity. The tested activity will be executed synchronously in the calling goroutinue.
 // Caller should use Value.Get() to extract strong typed result value.
 func (t *TestActivityEnvironment) ExecuteActivity(activityFn interface{}, args ...interface{}) (Value, error) {
@@ -203,6 +208,14 @@ func (t *TestWorkflowEnvironment) RegisterActivityWithOptions(a interface{}, opt
 		panic("RegisterActivity calls cannot follow mock related ones like OnActivity or similar")
 	}
 	t.impl.RegisterActivityWithOptions(a, options)
+}
+
+func (t *TestWorkflowEnvironment) GetRegisteredWorkflows() []RegistryWorkflowInfo {
+	return t.impl.GetRegisteredWorkflows()
+}
+
+func (t *TestWorkflowEnvironment) GetRegisteredActivities() []RegistryActivityInfo {
+	return t.impl.GetRegisteredActivities()
 }
 
 // SetStartTime sets the start time of the workflow. This is optional, default start time will be the wall clock time when

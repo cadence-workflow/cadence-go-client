@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,18 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-// This file exists to force compilation of all code that doesn't have unit tests.
-package main
+package isolationgroup
 
 import (
-	_ "go.uber.org/cadence"
-	_ "go.uber.org/cadence/activity"
-	_ "go.uber.org/cadence/client"
-	_ "go.uber.org/cadence/encoded"
-	_ "go.uber.org/cadence/testsuite"
-	_ "go.uber.org/cadence/worker"
-	_ "go.uber.org/cadence/workflow"
+	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
+	internal "go.uber.org/cadence/internal/common/isolationgroup"
 )
 
-func main() {
+// NewIsolationGroupWrapper creates a client wrapper that sets isolation group header for all requests to cadence server
+func NewIsolationGroupWrapper(service workflowserviceclient.Interface, isolationGroup string) workflowserviceclient.Interface {
+	return internal.NewWorkflowServiceWrapper(service, isolationGroup)
 }

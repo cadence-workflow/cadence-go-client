@@ -25,13 +25,15 @@ package workflowserviceclient
 
 import (
 	context "context"
-	cadence "go.uber.org/cadence/.gen/go/cadence"
-	shared "go.uber.org/cadence/.gen/go/shared"
+	reflect "reflect"
+
 	wire "go.uber.org/thriftrw/wire"
 	yarpc "go.uber.org/yarpc"
 	transport "go.uber.org/yarpc/api/transport"
 	thrift "go.uber.org/yarpc/encoding/thrift"
-	reflect "reflect"
+
+	cadence "go.uber.org/cadence/.gen/go/cadence"
+	shared "go.uber.org/cadence/.gen/go/shared"
 )
 
 // Interface is a client for the WorkflowService service.
@@ -65,6 +67,12 @@ type Interface interface {
 		DescribeRequest *shared.DescribeWorkflowExecutionRequest,
 		opts ...yarpc.CallOption,
 	) (*shared.DescribeWorkflowExecutionResponse, error)
+
+	DiagnoseWorkflowExecution(
+		ctx context.Context,
+		DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.DiagnoseWorkflowExecutionResponse, error)
 
 	GetClusterInfo(
 		ctx context.Context,
@@ -256,6 +264,12 @@ type Interface interface {
 		opts ...yarpc.CallOption,
 	) (*shared.StartWorkflowExecutionResponse, error)
 
+	SignalWithStartWorkflowExecutionAsync(
+		ctx context.Context,
+		SignalWithStartRequest *shared.SignalWithStartWorkflowExecutionAsyncRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.SignalWithStartWorkflowExecutionAsyncResponse, error)
+
 	SignalWorkflowExecution(
 		ctx context.Context,
 		SignalRequest *shared.SignalWorkflowExecutionRequest,
@@ -267,6 +281,12 @@ type Interface interface {
 		StartRequest *shared.StartWorkflowExecutionRequest,
 		opts ...yarpc.CallOption,
 	) (*shared.StartWorkflowExecutionResponse, error)
+
+	StartWorkflowExecutionAsync(
+		ctx context.Context,
+		StartRequest *shared.StartWorkflowExecutionAsyncRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.StartWorkflowExecutionAsyncResponse, error)
 
 	TerminateWorkflowExecution(
 		ctx context.Context,
@@ -417,6 +437,29 @@ func (c client) DescribeWorkflowExecution(
 	}
 
 	success, err = cadence.WorkflowService_DescribeWorkflowExecution_Helper.UnwrapResponse(&result)
+	return
+}
+
+func (c client) DiagnoseWorkflowExecution(
+	ctx context.Context,
+	_DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.DiagnoseWorkflowExecutionResponse, err error) {
+
+	args := cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.Args(_DiagnoseRequest)
+
+	var body wire.Value
+	body, err = c.c.Call(ctx, args, opts...)
+	if err != nil {
+		return
+	}
+
+	var result cadence.WorkflowService_DiagnoseWorkflowExecution_Result
+	if err = result.FromWire(body); err != nil {
+		return
+	}
+
+	success, err = cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.UnwrapResponse(&result)
 	return
 }
 
@@ -1154,6 +1197,29 @@ func (c client) SignalWithStartWorkflowExecution(
 	return
 }
 
+func (c client) SignalWithStartWorkflowExecutionAsync(
+	ctx context.Context,
+	_SignalWithStartRequest *shared.SignalWithStartWorkflowExecutionAsyncRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.SignalWithStartWorkflowExecutionAsyncResponse, err error) {
+
+	args := cadence.WorkflowService_SignalWithStartWorkflowExecutionAsync_Helper.Args(_SignalWithStartRequest)
+
+	var body wire.Value
+	body, err = c.c.Call(ctx, args, opts...)
+	if err != nil {
+		return
+	}
+
+	var result cadence.WorkflowService_SignalWithStartWorkflowExecutionAsync_Result
+	if err = result.FromWire(body); err != nil {
+		return
+	}
+
+	success, err = cadence.WorkflowService_SignalWithStartWorkflowExecutionAsync_Helper.UnwrapResponse(&result)
+	return
+}
+
 func (c client) SignalWorkflowExecution(
 	ctx context.Context,
 	_SignalRequest *shared.SignalWorkflowExecutionRequest,
@@ -1197,6 +1263,29 @@ func (c client) StartWorkflowExecution(
 	}
 
 	success, err = cadence.WorkflowService_StartWorkflowExecution_Helper.UnwrapResponse(&result)
+	return
+}
+
+func (c client) StartWorkflowExecutionAsync(
+	ctx context.Context,
+	_StartRequest *shared.StartWorkflowExecutionAsyncRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.StartWorkflowExecutionAsyncResponse, err error) {
+
+	args := cadence.WorkflowService_StartWorkflowExecutionAsync_Helper.Args(_StartRequest)
+
+	var body wire.Value
+	body, err = c.c.Call(ctx, args, opts...)
+	if err != nil {
+		return
+	}
+
+	var result cadence.WorkflowService_StartWorkflowExecutionAsync_Result
+	if err = result.FromWire(body); err != nil {
+		return
+	}
+
+	success, err = cadence.WorkflowService_StartWorkflowExecutionAsync_Helper.UnwrapResponse(&result)
 	return
 }
 

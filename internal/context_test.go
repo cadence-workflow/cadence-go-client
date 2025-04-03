@@ -70,6 +70,7 @@ func TestContextChildParentCancelRace(t *testing.T) {
 	}
 	env.RegisterWorkflow(wf)
 	env.ExecuteWorkflow(wf)
+	assert.True(t, env.IsWorkflowCompleted())
 	assert.NoError(t, env.GetWorkflowError())
 }
 
@@ -82,8 +83,13 @@ func TestContextConcurrentCancelRace(t *testing.T) {
 		Context cancellation was one identified by a customer, and it's fairly easy to test.
 		In principle this must be safe to do - contexts are supposed to be concurrency-safe.  Even if ours are not actually
 		safe (for valid reasons), our execution model needs to ensure they *act* like it's safe.
+
+		This intentionally avoids `newTestWorkflowEnv` because the dangling goroutines
+		may shut down after the test finishes -> produce a log, which fails on t.Log races.
+		Ideally the test suite would stop goroutines too, but that isn't reliable currently either.
+		This can be changed if we switch to the server's race-safe zaptest wrapper.
 	*/
-	env := newTestWorkflowEnv(t)
+	env := (&WorkflowTestSuite{}).NewTestWorkflowEnvironment()
 	wf := func(ctx Context) error {
 		ctx, cancel := WithCancel(ctx)
 		racyCancel := func(ctx Context) {
@@ -100,14 +106,20 @@ func TestContextConcurrentCancelRace(t *testing.T) {
 	}
 	env.RegisterWorkflow(wf)
 	env.ExecuteWorkflow(wf)
+	assert.True(t, env.IsWorkflowCompleted())
 	assert.NoError(t, env.GetWorkflowError())
 }
 
 func TestContextAddChildCancelParentRace(t *testing.T) {
 	/*
 		It's apparently also possible to race on adding children while propagating the cancel to children.
+
+		This intentionally avoids `newTestWorkflowEnv` because the dangling goroutines
+		may shut down after the test finishes -> produce a log, which fails on t.Log races.
+		Ideally the test suite would stop goroutines too, but that isn't reliable currently either.
+		This can be changed if we switch to the server's race-safe zaptest wrapper.
 	*/
-	env := newTestWorkflowEnv(t)
+	env := (&WorkflowTestSuite{}).NewTestWorkflowEnvironment()
 	wf := func(ctx Context) error {
 		ctx, cancel := WithCancel(ctx)
 		racyCancel := func(ctx Context) {
@@ -129,6 +141,7 @@ func TestContextAddChildCancelParentRace(t *testing.T) {
 	}
 	env.RegisterWorkflow(wf)
 	env.ExecuteWorkflow(wf)
+	assert.True(t, env.IsWorkflowCompleted())
 	assert.NoError(t, env.GetWorkflowError())
 }
 

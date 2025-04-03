@@ -41,6 +41,8 @@ type lru struct {
 	ttl      time.Duration
 	pin      bool
 	rmFunc   RemovedFunc
+	// We use this instead of time.Now() in order to make testing easier
+	now func() time.Time
 }
 
 // New creates a new cache with the given options
@@ -56,6 +58,7 @@ func New(maxSize int, opts *Options) Cache {
 		maxSize:  maxSize,
 		pin:      opts.Pin,
 		rmFunc:   opts.RemovedFunc,
+		now:      time.Now,
 	}
 }
 
@@ -97,7 +100,7 @@ func (c *lru) Get(key string) interface{} {
 		cacheEntry.refCount++
 	}
 
-	if cacheEntry.refCount == 0 && !cacheEntry.expiration.IsZero() && time.Now().After(cacheEntry.expiration) {
+	if cacheEntry.refCount == 0 && !cacheEntry.expiration.IsZero() && c.now().After(cacheEntry.expiration) {
 		// Entry has expired
 		if c.rmFunc != nil {
 			go c.rmFunc(cacheEntry.value)
@@ -182,7 +185,7 @@ func (c *lru) putInternal(key string, value interface{}, allowUpdate bool) (inte
 			entry.value = value
 		}
 		if c.ttl != 0 {
-			entry.expiration = time.Now().Add(c.ttl)
+			entry.expiration = c.now().Add(c.ttl)
 		}
 		c.byAccess.MoveToFront(elt)
 		if c.pin {
@@ -201,7 +204,7 @@ func (c *lru) putInternal(key string, value interface{}, allowUpdate bool) (inte
 	}
 
 	if c.ttl != 0 {
-		entry.expiration = time.Now().Add(c.ttl)
+		entry.expiration = c.now().Add(c.ttl)
 	}
 
 	c.byKey[key] = c.byAccess.PushFront(entry)

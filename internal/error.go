@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"go.uber.org/cadence/.gen/go/shared"
+	"go.uber.org/cadence/internal/common/util"
 )
 
 /*
@@ -123,6 +124,51 @@ type (
 	workflowPanicError struct {
 		value      interface{}
 		stackTrace string
+	}
+
+	// NonDeterministicError contains some structured data related to a non-deterministic
+	// replay failure, and is primarily intended for allowing richer error reporting.
+	//
+	// WorkflowType, WorkflowID, RunID, TaskList, and DomainName will likely be long-term stable
+	// and included in some form in future library versions, but the rest of these fields may
+	// change at any time, or be removed in a future major version change.
+	NonDeterministicError struct {
+
+		// Reason is a relatively free-form description of what kind of non-determinism
+		// was detected.
+		//
+		// You are *strongly* encouraged to not rely on these strings for behavior, only
+		// explanation, for a few reasons.  More will likely appear in the future, they may
+		// change, and there is little that can be safely decided on in an automated way.
+		//
+		// Currently, values roughly match the historical error strings, and are:
+		//  - "missing replay decision" (The error will contain HistoryEventText, as there
+		//    is at least one history event that has no matching replayed decision)
+		//  - "extra replay decision" (The error will contain DecisionText, as there is
+		//    at least one decision from replay that has no matching history event)
+		//  - "mismatch" (Both HistoryEventText and DecisionText will exist, as there
+		//    are issues with both.  This was previously shown as "history event is ...,
+		//    replay decision is ..." error text.)
+		Reason string
+
+		WorkflowType string
+		WorkflowID   string
+		RunID        string
+		TaskList     string
+		DomainName   string
+
+		// intentionally avoiding "history event" and "decision" names
+		// because we *do* have types for them, but they are in thrift and should
+		// not be exposed directly.
+		// we should consider doing that eventually though, or providing a
+		// simplified object for richer failure information.
+
+		// HistoryEventText contains a String() representation of a history
+		// event (i.e. previously recorded) that is related to the problem.
+		HistoryEventText string
+		// DecisionText contains a String() representation of a replay decision
+		// event (i.e. created during replay) that is related to the problem.
+		DecisionText string
 	}
 
 	// ContinueAsNewError contains information about how to continue the workflow as new.
@@ -365,6 +411,16 @@ func (e *ContinueAsNewError) Args() []interface{} {
 	return e.args
 }
 
+// Input return serialized workflow argument
+func (e *ContinueAsNewError) Input() []byte {
+	return e.params.input
+}
+
+// Header return the header to start a workflow
+func (e *ContinueAsNewError) Header() *shared.Header {
+	return e.params.header
+}
+
 // newTerminatedError creates NewTerminatedError instance
 func newTerminatedError() *TerminatedError {
 	return &TerminatedError{}
@@ -408,4 +464,58 @@ func (b ErrorDetailsValues) Get(valuePtr ...interface{}) error {
 		target.Set(val)
 	}
 	return nil
+}
+
+// NewNonDeterminsticError constructs a new *NonDeterministicError.
+//
+//   - reason should be a documented NonDeterminsticError.Reason value
+//   - info is always required.  only a portion of it is used, but it is a convenient
+//     and currently always-available object.
+//   - history and decision may each be present or nil at any time
+func NewNonDeterminsticError(reason string, info *WorkflowInfo, history *shared.HistoryEvent, decision *shared.Decision) error {
+	var historyText string
+	if history != nil {
+		historyText = util.HistoryEventToString(history)
+	}
+	var decisionText string
+	if decision != nil {
+		decisionText = util.DecisionToString(decision)
+	}
+	return &NonDeterministicError{
+		Reason: reason,
+
+		WorkflowType: info.WorkflowType.Name,
+		WorkflowID:   info.WorkflowExecution.ID,
+		RunID:        info.WorkflowExecution.RunID,
+		TaskList:     info.TaskListName,
+		DomainName:   info.Domain,
+
+		HistoryEventText: historyText,
+		DecisionText:     decisionText,
+	}
+}
+
+func (e *NonDeterministicError) Error() string {
+	switch e.Reason {
+	case "missing replay decision":
+		// historical text
+		return "nondeterministic workflow: " +
+			"missing replay decision for " + e.HistoryEventText
+	case "extra replay decision":
+		// historical text
+		return "nondeterministic workflow: " +
+			"extra replay decision for " + e.DecisionText
+	case "mismatch":
+		// historical text
+		return "nondeterministic workflow: " +
+			"history event is " + e.HistoryEventText + ", " +
+			"replay decision is " + e.DecisionText
+	default:
+		// should not occur in practice, but it's basically fine if it does.
+		// ideally this should crash in internal builds / tests, to prevent mismatched values.
+		return fmt.Sprintf(
+			"unknown reason %q, history event is: %s, replay decision is: %s",
+			e.Reason, e.HistoryEventText, e.DecisionText,
+		)
+	}
 }

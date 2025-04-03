@@ -38,55 +38,74 @@ func Int64Ceil(v float64) int64 {
 
 // Int32Ptr makes a copy and returns the pointer to an int32.
 func Int32Ptr(v int32) *int32 {
-	return &v
+	return PtrOf(v)
 }
 
 // Float64Ptr makes a copy and returns the pointer to a float64.
 func Float64Ptr(v float64) *float64 {
-	return &v
+	return PtrOf(v)
 }
 
 // Int64Ptr makes a copy and returns the pointer to an int64.
 func Int64Ptr(v int64) *int64 {
-	return &v
+	return PtrOf(v)
 }
 
 // StringPtr makes a copy and returns the pointer to a string.
 func StringPtr(v string) *string {
-	return &v
+	return PtrOf(v)
 }
 
 // BoolPtr makes a copy and returns the pointer to a string.
 func BoolPtr(v bool) *bool {
-	return &v
+	return PtrOf(v)
 }
 
 // TaskListPtr makes a copy and returns the pointer to a TaskList.
 func TaskListPtr(v s.TaskList) *s.TaskList {
-	return &v
+	return PtrOf(v)
 }
 
 // DecisionTypePtr makes a copy and returns the pointer to a DecisionType.
 func DecisionTypePtr(t s.DecisionType) *s.DecisionType {
-	return &t
+	return PtrOf(t)
 }
 
 // EventTypePtr makes a copy and returns the pointer to a EventType.
 func EventTypePtr(t s.EventType) *s.EventType {
-	return &t
+	return PtrOf(t)
 }
 
 // QueryTaskCompletedTypePtr makes a copy and returns the pointer to a QueryTaskCompletedType.
 func QueryTaskCompletedTypePtr(t s.QueryTaskCompletedType) *s.QueryTaskCompletedType {
-	return &t
+	return PtrOf(t)
 }
 
 // TaskListKindPtr makes a copy and returns the pointer to a TaskListKind.
 func TaskListKindPtr(t s.TaskListKind) *s.TaskListKind {
-	return &t
+	return PtrOf(t)
 }
 
 // QueryResultTypePtr makes a copy and returns the pointer to a QueryResultType.
 func QueryResultTypePtr(t s.QueryResultType) *s.QueryResultType {
-	return &t
+	return PtrOf(t)
+}
+
+// PtrOf makes a copy and returns the pointer to a value.
+func PtrOf[T any](v T) *T {
+	return &v
+}
+
+// ValueFromPtr returns the value from a pointer.
+func ValueFromPtr[T any](v *T) T {
+	if v == nil {
+		return Zero[T]()
+	}
+	return *v
+}
+
+// Zero returns the zero value of a type by return type.
+func Zero[T any]() T {
+	var zero T
+	return zero
 }

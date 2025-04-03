@@ -25,12 +25,14 @@ import (
 
 	gogo "github.com/gogo/protobuf/types"
 	"github.com/stretchr/testify/assert"
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/compatibility/proto"
 	"go.uber.org/cadence/internal/compatibility/testdata"
 	"go.uber.org/cadence/internal/compatibility/thrift"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 func TestActivityLocalDispatchInfo(t *testing.T) {
@@ -213,6 +215,16 @@ func TestDescribeWorkflowExecutionRequest(t *testing.T) {
 func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.DescribeWorkflowExecutionResponse{nil, {}, &testdata.DescribeWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionResponse(thrift.DescribeWorkflowExecutionResponse(item)))
+	}
+}
+func TestDiagnoseWorkflowExecutionRequest(t *testing.T) {
+	for _, item := range []*apiv1.DiagnoseWorkflowExecutionRequest{nil, {}, &testdata.DiagnoseWorkflowExecutionRequest} {
+		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionRequest(thrift.DiagnoseWorkflowExecutionRequest(item)))
+	}
+}
+func TestDiagnoseWorkflowExecutionResponse(t *testing.T) {
+	for _, item := range []*apiv1.DiagnoseWorkflowExecutionResponse{nil, {}, &testdata.DiagnoseWorkflowExecutionResponse} {
+		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionResponse(thrift.DiagnoseWorkflowExecutionResponse(item)))
 	}
 }
 func TestExternalWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {

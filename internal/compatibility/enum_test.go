@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/compatibility/proto"
 	"go.uber.org/cadence/internal/compatibility/thrift"
@@ -47,6 +48,7 @@ func TestCancelExternalWorkflowExecutionFailedCause(t *testing.T) {
 	for _, item := range []apiv1.CancelExternalWorkflowExecutionFailedCause{
 		apiv1.CancelExternalWorkflowExecutionFailedCause_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_INVALID,
 		apiv1.CancelExternalWorkflowExecutionFailedCause_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,
+		apiv1.CancelExternalWorkflowExecutionFailedCause_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_WORKFLOW_ALREADY_COMPLETED,
 	} {
 		assert.Equal(t, item, proto.CancelExternalWorkflowExecutionFailedCause(thrift.CancelExternalWorkflowExecutionFailedCause(item)))
 	}
@@ -248,6 +250,7 @@ func TestSignalExternalWorkflowExecutionFailedCause(t *testing.T) {
 	for _, item := range []apiv1.SignalExternalWorkflowExecutionFailedCause{
 		apiv1.SignalExternalWorkflowExecutionFailedCause_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_INVALID,
 		apiv1.SignalExternalWorkflowExecutionFailedCause_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_UNKNOWN_EXTERNAL_WORKFLOW_EXECUTION,
+		apiv1.SignalExternalWorkflowExecutionFailedCause_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_FAILED_CAUSE_WORKFLOW_ALREADY_COMPLETED,
 	} {
 		assert.Equal(t, item, proto.SignalExternalWorkflowExecutionFailedCause(thrift.SignalExternalWorkflowExecutionFailedCause(item)))
 	}

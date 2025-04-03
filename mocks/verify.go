@@ -22,8 +22,12 @@ package mocks
 
 import (
 	"go.uber.org/cadence/client"
+	"go.uber.org/cadence/encoded"
 )
 
 // make sure mocks are in sync with interfaces
 var _ client.Client = (*Client)(nil)
 var _ client.DomainClient = (*DomainClient)(nil)
+var _ client.HistoryEventIterator = (*HistoryEventIterator)(nil)
+var _ encoded.Value = (*Value)(nil)
+var _ client.WorkflowRun = (*WorkflowRun)(nil)

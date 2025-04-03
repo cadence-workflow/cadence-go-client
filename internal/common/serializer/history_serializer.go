@@ -25,9 +25,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go.uber.org/cadence/.gen/go/shared"
+
 	"go.uber.org/thriftrw/protocol"
 	"go.uber.org/thriftrw/wire"
+
+	"go.uber.org/cadence/.gen/go/shared"
 )
 
 type (
@@ -105,7 +107,7 @@ func DeserializeBatchEvents(data *shared.DataBlob) ([]*shared.HistoryEvent, erro
 		return nil, nil
 	}
 	var events []*shared.HistoryEvent
-	if data != nil && len(data.Data) == 0 {
+	if len(data.Data) == 0 {
 		return events, nil
 	}
 	err := deserialize(data, &events)
@@ -169,7 +171,6 @@ func deserialize(data *shared.DataBlob, target interface{}) error {
 		err = thriftrwDecode(data.Data, target)
 	case shared.EncodingTypeJSON: // For backward-compatibility
 		err = json.Unmarshal(data.Data, target)
-
 	}
 
 	if err != nil {

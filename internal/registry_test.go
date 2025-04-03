@@ -105,7 +105,7 @@ func TestWorkflowRegistration(t *testing.T) {
 			tt.register(r)
 
 			// Verify registered workflow type
-			workflowType := r.GetRegisteredWorkflowTypes()[0]
+			workflowType := r.GetRegisteredWorkflows()[0].WorkflowType().Name
 			require.Equal(t, tt.workflowType, workflowType)
 
 			// Verify workflow is resolved from workflow type
@@ -114,7 +114,7 @@ func TestWorkflowRegistration(t *testing.T) {
 
 			// Verify workflow is resolved from alternative (backwards compatible) workflow type
 			if len(tt.altWorkflowType) > 0 {
-				_, ok = r.getWorkflowFn(tt.altWorkflowType)
+				_, ok := r.getWorkflowFn(tt.altWorkflowType)
 				require.True(t, ok)
 			}
 

@@ -24,8 +24,9 @@ import (
 	"context"
 
 	"github.com/uber-go/tally"
-	"go.uber.org/cadence/internal"
 	"go.uber.org/zap"
+
+	"go.uber.org/cadence/internal"
 )
 
 type (
@@ -37,13 +38,29 @@ type (
 
 	// RegisterOptions consists of options for registering an activity
 	RegisterOptions = internal.RegisterActivityOptions
+
+	// RegistryInfo
+	RegistryInfo = internal.RegistryActivityInfo
 )
 
 // ErrResultPending is returned from activity's implementation to indicate the activity is not completed when
-// activity method returns. Activity needs to be completed by Client.CompleteActivity() separately. For example, if an
-// activity require human interaction (like approve an expense report), the activity could return ErrResultPending
-// which indicate the activity is not done yet. Then, when the waited human action happened, it needs to trigger something
-// that could report the activity completed event to cadence server via Client.CompleteActivity() API.
+// activity method returns.  The Activity needs to be completed by [go.uber.org/cadence/client.Client.CompleteActivity]
+// separately.
+//
+// For example, if an activity requires human interaction (like approving an expense report), the activity could push
+// its [Info.TaskToken] to an external system, and return [ErrResultPending].  Later on, a human can approve it, and the
+// system can use the associated token with [go.uber.org/cadence/client.Client.CompleteActivity] to finish the
+// still-"running" activity.
+//
+// Caution: since using this frequently implies "long" timeouts, but there is no actually-running activity function
+// that can use [go.uber.org/cadence/client.Client.RecordActivityHeartbeat], activity-worker losses prior to recording
+// the [Info.TaskToken] in an external system may not be noticed until the "long" timeout occurs.  This can be resolved
+// by having another system call RecordActivityHeartbeat while that external action is running, but there is currently
+// no way to mitigate this issue without these heartbeats.
+//
+// If you cannot heartbeat and cannot tolerate this kind of delayed-activity-loss detection, consider emulating a long
+// activity via a signal channel instead: you can start a short-lived activity and wait for a "saved to external system"
+// signal, retrying as necessary, and then wait for an "external system finished" signal containing the final result.
 var ErrResultPending = internal.ErrActivityResultPending
 
 // Register - calls RegisterWithOptions with default registration options.

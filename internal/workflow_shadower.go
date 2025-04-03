@@ -31,11 +31,12 @@ import (
 	"time"
 
 	"github.com/facebookgo/clock"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shadower"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/util"
-	"go.uber.org/zap"
 )
 
 const (
@@ -61,6 +62,11 @@ type (
 		// default: empty list, which matches all workflow types
 		WorkflowTypes []string
 
+		// Optional: A list of workflow type names that need to be excluded in the query.
+		// The list will be used to construct WorkflowQuery.The listed workflow types will be excluded from replay.
+		// default: empty list, which matches all workflow types
+		ExcludeTypes []string
+
 		// Optional: A list of workflow status.
 		// The list will be used to construct WorkflowQuery. Only workflows with status listed will be replayed.
 		// accepted values (case-insensitive): OPEN, CLOSED, ALL, COMPLETED, FAILED, CANCELED, TERMINATED, CONTINUED_AS_NEW, TIMED_OUT
@@ -72,6 +78,12 @@ type (
 		// default: no time filter, which matches all workflow start timestamp
 		WorkflowStartTimeFilter TimeFilter
 
+		// Optional: Min and Max workflow close timestamp.
+		// Timestamps will be used to construct WorkflowQuery. Only workflows closed within the time range will be replayed. If this filter is being used along with the thee StartTime filter then make sure the Min Close time stamp
+		// is within the range of Start timestamp.
+		// default: no time filter, which matches all workflow closed timestamp
+		WorkflowCloseTimeFilter TimeFilter
+
 		// Optional: sampling rate for the workflows matches WorkflowQuery
 		// only sampled workflows will be replayed
 		// default: 1.0
@@ -82,7 +94,7 @@ type (
 		// default: ShadowModeNormal, which means shadowing will complete after all workflows have been replayed
 		Mode ShadowMode
 
-		// Reqired if Mode is set to ShadowModeContinuous: controls when shadowing should complete
+		// Required if Mode is set to ShadowModeContinuous: controls when shadowing should complete
 		ExitCondition ShadowExitCondition
 
 		// Optional: workflow shadowing concurrency (# of concurrent workflow replay activities)
@@ -203,7 +215,7 @@ func (s *WorkflowShadower) Run() error {
 	return s.shadowWorker()
 }
 
-// Stop stops WorkflowShadower and wait up to one miniute for all goroutines to finish before returning
+// Stop stops WorkflowShadower and wait up to one minute for all goroutines to finish before returning
 func (s *WorkflowShadower) Stop() {
 	if !atomic.CompareAndSwapInt32(&s.status, statusStarted, statusStopped) {
 		return
@@ -214,6 +226,11 @@ func (s *WorkflowShadower) Stop() {
 	if success := util.AwaitWaitGroup(&s.shutdownWG, time.Minute); !success {
 		s.logger.Warn("Workflow Shadower timedout on shutdown")
 	}
+}
+
+// GetRegisteredWorkflows retrieves the list of workflows registered on the worker
+func (s *WorkflowShadower) GetRegisteredWorkflows() []RegistryWorkflowInfo {
+	return s.replayer.GetRegisteredWorkflows()
 }
 
 func (s *WorkflowShadower) shadowWorker() error {
@@ -299,11 +316,19 @@ func (o *ShadowOptions) validateAndPopulateFields() error {
 	}
 
 	if len(o.WorkflowQuery) != 0 && (len(o.WorkflowTypes) != 0 || len(o.WorkflowStatus) != 0 || !o.WorkflowStartTimeFilter.isEmpty()) {
-		return errors.New("workflow types, status and start time filter can't be specified when workflow query is specified")
+		return errors.New("workflow types, status, start time and close time filter can't be specified when workflow query is specified")
 	}
 
 	if len(o.WorkflowQuery) == 0 {
-		queryBuilder := NewQueryBuilder().WorkflowTypes(o.WorkflowTypes)
+		queryBuilder := NewQueryBuilder()
+
+		if len(o.WorkflowTypes) > 0 {
+			queryBuilder.WorkflowTypes(o.WorkflowTypes)
+		}
+
+		if len(o.ExcludeTypes) > 0 {
+			queryBuilder.ExcludeWorkflowTypes(o.ExcludeTypes)
+		}
 
 		statuses := make([]WorkflowStatus, 0, len(o.WorkflowStatus))
 		for _, statusString := range o.WorkflowStatus {
@@ -313,6 +338,8 @@ func (o *ShadowOptions) validateAndPopulateFields() error {
 			}
 			statuses = append(statuses, status)
 		}
+		//All the open statuses are taken by default. This list seems to not work as expected.
+		//TODO: verify that the status list works as expected. currently all wfs of all types get picked up.
 		if len(statuses) == 0 {
 			statuses = []WorkflowStatus{WorkflowStatusOpen}
 		}
@@ -325,6 +352,12 @@ func (o *ShadowOptions) validateAndPopulateFields() error {
 			queryBuilder.StartTime(o.WorkflowStartTimeFilter.MinTimestamp, o.WorkflowStartTimeFilter.MaxTimestamp)
 		}
 
+		if !o.WorkflowCloseTimeFilter.isEmpty() {
+			if err := o.WorkflowCloseTimeFilter.validateAndPopulateFields(); err != nil {
+				return fmt.Errorf("invalid close time filter, error: %v", err)
+			}
+			queryBuilder.CloseTime(o.WorkflowCloseTimeFilter.MinTimestamp, o.WorkflowCloseTimeFilter.MaxTimestamp)
+		}
 		o.WorkflowQuery = queryBuilder.Build()
 	}
 

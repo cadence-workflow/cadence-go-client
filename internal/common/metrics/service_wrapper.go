@@ -26,9 +26,10 @@ import (
 	"time"
 
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	"go.uber.org/cadence/.gen/go/shared"
-	"go.uber.org/yarpc"
 )
 
 type (
@@ -46,47 +47,52 @@ type (
 )
 
 const (
-	scopeNameDeprecateDomain                    = CadenceMetricsPrefix + "DeprecateDomain"
-	scopeNameDescribeDomain                     = CadenceMetricsPrefix + "DescribeDomain"
-	scopeNameListDomains                        = CadenceMetricsPrefix + "ListDomains"
-	scopeNameGetWorkflowExecutionHistory        = CadenceMetricsPrefix + "GetWorkflowExecutionHistory"
-	scopeNameGetWorkflowExecutionRawHistory     = CadenceMetricsPrefix + "GetWorkflowExecutionRawHistory"
-	scopeNamePollForWorkflowExecutionRawHistory = CadenceMetricsPrefix + "PollForWorkflowExecutionRawHistory"
-	scopeNameListClosedWorkflowExecutions       = CadenceMetricsPrefix + "ListClosedWorkflowExecutions"
-	scopeNameListOpenWorkflowExecutions         = CadenceMetricsPrefix + "ListOpenWorkflowExecutions"
-	scopeNameListWorkflowExecutions             = CadenceMetricsPrefix + "ListWorkflowExecutions"
-	scopeNameListArchivedWorkflowExecutions     = CadenceMetricsPrefix + "ListArchviedExecutions"
-	scopeNameScanWorkflowExecutions             = CadenceMetricsPrefix + "ScanWorkflowExecutions"
-	scopeNameCountWorkflowExecutions            = CadenceMetricsPrefix + "CountWorkflowExecutions"
-	scopeNamePollForActivityTask                = CadenceMetricsPrefix + "PollForActivityTask"
-	scopeNamePollForDecisionTask                = CadenceMetricsPrefix + "PollForDecisionTask"
-	scopeNameRecordActivityTaskHeartbeat        = CadenceMetricsPrefix + "RecordActivityTaskHeartbeat"
-	scopeNameRecordActivityTaskHeartbeatByID    = CadenceMetricsPrefix + "RecordActivityTaskHeartbeatByID"
-	scopeNameRegisterDomain                     = CadenceMetricsPrefix + "RegisterDomain"
-	scopeNameRequestCancelWorkflowExecution     = CadenceMetricsPrefix + "RequestCancelWorkflowExecution"
-	scopeNameRespondActivityTaskCanceled        = CadenceMetricsPrefix + "RespondActivityTaskCanceled"
-	scopeNameRespondActivityTaskCompleted       = CadenceMetricsPrefix + "RespondActivityTaskCompleted"
-	scopeNameRespondActivityTaskFailed          = CadenceMetricsPrefix + "RespondActivityTaskFailed"
-	scopeNameRespondActivityTaskCanceledByID    = CadenceMetricsPrefix + "RespondActivityTaskCanceledByID"
-	scopeNameRespondActivityTaskCompletedByID   = CadenceMetricsPrefix + "RespondActivityTaskCompletedByID"
-	scopeNameRespondActivityTaskFailedByID      = CadenceMetricsPrefix + "RespondActivityTaskFailedByID"
-	scopeNameRespondDecisionTaskCompleted       = CadenceMetricsPrefix + "RespondDecisionTaskCompleted"
-	scopeNameRespondDecisionTaskFailed          = CadenceMetricsPrefix + "RespondDecisionTaskFailed"
-	scopeNameSignalWorkflowExecution            = CadenceMetricsPrefix + "SignalWorkflowExecution"
-	scopeNameSignalWithStartWorkflowExecution   = CadenceMetricsPrefix + "SignalWithStartWorkflowExecution"
-	scopeNameStartWorkflowExecution             = CadenceMetricsPrefix + "StartWorkflowExecution"
-	scopeNameTerminateWorkflowExecution         = CadenceMetricsPrefix + "TerminateWorkflowExecution"
-	scopeNameResetWorkflowExecution             = CadenceMetricsPrefix + "ResetWorkflowExecution"
-	scopeNameUpdateDomain                       = CadenceMetricsPrefix + "UpdateDomain"
-	scopeNameQueryWorkflow                      = CadenceMetricsPrefix + "QueryWorkflow"
-	scopeNameDescribeTaskList                   = CadenceMetricsPrefix + "DescribeTaskList"
-	scopeNameRespondQueryTaskCompleted          = CadenceMetricsPrefix + "RespondQueryTaskCompleted"
-	scopeNameDescribeWorkflowExecution          = CadenceMetricsPrefix + "DescribeWorkflowExecution"
-	scopeNameResetStickyTaskList                = CadenceMetricsPrefix + "ResetStickyTaskList"
-	scopeNameGetSearchAttributes                = CadenceMetricsPrefix + "GetSearchAttributes"
-	scopeNameListTaskListPartitions             = CadenceMetricsPrefix + "ListTaskListPartitions"
-	scopeNameGetClusterInfo                     = CadenceMetricsPrefix + "GetClusterInfo"
-	scopeRefreshWorkflowTasks                   = CadenceMetricsPrefix + "RefreshWorkflowTasks"
+	scopeNameDeprecateDomain                       = CadenceMetricsPrefix + "DeprecateDomain"
+	scopeNameDescribeDomain                        = CadenceMetricsPrefix + "DescribeDomain"
+	scopeNameListDomains                           = CadenceMetricsPrefix + "ListDomains"
+	scopeNameGetWorkflowExecutionHistory           = CadenceMetricsPrefix + "GetWorkflowExecutionHistory"
+	scopeNameGetWorkflowExecutionRawHistory        = CadenceMetricsPrefix + "GetWorkflowExecutionRawHistory"
+	scopeNamePollForWorkflowExecutionRawHistory    = CadenceMetricsPrefix + "PollForWorkflowExecutionRawHistory"
+	scopeNameListClosedWorkflowExecutions          = CadenceMetricsPrefix + "ListClosedWorkflowExecutions"
+	scopeNameListOpenWorkflowExecutions            = CadenceMetricsPrefix + "ListOpenWorkflowExecutions"
+	scopeNameListWorkflowExecutions                = CadenceMetricsPrefix + "ListWorkflowExecutions"
+	scopeNameListArchivedWorkflowExecutions        = CadenceMetricsPrefix + "ListArchivedWorkflowExecutions"
+	scopeNameScanWorkflowExecutions                = CadenceMetricsPrefix + "ScanWorkflowExecutions"
+	scopeNameCountWorkflowExecutions               = CadenceMetricsPrefix + "CountWorkflowExecutions"
+	scopeNamePollForActivityTask                   = CadenceMetricsPrefix + "PollForActivityTask"
+	scopeNamePollForDecisionTask                   = CadenceMetricsPrefix + "PollForDecisionTask"
+	scopeNameRecordActivityTaskHeartbeat           = CadenceMetricsPrefix + "RecordActivityTaskHeartbeat"
+	scopeNameRecordActivityTaskHeartbeatByID       = CadenceMetricsPrefix + "RecordActivityTaskHeartbeatByID"
+	scopeNameRegisterDomain                        = CadenceMetricsPrefix + "RegisterDomain"
+	scopeNameRequestCancelWorkflowExecution        = CadenceMetricsPrefix + "RequestCancelWorkflowExecution"
+	scopeNameRespondActivityTaskCanceled           = CadenceMetricsPrefix + "RespondActivityTaskCanceled"
+	scopeNameRespondActivityTaskCompleted          = CadenceMetricsPrefix + "RespondActivityTaskCompleted"
+	scopeNameRespondActivityTaskFailed             = CadenceMetricsPrefix + "RespondActivityTaskFailed"
+	scopeNameRespondActivityTaskCanceledByID       = CadenceMetricsPrefix + "RespondActivityTaskCanceledByID"
+	scopeNameRespondActivityTaskCompletedByID      = CadenceMetricsPrefix + "RespondActivityTaskCompletedByID"
+	scopeNameRespondActivityTaskFailedByID         = CadenceMetricsPrefix + "RespondActivityTaskFailedByID"
+	scopeNameRespondDecisionTaskCompleted          = CadenceMetricsPrefix + "RespondDecisionTaskCompleted"
+	scopeNameRespondDecisionTaskFailed             = CadenceMetricsPrefix + "RespondDecisionTaskFailed"
+	scopeNameSignalWorkflowExecution               = CadenceMetricsPrefix + "SignalWorkflowExecution"
+	scopeNameSignalWithStartWorkflowExecution      = CadenceMetricsPrefix + "SignalWithStartWorkflowExecution"
+	scopeNameSignalWithStartWorkflowExecutionAsync = CadenceMetricsPrefix + "SignalWithStartWorkflowExecutionAsync"
+	scopeNameStartWorkflowExecution                = CadenceMetricsPrefix + "StartWorkflowExecution"
+	scopeNameStartWorkflowExecutionAsync           = CadenceMetricsPrefix + "StartWorkflowExecutionAsync"
+	scopeNameTerminateWorkflowExecution            = CadenceMetricsPrefix + "TerminateWorkflowExecution"
+	scopeNameResetWorkflowExecution                = CadenceMetricsPrefix + "ResetWorkflowExecution"
+	scopeNameUpdateDomain                          = CadenceMetricsPrefix + "UpdateDomain"
+	scopeNameQueryWorkflow                         = CadenceMetricsPrefix + "QueryWorkflow"
+	scopeNameDescribeTaskList                      = CadenceMetricsPrefix + "DescribeTaskList"
+	scopeNameRespondQueryTaskCompleted             = CadenceMetricsPrefix + "RespondQueryTaskCompleted"
+	scopeNameDescribeWorkflowExecution             = CadenceMetricsPrefix + "DescribeWorkflowExecution"
+	scopeNameDiagnoseWorkflowExecution             = CadenceMetricsPrefix + "DiagnoseWorkflowExecution"
+	scopeNameResetStickyTaskList                   = CadenceMetricsPrefix + "ResetStickyTaskList"
+	scopeNameGetSearchAttributes                   = CadenceMetricsPrefix + "GetSearchAttributes"
+	scopeNameListTaskListPartitions                = CadenceMetricsPrefix + "ListTaskListPartitions"
+	scopeNameGetClusterInfo                        = CadenceMetricsPrefix + "GetClusterInfo"
+	scopeRefreshWorkflowTasks                      = CadenceMetricsPrefix + "RefreshWorkflowTasks"
+	scopeNameGetTaskListsByDomain                  = CadenceMetricsPrefix + "GetTaskListsByDomain"
+	scopeRestartWorkflowExecution                  = CadenceMetricsPrefix + "RestartWorkflowExecution"
 )
 
 // NewWorkflowServiceWrapper creates a new wrapper to WorkflowService that will emit metrics for each service call.
@@ -115,7 +121,7 @@ func (w *workflowServiceMetricsWrapper) getOperationScope(scopeName string) *ope
 }
 
 func (s *operationScope) handleError(err error) {
-	s.scope.Timer(CadenceLatency).Record(time.Now().Sub(s.startTime))
+	s.scope.Timer(CadenceLatency).Record(time.Since(s.startTime))
 	if err != nil {
 		switch err.(type) {
 		case *shared.EntityNotExistsError,
@@ -155,6 +161,13 @@ func (w *workflowServiceMetricsWrapper) DescribeDomain(ctx context.Context, requ
 func (w *workflowServiceMetricsWrapper) DescribeWorkflowExecution(ctx context.Context, request *shared.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DescribeWorkflowExecutionResponse, error) {
 	scope := w.getOperationScope(scopeNameDescribeWorkflowExecution)
 	result, err := w.service.DescribeWorkflowExecution(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	scope := w.getOperationScope(scopeNameDiagnoseWorkflowExecution)
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }
@@ -320,9 +333,23 @@ func (w *workflowServiceMetricsWrapper) SignalWithStartWorkflowExecution(ctx con
 	return result, err
 }
 
+func (w *workflowServiceMetricsWrapper) SignalWithStartWorkflowExecutionAsync(ctx context.Context, request *shared.SignalWithStartWorkflowExecutionAsyncRequest, opts ...yarpc.CallOption) (*shared.SignalWithStartWorkflowExecutionAsyncResponse, error) {
+	scope := w.getOperationScope(scopeNameSignalWithStartWorkflowExecutionAsync)
+	result, err := w.service.SignalWithStartWorkflowExecutionAsync(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
 func (w *workflowServiceMetricsWrapper) StartWorkflowExecution(ctx context.Context, request *shared.StartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.StartWorkflowExecutionResponse, error) {
 	scope := w.getOperationScope(scopeNameStartWorkflowExecution)
 	result, err := w.service.StartWorkflowExecution(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) StartWorkflowExecutionAsync(ctx context.Context, request *shared.StartWorkflowExecutionAsyncRequest, opts ...yarpc.CallOption) (*shared.StartWorkflowExecutionAsyncResponse, error) {
+	scope := w.getOperationScope(scopeNameStartWorkflowExecutionAsync)
+	result, err := w.service.StartWorkflowExecutionAsync(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }
@@ -397,8 +424,11 @@ func (w *workflowServiceMetricsWrapper) GetClusterInfo(ctx context.Context, opts
 	return result, err
 }
 
-func (w *workflowServiceMetricsWrapper) GetTaskListsByDomain(ctx context.Context, Request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
-	panic("implement me")
+func (w *workflowServiceMetricsWrapper) GetTaskListsByDomain(ctx context.Context, request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
+	scope := w.getOperationScope(scopeNameGetTaskListsByDomain)
+	result, err := w.service.GetTaskListsByDomain(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
 }
 
 func (w *workflowServiceMetricsWrapper) RefreshWorkflowTasks(ctx context.Context, request *shared.RefreshWorkflowTasksRequest, opts ...yarpc.CallOption) error {
@@ -409,7 +439,7 @@ func (w *workflowServiceMetricsWrapper) RefreshWorkflowTasks(ctx context.Context
 }
 
 func (w *workflowServiceMetricsWrapper) RestartWorkflowExecution(ctx context.Context, request *shared.RestartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.RestartWorkflowExecutionResponse, error) {
-	scope := w.getOperationScope(scopeRefreshWorkflowTasks)
+	scope := w.getOperationScope(scopeRestartWorkflowExecution)
 	resp, err := w.service.RestartWorkflowExecution(ctx, request, opts...)
 	scope.handleError(err)
 	return resp, err

@@ -21,16 +21,20 @@
 package internal
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+	"go.uber.org/cadence/internal/worker"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/atomic"
+
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/autoscaler"
-	"go.uber.org/zap/zaptest"
 )
 
 func Test_pollerAutoscaler(t *testing.T) {
@@ -60,7 +64,7 @@ func Test_pollerAutoscaler(t *testing.T) {
 				taskPoll:           0,
 				unrelated:          0,
 				initialPollerCount: 10,
-				minPollerCount:     1,
+				minPollerCount:     2,
 				maxPollerCount:     10,
 				targetMilliUsage:   500,
 				cooldownTime:       coolDownTime,
@@ -168,7 +172,8 @@ func Test_pollerAutoscaler(t *testing.T) {
 					DryRun:            tt.args.isDryRun,
 					TargetUtilization: float64(tt.args.targetMilliUsage) / 1000,
 				},
-				zaptest.NewLogger(t),
+				testlogger.NewZap(t),
+				worker.NewResizablePermit(tt.args.initialPollerCount),
 				// hook function that collects number of iterations
 				func() {
 					autoscalerEpoch.Add(1)
@@ -188,18 +193,19 @@ func Test_pollerAutoscaler(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					for pollResult := range pollChan {
-						pollerScaler.Acquire(1)
+						err := pollerScaler.permit.Acquire(context.Background())
+						assert.NoError(t, err)
 						pollerScaler.CollectUsage(pollResult)
-						pollerScaler.Release(1)
+						pollerScaler.permit.Release()
 					}
 				}()
 			}
 
 			assert.Eventually(t, func() bool {
 				return autoscalerEpoch.Load() == uint64(tt.args.autoScalerEpoch)
-			}, tt.args.cooldownTime+20*time.Millisecond, 10*time.Millisecond)
+			}, tt.args.cooldownTime+100*time.Millisecond, 10*time.Millisecond)
 			pollerScaler.Stop()
-			res := pollerScaler.GetCurrent()
+			res := pollerScaler.permit.Quota() - pollerScaler.permit.Count()
 			assert.Equal(t, tt.want, int(res))
 		})
 	}
@@ -272,10 +278,10 @@ type unrelatedPolledTask struct{}
 func generateRandomPollResults(noTaskPoll, taskPoll, unrelated int) <-chan interface{} {
 	var result []interface{}
 	for i := 0; i < noTaskPoll; i++ {
-		result = append(result, &activityTask{})
+		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{}})
 	}
 	for i := 0; i < taskPoll; i++ {
-		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{}})
+		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{TaskToken: []byte("some value")}})
 	}
 	for i := 0; i < unrelated; i++ {
 		result = append(result, &unrelatedPolledTask{})

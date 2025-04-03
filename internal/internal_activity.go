@@ -32,9 +32,10 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber-go/tally"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/zap"
 )
 
 type (
@@ -187,7 +188,7 @@ func getValidatedActivityOptions(ctx Context) (*activityOptions, error) {
 		return nil, errors.New("missing or negative StartToCloseTimeoutSeconds")
 	}
 	if p.ScheduleToCloseTimeoutSeconds < 0 {
-		return nil, errors.New("missing or negative ScheduleToCloseTimeoutSeconds")
+		return nil, errors.New("invalid negative ScheduleToCloseTimeoutSeconds")
 	}
 	if p.ScheduleToCloseTimeoutSeconds == 0 {
 		// This is a optional parameter, we default to sum of the other two timeouts.

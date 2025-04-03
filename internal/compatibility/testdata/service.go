@@ -22,6 +22,7 @@ package testdata
 
 import (
 	gogo "github.com/gogo/protobuf/types"
+
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
@@ -198,6 +199,7 @@ var (
 		StartedTime:               Timestamp2,
 		Queries:                   WorkflowQueryMap,
 		NextEventId:               EventID3,
+		AutoConfigHint:            &AutoConfigHint,
 	}
 	RespondDecisionTaskCompletedRequest = apiv1.RespondDecisionTaskCompletedRequest{
 		TaskToken:                  TaskToken,
@@ -244,6 +246,7 @@ var (
 		WorkflowType:               &WorkflowType,
 		WorkflowDomain:             DomainName,
 		Header:                     &Header,
+		AutoConfigHint:             &AutoConfigHint,
 	}
 	RespondActivityTaskCompletedRequest = apiv1.RespondActivityTaskCompletedRequest{
 		TaskToken: TaskToken,
@@ -380,6 +383,15 @@ var (
 		PendingActivities:      PendingActivityInfoArray,
 		PendingChildren:        PendingChildExecutionInfoArray,
 		PendingDecision:        &PendingDecisionInfo,
+	}
+	DiagnoseWorkflowExecutionRequest = apiv1.DiagnoseWorkflowExecutionRequest{
+		Domain:            DomainName,
+		WorkflowExecution: &WorkflowExecution,
+		Identity:          Identity,
+	}
+	DiagnoseWorkflowExecutionResponse = apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      DomainName,
+		DiagnosticWorkflowExecution: &WorkflowExecution,
 	}
 	QueryWorkflowRequest = apiv1.QueryWorkflowRequest{
 		Domain:                DomainName,

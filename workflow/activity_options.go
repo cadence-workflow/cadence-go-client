@@ -58,6 +58,16 @@ func WithTaskList(ctx Context, name string) Context {
 	return internal.WithTaskList(ctx, name)
 }
 
+// GetActivityTaskList returns tasklist in the Context's current ActivityOptions,
+// or workflow.GetInfo(ctx).TaskListName if not set or empty
+func GetActivityTaskList(ctx Context) string {
+	tl := internal.GetActivityTaskList(ctx)
+	if tl != nil && *tl != "" {
+		return *tl
+	}
+	return GetInfo(ctx).TaskListName
+}
+
 // WithScheduleToCloseTimeout makes a copy of the current context and update
 // the ScheduleToCloseTimeout field in its activity options. An empty activity
 // options will be created if it does not exist in the original context.

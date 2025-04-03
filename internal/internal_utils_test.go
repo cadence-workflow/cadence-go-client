@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	s "go.uber.org/cadence/.gen/go/shared"
 )
 

@@ -32,6 +32,9 @@ type (
 
 	// CanceledError returned when operation was canceled.
 	CanceledError = internal.CanceledError
+
+	// NonDeterministicError is returned when a workflow's replay was non-deterministic, and it could not be resumed safely.
+	NonDeterministicError = internal.NonDeterministicError
 )
 
 // ErrNoData is returned when trying to extract strong typed data while there is no data available.

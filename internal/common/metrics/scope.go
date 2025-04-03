@@ -195,7 +195,7 @@ func (s *replayAwareScope) Capabilities() tally.Capabilities {
 }
 
 // GetTaggedScope return a scope with one or multiple tags,
-// input should be key value pairs like: GetTaggedScope(scope, tag1, val1, tag2, val2).
+// input should be key value pairs like: GetTaggedScope(tag1, val1, tag2, val2).
 func (ts *TaggedScope) GetTaggedScope(keyValueinPairs ...string) tally.Scope {
 	if len(keyValueinPairs)%2 != 0 {
 		panic("GetTaggedScope key value are not in pairs")

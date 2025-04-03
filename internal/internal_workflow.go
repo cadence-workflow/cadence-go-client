@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -35,12 +36,13 @@ import (
 
 	"github.com/robfig/cron"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/metrics"
 	"go.uber.org/cadence/internal/common/util"
-	"go.uber.org/zap"
 )
 
 const (
@@ -96,6 +98,8 @@ type (
 	// Note that workflow.Context is used instead of context.Context to avoid use of raw channels.
 	workflow interface {
 		Execute(ctx Context, input []byte) (result []byte, err error)
+		WorkflowType() WorkflowType
+		GetFunction() interface{}
 	}
 
 	sendCallback struct {
@@ -500,11 +504,7 @@ func (d *syncWorkflowDefinition) Execute(env workflowEnvironment, header *shared
 		eo := getWorkflowEnvOptions(d.rootCtx)
 		handler, ok := eo.queryHandlers[queryType]
 		if !ok {
-			keys := []string{QueryTypeStackTrace, QueryTypeOpenSessions}
-			for k := range eo.queryHandlers {
-				keys = append(keys, k)
-			}
-			return nil, fmt.Errorf("unknown queryType %v. KnownQueryTypes=%v", queryType, keys)
+			return nil, fmt.Errorf("unknown queryType %v. KnownQueryTypes=%v", queryType, eo.KnownQueryTypes())
 		}
 		return handler(queryArgs)
 	})
@@ -516,6 +516,10 @@ func (d *syncWorkflowDefinition) OnDecisionTaskStarted() {
 
 func (d *syncWorkflowDefinition) StackTrace() string {
 	return d.dispatcher.StackTrace()
+}
+
+func (d *syncWorkflowDefinition) KnownQueryTypes() []string {
+	return getWorkflowEnvOptions(d.rootCtx).KnownQueryTypes()
 }
 
 func (d *syncWorkflowDefinition) Close() {
@@ -1281,6 +1285,18 @@ func (w *workflowOptions) getUnhandledSignalNames() []string {
 		}
 	}
 	return unhandledSignals
+}
+
+// KnownQueryTypes returns a list of known query types of the workflowOptions with BuiltinQueryTypes
+func (w *workflowOptions) KnownQueryTypes() []string {
+	keys := BuiltinQueryTypes()
+
+	for k := range w.queryHandlers {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+	return keys
 }
 
 func (d *decodeFutureImpl) Get(ctx Context, value interface{}) error {

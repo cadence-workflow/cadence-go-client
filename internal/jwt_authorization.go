@@ -21,11 +21,15 @@
 package internal
 
 import (
-	"github.com/cristalhq/jwt/v3"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
 	"go.uber.org/cadence/internal/common/auth"
 	"go.uber.org/cadence/internal/common/util"
-	"time"
 )
+
+const internalIssuer = "internal-jwt"
 
 type JWTAuthProvider struct {
 	PrivateKey []byte
@@ -38,24 +42,28 @@ func NewAdminJwtAuthorizationProvider(privateKey []byte) auth.AuthorizationProvi
 }
 
 func (j *JWTAuthProvider) GetAuthToken() ([]byte, error) {
-	claims := auth.JWTClaims{
-		Admin: true,
-		Iat:   time.Now().Unix(),
-		TTL:   60 * 10,
-	}
 	key, err := util.LoadRSAPrivateKey(j.PrivateKey)
 	if err != nil {
 		return nil, err
 	}
-	signer, err := jwt.NewSignerRS(jwt.RS256, key)
+
+	ttl := int64(60 * 10)
+	claims := auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    internalIssuer,
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Second * time.Duration(ttl))),
+		},
+		Admin: true,
+		TTL:   ttl, // keeping for backwards compatibility
+	}
+
+	tokenString, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+
 	if err != nil {
 		return nil, err
 	}
-	builder := jwt.NewBuilder(signer)
-	token, err := builder.Build(claims)
-	if token == nil {
-		return nil, err
-	}
 
-	return token.Raw(), nil
+	return []byte(tokenString), nil
+
 }
