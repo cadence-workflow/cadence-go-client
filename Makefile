@@ -51,8 +51,7 @@ endif
 
 # note that vars that do not yet exist are empty, so stick to BUILD/BIN and probably nothing else.
 $(BUILD)/lint: $(BUILD)/fmt # lint will fail if fmt (more generally, build) fails, so run it first
-$(BUILD)/fmt: $(BUILD)/copyright # formatting must occur only after all other go-file-modifications are done
-$(BUILD)/copyright: $(BUILD)/codegen # must add copyright to generated code
+$(BUILD)/fmt: $(BUILD)/codegen # formatting must occur only after all other go-file-modifications are done
 $(BUILD)/codegen: $(BUILD)/thrift $(BUILD)/generate
 $(BUILD)/generate: $(BUILD)/thrift # go generate broadly requires compile-able code, which needs thrift
 $(BUILD)/thrift: $(BUILD)/go_mod_check
@@ -160,10 +159,6 @@ $(BIN)/goveralls: internal/tools/go.mod
 $(BIN)/mockery: internal/tools/go.mod
 	$(call go_build_tool,github.com/vektra/mockery/v2,mockery)
 
-# copyright header checker/writer.  only requires stdlib, so no other dependencies are needed.
-$(BIN)/copyright: internal/tools/licensegen.go
-	go build -mod=readonly -o $@ ./internal/tools/licensegen.go
-
 # ensures mod files are in sync for critical packages
 $(BUILD)/go_mod_check: go.mod internal/tools/go.mod
 	$Q # ensure both have the same apache/thrift replacement
@@ -232,18 +227,6 @@ $(BUILD)/lint: $(LINT_SRC) $(BIN)/revive | $(BUILD)
 	$Q $(BIN)/revive -config revive.toml -exclude './vendor/...' -exclude './.gen/...' -formatter stylish ./...
 	$Q touch $@
 
-# fmt and copyright are mutually cyclic with their inputs, so if a copyright header is modified:
-# - copyright -> makes changes
-# - fmt sees changes -> makes changes
-# - now copyright thinks it needs to run again (but does nothing)
-# - which means fmt needs to run again (but does nothing)
-# and now after two passes it's finally stable, because they stopped making changes.
-#
-# this is not fatal, we can just run 2x.
-# to be fancier though, we can detect when *both* are run, and re-touch the book-keeping files to prevent the second run.
-# this STRICTLY REQUIRES that `copyright` and `fmt` are mutually stable, and that copyright runs before fmt.
-# if either changes, this will need to change.
-MAYBE_TOUCH_COPYRIGHT=
 
 # TODO: switch to goimports, so we can pin the version
 $(BUILD)/fmt: $(ALL_SRC) $(BIN)/goimports
@@ -251,12 +234,7 @@ $(BUILD)/fmt: $(ALL_SRC) $(BIN)/goimports
 	$Q # use FRESH_ALL_SRC so it won't miss any generated files produced earlier
 	$Q $(BIN)/goimports -local "go.uber.org/cadence" -w $(FRESH_ALL_SRC)
 	$Q touch $@
-	$Q $(MAYBE_TOUCH_COPYRIGHT)
 
-$(BUILD)/copyright: $(ALL_SRC) $(BIN)/copyright
-	$(BIN)/copyright --verifyOnly
-	$Q $(eval MAYBE_TOUCH_COPYRIGHT=touch $@)
-	$Q touch $@
 
 # ====================================
 # developer-oriented targets
@@ -297,11 +275,6 @@ lint: ## (re)run the linter
 # intentionally not re-making, it's clear when it's unnecessary
 fmt: $(BUILD)/fmt ## run goimports
 
-.PHONY: copyright
-# not identical to the intermediate target, but does provide the same codegen (or more).
-copyright: $(BIN)/copyright ## update copyright headers
-	$(BIN)/copyright
-	$Q touch $(BUILD)/copyright
 
 .PHONY: staticcheck
 staticcheck: $(BIN)/staticcheck $(BUILD)/fmt ## (re)run staticcheck
