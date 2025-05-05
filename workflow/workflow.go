@@ -21,12 +21,25 @@
 package workflow
 
 import (
+	"fmt"
+
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
 	"go.uber.org/cadence/encoded"
 	"go.uber.org/cadence/internal"
+
+	"testing"
+	"weak"
 )
+
+func init() {
+	var s string
+	sp := weak.Make(&s)
+	fmt.Println(sp)
+
+	_ = (&testing.T{}).Context()
+}
 
 type (
 
