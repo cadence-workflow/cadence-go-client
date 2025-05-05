@@ -61,6 +61,104 @@ func Test_newWorkflowTaskPoller(t *testing.T) {
 	})
 }
 
+func TestWorkflowTaskPoller(t *testing.T) {
+	t.Run("PollTask", func(t *testing.T) {
+		task := &s.PollForDecisionTaskResponse{
+			TaskToken: []byte("some value"),
+			AutoConfigHint: &s.AutoConfigHint{
+				common.PtrOf(true),
+				common.PtrOf(int64(1000)),
+			},
+		}
+		emptyTask := &s.PollForDecisionTaskResponse{
+			TaskToken: nil,
+			AutoConfigHint: &s.AutoConfigHint{
+				common.PtrOf(true),
+				common.PtrOf(int64(1000)),
+			},
+		}
+		for _, tt := range []struct {
+			name     string
+			response *s.PollForDecisionTaskResponse
+			expected *workflowTask
+		}{
+			{
+				"success with task",
+				task,
+				&workflowTask{
+					task: task,
+				},
+			},
+			{
+				"success with empty task",
+				emptyTask,
+				&workflowTask{
+					task: emptyTask,
+				},
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				poller, client, _, _ := buildWorkflowTaskPoller(t)
+				client.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(tt.response, nil)
+				result, err := poller.PollTask()
+				assert.NoError(t, err)
+				resultTask, ok := result.(*workflowTask)
+				assert.True(t, ok)
+				assert.Equal(t, tt.expected.task, resultTask.task)
+			})
+		}
+	})
+}
+
+func TestActivityTaskPoller(t *testing.T) {
+	t.Run("PollTask", func(t *testing.T) {
+		task := &s.PollForActivityTaskResponse{
+			TaskToken: []byte("some value"),
+			AutoConfigHint: &s.AutoConfigHint{
+				common.PtrOf(true),
+				common.PtrOf(int64(1000)),
+			},
+		}
+		emptyTask := &s.PollForActivityTaskResponse{
+			TaskToken: nil,
+			AutoConfigHint: &s.AutoConfigHint{
+				common.PtrOf(true),
+				common.PtrOf(int64(1000)),
+			},
+		}
+		for _, tt := range []struct {
+			name     string
+			response *s.PollForActivityTaskResponse
+			expected *activityTask
+		}{
+			{
+				"success with task",
+				task,
+				&activityTask{
+					task: task,
+				},
+			},
+			{
+				"success with empty task",
+				emptyTask,
+				&activityTask{
+					task: emptyTask,
+				},
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				poller, client := buildActivityTaskPoller(t)
+				client.EXPECT().PollForActivityTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(tt.response, nil)
+				result, err := poller.PollTask()
+				assert.NoError(t, err)
+				resultTask, ok := result.(*activityTask)
+				assert.True(t, ok)
+				assert.Equal(t, tt.expected.task, resultTask.task)
+			})
+		}
+	})
+}
+
 func TestLocalActivityPanic(t *testing.T) {
 	// regression: panics in local activities should not terminate the process
 	s := WorkflowTestSuite{logger: testlogger.NewZap(t)}
@@ -212,4 +310,21 @@ func buildWorkflowTaskPoller(t *testing.T) (*workflowTaskPoller, *workflowservic
 		StickyScheduleToStartTimeout: time.Millisecond,
 		featureFlags:                 FeatureFlags{},
 	}, mockService, taskHandler, lda
+}
+
+func buildActivityTaskPoller(t *testing.T) (*activityTaskPoller, *workflowservicetest.MockClient) {
+	ctrl := gomock.NewController(t)
+	mockService := workflowservicetest.NewMockClient(ctrl)
+	return &activityTaskPoller{
+		basePoller: basePoller{
+			shutdownC: make(<-chan struct{}),
+		},
+		domain:       _testDomainName,
+		taskListName: _testTaskList,
+		identity:     _testIdentity,
+		service:      mockService,
+		metricsScope: &metrics.TaggedScope{Scope: tally.NewTestScope("test", nil)},
+		logger:       testlogger.NewZap(t),
+		featureFlags: FeatureFlags{},
+	}, mockService
 }

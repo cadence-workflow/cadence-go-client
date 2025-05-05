@@ -208,6 +208,10 @@ var (
 	ActivityLocalDispatchInfoMap = map[string]*apiv1.ActivityLocalDispatchInfo{
 		ActivityID: &ActivityLocalDispatchInfo,
 	}
+	AutoConfigHint = apiv1.AutoConfigHint{
+		EnableAutoConfig:   true,
+		PollerWaitTimeInMs: 100,
+	}
 	TaskListMetadata = apiv1.TaskListMetadata{
 		MaxTasksPerSecond: &gogo.DoubleValue{Value: RatePerSecond},
 	}

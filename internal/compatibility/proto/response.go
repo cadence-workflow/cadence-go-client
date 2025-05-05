@@ -210,6 +210,7 @@ func PollForActivityTaskResponse(t *shared.PollForActivityTaskResponse) *apiv1.P
 		WorkflowType:               WorkflowType(t.WorkflowType),
 		WorkflowDomain:             t.GetWorkflowDomain(),
 		Header:                     Header(t.Header),
+		AutoConfigHint:             AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -234,6 +235,7 @@ func PollForDecisionTaskResponse(t *shared.PollForDecisionTaskResponse) *apiv1.P
 		Queries:                   WorkflowQueryMap(t.Queries),
 		NextEventId:               t.GetNextEventId(),
 		TotalHistoryBytes:         t.GetTotalHistoryBytes(),
+		AutoConfigHint:            AutoConfigHint(t.AutoConfigHint),
 	}
 }
 

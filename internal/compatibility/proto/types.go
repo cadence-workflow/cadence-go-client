@@ -77,6 +77,16 @@ func ActivityType(t *shared.ActivityType) *apiv1.ActivityType {
 	}
 }
 
+func AutoConfigHint(t *shared.AutoConfigHint) *apiv1.AutoConfigHint {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.AutoConfigHint{
+		EnableAutoConfig:   t.GetEnableAutoConfig(),
+		PollerWaitTimeInMs: t.GetPollerWaitTimeInMs(),
+	}
+}
+
 func WorkflowType(t *shared.WorkflowType) *apiv1.WorkflowType {
 	if t == nil {
 		return nil

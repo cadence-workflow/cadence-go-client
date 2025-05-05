@@ -199,6 +199,7 @@ var (
 		StartedTime:               Timestamp2,
 		Queries:                   WorkflowQueryMap,
 		NextEventId:               EventID3,
+		AutoConfigHint:            &AutoConfigHint,
 	}
 	RespondDecisionTaskCompletedRequest = apiv1.RespondDecisionTaskCompletedRequest{
 		TaskToken:                  TaskToken,
@@ -245,6 +246,7 @@ var (
 		WorkflowType:               &WorkflowType,
 		WorkflowDomain:             DomainName,
 		Header:                     &Header,
+		AutoConfigHint:             &AutoConfigHint,
 	}
 	RespondActivityTaskCompletedRequest = apiv1.RespondActivityTaskCompletedRequest{
 		TaskToken: TaskToken,

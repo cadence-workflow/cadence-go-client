@@ -278,10 +278,10 @@ type unrelatedPolledTask struct{}
 func generateRandomPollResults(noTaskPoll, taskPoll, unrelated int) <-chan interface{} {
 	var result []interface{}
 	for i := 0; i < noTaskPoll; i++ {
-		result = append(result, &activityTask{})
+		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{}})
 	}
 	for i := 0; i < taskPoll; i++ {
-		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{}})
+		result = append(result, &activityTask{task: &s.PollForActivityTaskResponse{TaskToken: []byte("some value")}})
 	}
 	for i := 0; i < unrelated; i++ {
 		result = append(result, &unrelatedPolledTask{})
