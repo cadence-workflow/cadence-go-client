@@ -22,6 +22,7 @@ package workflow
 
 import (
 	"go.uber.org/cadence/internal"
+	_ "weak"
 )
 
 type (
