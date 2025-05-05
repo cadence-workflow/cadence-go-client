@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Added worker.NewV2 with validation on decision poller count (#1370)
+- Upgraded internal tooling to support Go 1.24, should be no user-noticeable changes
 
 ## [v1.2.10] - 2024-07-10
 ### Added
