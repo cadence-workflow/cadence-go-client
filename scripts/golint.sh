@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -e
+
 # refresh deps
 make tidy
 # regenerate, format, and make sure everything builds
