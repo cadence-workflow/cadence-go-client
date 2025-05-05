@@ -74,22 +74,6 @@ steps:
           run: unit-test
           config: docker/buildkite/docker-compose.yml
 
-  - label: ":golang: ensure it builds on go 1.21"
-    artifact_paths: [ ]
-    plugins:
-      - kubernetes:
-          <<: *kubernetes
-          podSpec:
-            <<: *podSpec
-            containers:
-              - <<: *commandContainer
-                command:
-                  - |-
-                    GOTOOLCHAIN=go1.21.1 go build ./...
-      - docker-compose#v3.0.0:
-          run: unit-test
-          config: docker/buildkite/docker-compose.yml
-
   - label: ":golang: integration-test-sticky-off"
     artifact_paths:
       - ".build/*/coverage/*.out"
