@@ -30,4 +30,4 @@ You can also find the API documentation [here](https://godoc.org/go.uber.org/cad
 We'd love your help in making the Cadence Go client great. Please review our [contribution guidelines](CONTRIBUTING.md).
 
 ## License
-MIT License, please see [LICENSE](LICENSE) for details.
+Apache 2.0 License, please see [LICENSE](LICENSE) for details.

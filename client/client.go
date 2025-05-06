@@ -19,8 +19,8 @@
 // THE SOFTWARE.
 
 // when adding any, make sure you update the files that it checks in the makefile
-//go:generate mockery --srcpkg . --name Client --output ../mocks --boilerplate-file ../LICENSE
-//go:generate mockery --srcpkg . --name DomainClient --output ../mocks --boilerplate-file ../LICENSE
+//go:generate mockery --srcpkg . --name Client --output ../mocks
+//go:generate mockery --srcpkg . --name DomainClient --output ../mocks
 
 // Package client contains functions to create Cadence clients used to communicate to Cadence service.
 //
