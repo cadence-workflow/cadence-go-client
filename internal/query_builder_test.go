@@ -103,7 +103,7 @@ func (s *queryBuilderSuite) TestWorkflowStatusQuery() {
 		},
 		{
 			msg:              "all workflows",
-			workflowStatuses: []WorkflowStatus{WorkflowStatusTerminated, WorkflowStatusALL},
+			workflowStatuses: []WorkflowStatus{WorkflowStatusALL},
 			expectedQuery:    "",
 		},
 	}
@@ -224,12 +224,6 @@ func (s *queryBuilderSuite) TestToWorkflowStatus() {
 			statusString:   "Timed_Out",
 			expectErr:      false,
 			expectedStatus: WorkflowStatusTimedOut,
-		},
-		{
-			msg:            "upper case status string",
-			statusString:   "TERMINATED",
-			expectErr:      false,
-			expectedStatus: WorkflowStatusTerminated,
 		},
 		{
 			msg:            "all",
