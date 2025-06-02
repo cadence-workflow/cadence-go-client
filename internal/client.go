@@ -493,13 +493,35 @@ type (
 		// This value is the cap of the interval. Default is 100x of initial interval.
 		MaximumInterval time.Duration
 
-		// Maximum time to retry. Either ExpirationInterval or MaximumAttempts is required.
+		// Maximum time to attempt to retry. Either ExpirationInterval or MaximumAttempts is required.
+		//
 		// When exceeded the retries stop even if maximum retries is not reached yet.
+		//
+		// Note that this applies to the retry policy itself, not the thing being retried - an
+		// ExpirationInterval of 1s will not cancel an activity that runs longer than one second.
+		//
+		// E.g. a 1-hour-long StartToClose activity with a 5 minute RetryPolicy.ExpirationInterval
+		// will lead to both this kind of behavior:
+		//  - be called once
+		//  - fail within 30 seconds
+		//  - be retried (30 < ExpirationInterval)
+		//  - fail again after 5 minutes
+		//  - not be retried (5m30s > ExpirationInterval)
+		// and this:
+		//  - be called once
+		//  - fail after 10m
+		//  - not be retried (10m > ExpirationInterval)
 		ExpirationInterval time.Duration
 
-		// Maximum number of attempts. When exceeded the retries stop even if not expired yet.
+		// Maximum number of attempts to perform, including the initial call.
+		// When exceeded, no further retries will occur even if the expiration interval has not passed.
+		//
 		// If not set or set to 0, it means unlimited, and rely on ExpirationInterval to stop.
 		// Either MaximumAttempts or ExpirationInterval is required.
+		//
+		// CAUTION: MaximumAttempts of 1 does not allow any "retries", as the first attempt will occur
+		// even without a retry policy.  E.g. if you want an activity to be able to fail and be retried once,
+		// set MaximumAttempts to 2.
 		MaximumAttempts int32
 
 		// Non-Retriable errors. This is optional. Cadence server will stop retry if error reason matches this list.
