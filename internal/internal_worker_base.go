@@ -35,6 +35,7 @@ import (
 	"go.uber.org/cadence/internal/common/debug"
 	"go.uber.org/cadence/internal/worker"
 
+	"github.com/jonboulle/clockwork"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -142,10 +143,10 @@ type (
 		logger               *zap.Logger
 		metricsScope         tally.Scope
 
-		concurrency        *worker.ConcurrencyLimit
-		pollerAutoScaler   *pollerAutoScaler
-		taskQueueCh        chan interface{}
-		sessionTokenBucket *sessionTokenBucket
+		concurrency           *worker.ConcurrencyLimit
+		concurrencyAutoScaler *worker.ConcurrencyAutoScaler
+		taskQueueCh           chan interface{}
+		sessionTokenBucket    *sessionTokenBucket
 	}
 
 	polledTask struct {
@@ -167,34 +168,40 @@ func createPollRetryPolicy() backoff.RetryPolicy {
 
 func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope tally.Scope, sessionTokenBucket *sessionTokenBucket) *baseWorker {
 	ctx, cancel := context.WithCancel(context.Background())
+	logger = logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType})
+	metricsScope = tagScope(metricsScope, tagWorkerType, options.workerType)
 
 	concurrency := &worker.ConcurrencyLimit{
 		PollerPermit: worker.NewResizablePermit(options.pollerCount),
 		TaskPermit:   worker.NewResizablePermit(options.maxConcurrentTask),
 	}
 
-	var pollerAS *pollerAutoScaler
+	var concurrencyAS *worker.ConcurrencyAutoScaler
 	if pollerOptions := options.pollerAutoScaler; pollerOptions.Enabled {
-		pollerAS = newPollerScaler(
-			pollerOptions,
-			logger,
-			concurrency.PollerPermit,
-		)
+		concurrencyAS = worker.NewConcurrencyAutoScaler(worker.ConcurrencyAutoScalerInput{
+			Concurrency:    concurrency,
+			Cooldown:       pollerOptions.Cooldown,
+			PollerMaxCount: pollerOptions.MaxCount,
+			PollerMinCount: pollerOptions.MinCount,
+			Logger:         logger,
+			Scope:          metricsScope,
+			Clock:          clockwork.NewRealClock(),
+		})
 	}
 
 	bw := &baseWorker{
-		options:              options,
-		shutdownCh:           make(chan struct{}),
-		taskLimiter:          rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
-		retrier:              backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
-		logger:               logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType}),
-		metricsScope:         tagScope(metricsScope, tagWorkerType, options.workerType),
-		concurrency:          concurrency,
-		pollerAutoScaler:     pollerAS,
-		taskQueueCh:          make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
-		limiterContext:       ctx,
-		limiterContextCancel: cancel,
-		sessionTokenBucket:   sessionTokenBucket,
+		options:               options,
+		shutdownCh:            make(chan struct{}),
+		taskLimiter:           rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
+		retrier:               backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
+		logger:                logger,
+		metricsScope:          metricsScope,
+		concurrency:           concurrency,
+		concurrencyAutoScaler: concurrencyAS,
+		taskQueueCh:           make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
+		limiterContext:        ctx,
+		limiterContextCancel:  cancel,
+		sessionTokenBucket:    sessionTokenBucket,
 	}
 	if options.pollerRate > 0 {
 		bw.pollLimiter = rate.NewLimiter(rate.Limit(options.pollerRate), 1)
@@ -210,8 +217,8 @@ func (bw *baseWorker) Start() {
 
 	bw.metricsScope.Counter(metrics.WorkerStartCounter).Inc(1)
 
-	if bw.pollerAutoScaler != nil {
-		bw.pollerAutoScaler.Start()
+	if bw.concurrencyAutoScaler != nil {
+		bw.concurrencyAutoScaler.Start()
 	}
 
 	for i := 0; i < bw.options.pollerCount; i++ {
@@ -301,7 +308,7 @@ func (bw *baseWorker) pollTask() {
 	var err error
 	var task interface{}
 
-	if bw.pollerAutoScaler != nil {
+	if bw.concurrencyAutoScaler != nil {
 		if pErr := bw.concurrency.PollerPermit.Acquire(bw.limiterContext); pErr == nil {
 			defer bw.concurrency.PollerPermit.Release()
 		} else {
@@ -324,14 +331,10 @@ func (bw *baseWorker) pollTask() {
 			}
 			bw.retrier.Failed()
 		} else {
-			if bw.pollerAutoScaler != nil {
-				if pErr := bw.pollerAutoScaler.CollectUsage(task); pErr != nil {
-					bw.logger.Sugar().Warnw("poller auto scaler collect usage error",
-						"error", pErr,
-						"task", task)
-				}
-			}
 			bw.retrier.Succeeded()
+			if t, ok := task.(autoConfigHintAwareTask); bw.concurrencyAutoScaler != nil && ok {
+				bw.concurrencyAutoScaler.ProcessPollerHint(t.getAutoConfigHint())
+			}
 		}
 	}
 
@@ -405,8 +408,8 @@ func (bw *baseWorker) Stop() {
 	}
 	close(bw.shutdownCh)
 	bw.limiterContextCancel()
-	if bw.pollerAutoScaler != nil {
-		bw.pollerAutoScaler.Stop()
+	if bw.concurrencyAutoScaler != nil {
+		bw.concurrencyAutoScaler.Stop()
 	}
 
 	if success := util.AwaitWaitGroup(&bw.shutdownWG, bw.options.shutdownTimeout); !success {
@@ -420,4 +423,21 @@ func (bw *baseWorker) Stop() {
 		bw.options.userContextCancel()
 	}
 	return
+}
+
+func getAutoConfigHint(task interface{}) *shared.AutoConfigHint {
+	switch t := task.(type) {
+	case *workflowTask:
+		if t.task == nil {
+			return nil
+		}
+		return t.task.AutoConfigHint
+	case *activityTask:
+		if t.task == nil {
+			return nil
+		}
+		return t.task.AutoConfigHint
+	default:
+		return nil
+	}
 }

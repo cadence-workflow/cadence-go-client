@@ -1498,3 +1498,51 @@ func TestTestValidateFnFormat_Workflow(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTaskAutoConfigHint(t *testing.T) {
+
+	hint := shared.AutoConfigHint{
+		EnableAutoConfig:   common.BoolPtr(true),
+		PollerWaitTimeInMs: common.Int64Ptr(100),
+	}
+
+	for _, tt := range []struct {
+		name string
+		task interface{}
+		want *shared.AutoConfigHint
+	}{
+		{
+			"decision task",
+			&workflowTask{
+				task: &shared.PollForDecisionTaskResponse{AutoConfigHint: &hint}},
+			&hint,
+		},
+		{
+			"empty decision task",
+			&workflowTask{
+				autoConfigHint: &hint},
+			&hint,
+		},
+		{
+			"activity task",
+			&activityTask{
+				task: &shared.PollForActivityTaskResponse{AutoConfigHint: &hint}},
+			&hint,
+		},
+		{
+			"empty activity task",
+			&activityTask{
+				autoConfigHint: &hint},
+			&hint,
+		},
+		{
+			"localactivity task",
+			&localActivityTask{},
+			nil,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, getAutoConfigHint(tt.task))
+		})
+	}
+}
