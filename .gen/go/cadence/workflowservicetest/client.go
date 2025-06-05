@@ -77,6 +77,37 @@ func (mr *_MockClientRecorder) CountWorkflowExecutions(
 	return mr.mock.ctrl.RecordCall(mr.mock, "CountWorkflowExecutions", args...)
 }
 
+// DeleteDomain responds to a DeleteDomain call based on the mock expectations. This
+// call will fail if the mock does not expect this call. Use EXPECT to expect
+// a call to this function.
+//
+//	client.EXPECT().DeleteDomain(gomock.Any(), ...).Return(...)
+//	... := client.DeleteDomain(...)
+func (m *MockClient) DeleteDomain(
+	ctx context.Context,
+	_DeleteRequest *shared.DeleteDomainRequest,
+	opts ...yarpc.CallOption,
+) (err error) {
+
+	args := []interface{}{ctx, _DeleteRequest}
+	for _, o := range opts {
+		args = append(args, o)
+	}
+	i := 0
+	ret := m.ctrl.Call(m, "DeleteDomain", args...)
+	err, _ = ret[i].(error)
+	return
+}
+
+func (mr *_MockClientRecorder) DeleteDomain(
+	ctx interface{},
+	_DeleteRequest interface{},
+	opts ...interface{},
+) *gomock.Call {
+	args := append([]interface{}{ctx, _DeleteRequest}, opts...)
+	return mr.mock.ctrl.RecordCall(mr.mock, "DeleteDomain", args...)
+}
+
 // DeprecateDomain responds to a DeprecateDomain call based on the mock expectations. This
 // call will fail if the mock does not expect this call. Use EXPECT to expect
 // a call to this function.

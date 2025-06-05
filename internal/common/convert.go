@@ -91,6 +91,11 @@ func QueryResultTypePtr(t s.QueryResultType) *s.QueryResultType {
 	return PtrOf(t)
 }
 
+// CronOverlapPolicyPtr makes a copy and returns the pointer to a CronOverlapPolicy.
+func CronOverlapPolicyPtr(t s.CronOverlapPolicy) *s.CronOverlapPolicy {
+	return PtrOf(t)
+}
+
 // PtrOf makes a copy and returns the pointer to a value.
 func PtrOf[T any](v T) *T {
 	return &v

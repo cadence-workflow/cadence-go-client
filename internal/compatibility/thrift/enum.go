@@ -381,3 +381,15 @@ func ChildWorkflowExecutionFailedCause(t apiv1.ChildWorkflowExecutionFailedCause
 	}
 	panic("unexpected enum value")
 }
+
+func CronOverlapPolicy(t apiv1.CronOverlapPolicy) *shared.CronOverlapPolicy {
+	switch t {
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID:
+		return nil
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED:
+		return shared.CronOverlapPolicySkipped.Ptr()
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE:
+		return shared.CronOverlapPolicyBufferone.Ptr()
+	}
+	panic("unexpected enum value")
+}

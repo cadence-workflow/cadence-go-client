@@ -471,6 +471,13 @@ type (
 		// This will only be used and override DelayStart and JitterStart if provided in the first run
 		// Optional: defaulted to Unix epoch time
 		FirstRunAt time.Time
+
+		// CronOverlapPolicy - Policy for handling cron workflow overlaps.
+		// Currently supported values are:
+		// - CronOverlapPolicySkip: skip the new execution if the previous one is still running
+		// - CronOverlapPolicyBufferOne: buffer one execution if the previous one is still running
+		// Optional: defaulted to CronOverlapPolicySkip
+		CronOverlapPolicy s.CronOverlapPolicy
 	}
 
 	// RetryPolicy defines the retry policy.

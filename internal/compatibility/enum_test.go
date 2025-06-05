@@ -335,3 +335,14 @@ func TestWorkflowIDReusePolicy(t *testing.T) {
 	assert.Panics(t, func() { proto.WorkflowIdReusePolicy(shared.WorkflowIdReusePolicy(UnknownValue).Ptr()) })
 	assert.Panics(t, func() { thrift.WorkflowIdReusePolicy(apiv1.WorkflowIdReusePolicy(UnknownValue)) })
 }
+
+func TestCronOverlapPolicy(t *testing.T) {
+	for _, v := range []apiv1.CronOverlapPolicy{
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID,
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
+	} {
+		assert.Equal(t, v, proto.CronOverlapPolicy(thrift.CronOverlapPolicy(v)))
+	}
+	assert.Panics(t, func() { proto.CronOverlapPolicy(thrift.CronOverlapPolicy(999)) })
+}
