@@ -848,7 +848,7 @@ func (wtp *workflowTaskPoller) poll(ctx context.Context) (interface{}, error) {
 	if response == nil || len(response.TaskToken) == 0 {
 		wtp.metricsScope.Counter(metrics.DecisionPollNoTaskCounter).Inc(1)
 		wtp.updateBacklog(request.TaskList.GetKind(), 0)
-		return &workflowTask{}, nil
+		return &workflowTask{autoConfigHint: response.GetAutoConfigHint()}, nil
 	}
 
 	wtp.updateBacklog(request.TaskList.GetKind(), response.GetBacklogCountHint())
@@ -1116,7 +1116,7 @@ func (atp *activityTaskPoller) pollWithMetrics(ctx context.Context,
 		return nil, err
 	}
 	if response == nil || len(response.TaskToken) == 0 {
-		return &activityTask{}, nil
+		return &activityTask{autoConfigHint: response.GetAutoConfigHint()}, nil
 	}
 
 	workflowType := response.WorkflowType.GetName()
