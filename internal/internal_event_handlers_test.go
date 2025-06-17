@@ -818,6 +818,23 @@ func TestGetVersion(t *testing.T) {
 		assert.Equal(t, DefaultVersion, weh.changeVersions["test"])
 		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
 	})
+
+	t.Run("version doesn't exist, ExecuteWithVersion is used, version > maximum version", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		assert.PanicsWithValue(t, `Workflow code is too old to support version 10 for "test" changeID. The maximum supported version is 3`, func() {
+			weh.GetVersion("test", DefaultVersion, 3, ExecuteWithVersion(10))
+		})
+
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithVersion is used, version < minimum version", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		assert.PanicsWithValue(t, `Workflow code removed support of version 0. for "test" changeID. The oldest supported version is 1`, func() {
+			weh.GetVersion("test", 1, 3, ExecuteWithVersion(0))
+		})
+
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
+	})
 }
 
 func TestMutableSideEffect(t *testing.T) {
