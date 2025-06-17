@@ -605,6 +605,7 @@ func validateVersion(changeID string, version, minSupported, maxSupported Versio
 func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
 	// Check if the changeID already has a version assigned
 	// If it does, validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
 	if version, ok := wc.changeVersions[changeID]; ok {
 		validateVersion(changeID, version, minSupported, maxSupported)
 		return version
