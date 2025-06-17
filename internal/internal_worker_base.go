@@ -76,7 +76,7 @@ type (
 		localActivityClient
 		workflowTimerClient
 		SideEffect(f func() ([]byte, error), callback resultHandler)
-		GetVersion(changeID string, minSupported, maxSupported Version) Version
+		GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version
 		WorkflowInfo() *WorkflowInfo
 		Complete(result []byte, err error)
 		RegisterCancelHandler(handler func())
