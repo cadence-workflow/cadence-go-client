@@ -1567,17 +1567,18 @@ const DefaultVersion Version = -1
 // CadenceChangeVersion is used as search attributes key to find workflows with specific change version.
 const CadenceChangeVersion = "CadenceChangeVersion"
 
-// GetVersionOption represents a function that configures GetVersion behavior
-type GetVersionOption func(*getVersionOptions)
+// GetVersionOption configures GetVersion behavior
+type GetVersionOption func(*GetVersionOptions)
 
-type getVersionOptions struct {
-	// customVersion is used to force GetVersion to return a specific version
+// GetVersionOptions contains options for GetVersion
+type GetVersionOptions struct {
+	// CustomVersion is used to force GetVersion to return a specific version
 	// instead of maxSupported version. Set up via ExecuteWithVersion option.
-	customVersion *Version
+	CustomVersion *Version
 
-	// useMinVersion is used to force GetVersion to return minSupported version
+	// UseMinVersion is used to force GetVersion to return minSupported version
 	// instead of maxSupported version. Set up via ExecuteWithMinVersion option.
-	useMinVersion bool
+	UseMinVersion bool
 }
 
 // ExecuteWithVersion returns a GetVersionOption that forces a specific version to be returned
@@ -1637,8 +1638,8 @@ type getVersionOptions struct {
 // ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed, as
 // both versions of the workflow code are compatible with each other.
 func ExecuteWithVersion(version Version) GetVersionOption {
-	return func(o *getVersionOptions) {
-		o.customVersion = &version
+	return func(o *GetVersionOptions) {
+		o.CustomVersion = &version
 	}
 }
 
@@ -1646,8 +1647,8 @@ func ExecuteWithVersion(version Version) GetVersionOption {
 // when executed for the first time, instead of returning maxSupported version.
 // To see how this option can be used, see the ExecuteWithVersion option
 func ExecuteWithMinVersion() GetVersionOption {
-	return func(o *getVersionOptions) {
-		o.useMinVersion = true
+	return func(o *GetVersionOptions) {
+		o.UseMinVersion = true
 	}
 }
 
