@@ -228,8 +228,7 @@ func TestVersionedWorkflows(t *testing.T) {
 
 	t.Run("VersionedWorkflowV1", func(t *testing.T) {
 		replayer := worker.NewWorkflowReplayer()
-		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV1, workflow.RegisterOptions{Name: versionedWorkflowName})
-		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
+		SetupWorkerForVersionedWorkflowV1(replayer)
 
 		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
@@ -244,9 +243,7 @@ func TestVersionedWorkflows(t *testing.T) {
 
 	t.Run("VersionedWorkflowV2", func(t *testing.T) {
 		replayer := worker.NewWorkflowReplayer()
-		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV2, workflow.RegisterOptions{Name: versionedWorkflowName})
-		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
-		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+		SetupWorkerForVersionedWorkflowV2(replayer)
 
 		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
@@ -261,9 +258,7 @@ func TestVersionedWorkflows(t *testing.T) {
 
 	t.Run("VersionedWorkflowV3", func(t *testing.T) {
 		replayer := worker.NewWorkflowReplayer()
-		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV3, workflow.RegisterOptions{Name: versionedWorkflowName})
-		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
-		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+		SetupWorkerForVersionedWorkflowV3(replayer)
 
 		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
@@ -278,8 +273,7 @@ func TestVersionedWorkflows(t *testing.T) {
 
 	t.Run("VersionedWorkflowV4", func(t *testing.T) {
 		replayer := worker.NewWorkflowReplayer()
-		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV4, workflow.RegisterOptions{Name: versionedWorkflowName})
-		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+		SetupWorkerForVersionedWorkflowV4(replayer)
 
 		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
