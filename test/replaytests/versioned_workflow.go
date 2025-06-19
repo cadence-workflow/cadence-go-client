@@ -2,10 +2,11 @@ package replaytests
 
 import (
 	"context"
+	"time"
+
 	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/workflow"
-	"time"
 )
 
 const (
