@@ -612,7 +612,7 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 	}
 
 	// Apply options to determine which version to use
-	options := &getVersionOptions{}
+	options := &GetVersionOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
@@ -625,11 +625,11 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 		version = DefaultVersion
 
 	// If ExecuteWithVersion option is used, use the custom version provided
-	case options.customVersion != nil:
-		version = *options.customVersion
+	case options.CustomVersion != nil:
+		version = *options.CustomVersion
 
 	// If ExecuteWithMinVersion option is set, use the minimum supported version
-	case options.useMinVersion:
+	case options.UseMinVersion:
 		version = minSupported
 
 	// Otherwise, use the maximum supported version
