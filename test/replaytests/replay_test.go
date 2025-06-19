@@ -191,3 +191,104 @@ func TestContinueAsNew(t *testing.T) {
 	err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), "continue_as_new.json")
 	assert.ErrorContains(t, err, "missing replay decision for WorkflowExecutionContinuedAsNew")
 }
+
+// TestSafeDeploymentVersionedWorkflow verifies that versioned workflows can be executed
+// safely across different versions without causing non-deterministic errors.
+// There are 2 workflow executions:
+//
+// * VersionedWorkflowFoo - which is the first version of the workflow which version of change id is DefaultVersion
+//   - This workflow is supposed to execute FooActivity
+//
+// * VersionedWorkflowBar - which is the second version of the workflow which version of change id is 1
+//   - This workflow is supposed to execute BarActivity
+//
+// There are 4 versions of the workflow:
+//
+// * VersionedWorkflowV1 - which supports only DefaultVersion and executes FooActivity
+//   - This workflow is able to replay the history of only of VersionedWorkflowFoo
+//
+// * VersionedWorkflowV2 - which supports DefaultVersion and Version 1, and can execute FooActivity or BarActivity
+//   - This workflow is able to replay the history of both of VersionedWorkflowFoo and VersionedWorkflowBar
+//   - A first execution of this workflow will should execute FooActivity, because of usage workflow.ExecuteWithMinVersion(),
+//     but the test can't check it due to Replay
+//
+// * VersionedWorkflowV3 - which supports DefaultVersion and Version 1, and can execute FooActivity or BarActivity
+//   - This workflow is able to replay the history of both of VersionedWorkflowFoo and VersionedWorkflowBar
+//   - A first execution of this workflow will should execute BarActivity, but the test can't check it due to Replay
+//
+// * VersionedWorkflowV4 - which supports Version 1, and can execute BarActivity
+//   - This workflow is able to replay the history only of VersionedWorkflowBar
+//
+// So the test focusing workflows supports forward and backward compatibility of the workflows
+func TestVersionedWorkflows(t *testing.T) {
+	const (
+		versionedWorkflowFooHistoryFile = "versioned_workflow_foo.json"
+		versionedWorkflowBarHistoryFile = "versioned_workflow_bar.json"
+	)
+
+	t.Run("VersionedWorkflowV1", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV1, workflow.RegisterOptions{Name: versionedWorkflowName})
+		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
+
+		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowFoo history")
+		})
+
+		t.Run("fail to replay with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.Error(t, err, "Expected to fail replaying VersionedWorkflowBar history")
+		})
+	})
+
+	t.Run("VersionedWorkflowV2", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV2, workflow.RegisterOptions{Name: versionedWorkflowName})
+		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
+		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+
+		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowFoo history")
+		})
+
+		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowBar history")
+		})
+	})
+
+	t.Run("VersionedWorkflowV3", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV3, workflow.RegisterOptions{Name: versionedWorkflowName})
+		replayer.RegisterActivityWithOptions(FooActivity, activity.RegisterOptions{Name: fooActivityName})
+		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+
+		t.Run("successfully replayed with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowFoo history")
+		})
+
+		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowBar history")
+		})
+	})
+
+	t.Run("VersionedWorkflowV4", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		replayer.RegisterWorkflowWithOptions(VersionedWorkflowV4, workflow.RegisterOptions{Name: versionedWorkflowName})
+		replayer.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: barActivityName})
+
+		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+		})
+
+		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowBar history")
+		})
+	})
+}
