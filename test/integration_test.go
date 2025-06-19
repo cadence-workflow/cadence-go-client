@@ -25,12 +25,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/cadence/test/replaytests"
 	"net"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/cadence/test/replaytests"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
