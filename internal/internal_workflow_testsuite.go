@@ -1975,7 +1975,7 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 	validateVersion(changeID, version, minSupported, maxSupported)
 
 	// If the version is not the DefaultVersion, update search attributes
-	// Keeping the DefaultVersion as a special case where no version marker is recorded
+	// Keeping the DefaultVersion as a special case where no search attributes are updated
 	if version != DefaultVersion {
 		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, env.changeVersions))
 	}
