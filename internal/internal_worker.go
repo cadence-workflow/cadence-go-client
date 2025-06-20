@@ -276,17 +276,13 @@ func newWorkflowTaskWorkerInternal(
 		domain,
 		params,
 	)
+	pollerCount := params.MaxConcurrentDecisionTaskPollers
+	if params.AutoScalerOptions.Enabled {
+		pollerCount = params.AutoScalerOptions.PollerMaxCount
+	}
 	worker := newBaseWorker(baseWorkerOptions{
-		pollerAutoScaler: pollerAutoScalerOptions{
-			Enabled:           params.FeatureFlags.PollerAutoScalerEnabled,
-			InitCount:         params.MaxConcurrentDecisionTaskPollers,
-			MinCount:          params.MinConcurrentDecisionTaskPollers,
-			MaxCount:          params.MaxConcurrentDecisionTaskPollers,
-			Cooldown:          params.PollerAutoScalerCooldown,
-			DryRun:            params.PollerAutoScalerDryRun,
-			TargetUtilization: params.PollerAutoScalerTargetUtilization,
-		},
-		pollerCount:       params.MaxConcurrentDecisionTaskPollers,
+		pollerAutoScaler:  params.AutoScalerOptions,
+		pollerCount:       pollerCount,
 		pollerRate:        defaultPollerRate,
 		maxConcurrentTask: params.MaxConcurrentDecisionTaskExecutionSize,
 		maxTaskPerSecond:  params.WorkerDecisionTasksPerSecond,
@@ -476,18 +472,14 @@ func newActivityTaskWorker(
 	workerType string,
 ) (worker *activityWorker) {
 	ensureRequiredParams(&workerParams)
+	pollerCount := workerParams.MaxConcurrentActivityTaskPollers
+	if workerParams.AutoScalerOptions.Enabled {
+		pollerCount = workerParams.AutoScalerOptions.PollerMaxCount
+	}
 	base := newBaseWorker(
 		baseWorkerOptions{
-			pollerAutoScaler: pollerAutoScalerOptions{
-				Enabled:           workerParams.FeatureFlags.PollerAutoScalerEnabled,
-				InitCount:         workerParams.MaxConcurrentActivityTaskPollers,
-				MinCount:          workerParams.MinConcurrentActivityTaskPollers,
-				MaxCount:          workerParams.MaxConcurrentActivityTaskPollers,
-				Cooldown:          workerParams.PollerAutoScalerCooldown,
-				DryRun:            workerParams.PollerAutoScalerDryRun,
-				TargetUtilization: workerParams.PollerAutoScalerTargetUtilization,
-			},
-			pollerCount:       workerParams.MaxConcurrentActivityTaskPollers,
+			pollerAutoScaler:  workerParams.AutoScalerOptions,
+			pollerCount:       pollerCount,
 			pollerRate:        defaultPollerRate,
 			maxConcurrentTask: workerParams.MaxConcurrentActivityExecutionSize,
 			maxTaskPerSecond:  workerParams.WorkerActivitiesPerSecond,
@@ -1287,18 +1279,7 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 	if options.MaxConcurrentSessionExecutionSize == 0 {
 		options.MaxConcurrentSessionExecutionSize = defaultMaxConcurrentSessionExecutionSize
 	}
-	if options.MinConcurrentActivityTaskPollers == 0 {
-		options.MinConcurrentActivityTaskPollers = defaultMinConcurrentActivityPollerSize
-	}
-	if options.MinConcurrentDecisionTaskPollers == 0 {
-		options.MinConcurrentDecisionTaskPollers = defaultMinConcurrentDecisionPollerSize
-	}
-	if options.PollerAutoScalerCooldown == 0 {
-		options.PollerAutoScalerCooldown = defaultPollerAutoScalerCooldown
-	}
-	if options.PollerAutoScalerTargetUtilization == 0 {
-		options.PollerAutoScalerTargetUtilization = defaultPollerAutoScalerTargetUtilization
-	}
+	options.AutoScalerOptions = augmentAutoScalerOptions(options.AutoScalerOptions)
 
 	// if the user passes in a tracer then add a tracing context propagator
 	if options.Tracer != nil {
@@ -1313,6 +1294,26 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 		options.EnableSessionWorker = false
 	}
 
+	return options
+}
+
+func augmentAutoScalerOptions(options AutoScalerOptions) AutoScalerOptions {
+	// need at least 2 for sticky task polling to work
+	if options.PollerMinCount <= 1 {
+		options.PollerMinCount = defaultMinPollerSize
+	}
+	if options.PollerMaxCount <= 1 {
+		options.PollerMaxCount = defaultMaxPollerSize
+	}
+	if options.Cooldown == 0 {
+		options.Cooldown = defaultPollerAutoScalerCooldown
+	}
+	if options.PollerWaitTimeUpperBound == 0 {
+		options.PollerWaitTimeUpperBound = defaultPollerAutoScalerWaitTimeUpperBound
+	}
+	if options.PollerWaitTimeLowerBound == 0 {
+		options.PollerWaitTimeLowerBound = defaultPollerAutoScalerWaitTimeLowerBound
+	}
 	return options
 }
 

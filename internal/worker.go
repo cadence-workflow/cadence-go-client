@@ -81,6 +81,7 @@ type (
 		// cadence-server to retrieve activity tasks. Changing this value will affect the
 		// rate at which the worker is able to consume tasks from a task list.
 		// Default value is 2
+		// NOTE: if AutoScalerOptions.Enabled is set to true, this value will be ignored and AutoScalerOptions.PollerMaxCount will be used instead
 		MaxConcurrentActivityTaskPollers int
 
 		// optional: Sets the minimum number of goroutines that will concurrently poll the
@@ -88,6 +89,7 @@ type (
 		// rate at which the worker is able to consume tasks from a task list,
 		// unless FeatureFlags.PollerAutoScalerEnabled is set to true.
 		// Default value is 1
+		// Deprecated: No effect and use AutoScalerOptions instead.
 		MinConcurrentActivityTaskPollers int
 
 		// Optional: To set the maximum concurrent decision task executions this worker can have.
@@ -104,28 +106,36 @@ type (
 		// cadence-server to retrieve decision tasks. Changing this value will affect the
 		// rate at which the worker is able to consume tasks from a task list.
 		// Default value is 2
+		// NOTE: if AutoScalerOptions.Enabled is set to true, this value will be ignored and AutoScalerOptions.PollerMaxCount will be used instead
 		MaxConcurrentDecisionTaskPollers int
 
 		// optional: Sets the minimum number of goroutines that will concurrently poll the
 		// cadence-server to retrieve decision tasks. If FeatureFlags.PollerAutoScalerEnabled is set to true,
 		// changing this value will NOT affect the rate at which the worker is able to consume tasks from a task list.
 		// Default value is 2
+		// Deprecated: NO effect and use AutoScalerOptions instead.
 		MinConcurrentDecisionTaskPollers int
 
 		// optional: Sets the interval of poller autoscaling, between which poller autoscaler changes the poller count
 		// based on poll result. It takes effect if FeatureFlags.PollerAutoScalerEnabled is set to true.
 		// Default value is 1 min
+		// Deprecated: Use AutoScalerOptions instead.
 		PollerAutoScalerCooldown time.Duration
 
 		// optional: Sets the target utilization rate between [0,1].
 		// Utilization Rate = pollResultWithTask / (pollResultWithTask + pollResultWithNoTask)
 		// It takes effect if FeatureFlags.PollerAutoScalerEnabled is set to true.
 		// Default value is 0.6
+		// Deprecated: not used any more
 		PollerAutoScalerTargetUtilization float64
 
 		// optional: Sets whether to start dry run mode of autoscaler.
 		// Default value is false
+		// Deprecated: not used any more
 		PollerAutoScalerDryRun bool
+
+		// optional: Sets the options for poller autoscaler
+		AutoScalerOptions AutoScalerOptions
 
 		// Optional: Sets an identify that can be used to track this host for debugging.
 		// default: default identity that include hostname, groupName and process ID.
@@ -384,7 +394,7 @@ func ReplayPartialWorkflowHistoryFromJSONFile(logger *zap.Logger, jsonfileName s
 // Validate sanity validation of WorkerOptions
 func (o WorkerOptions) Validate() error {
 	// decision task pollers must be >= 2 or unset if sticky tasklist is enabled https://github.com/uber-go/cadence-client/issues/1369
-	if !o.DisableStickyExecution && (o.MaxConcurrentDecisionTaskPollers == 1 || o.MinConcurrentDecisionTaskPollers == 1) {
+	if !o.DisableStickyExecution && (o.MaxConcurrentDecisionTaskPollers == 1) {
 		return fmt.Errorf("DecisionTaskPollers must be >= 2 or use default value")
 	}
 	return nil

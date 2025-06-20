@@ -59,6 +59,11 @@ const (
 	defaultMediumLivedWorkflowTimeoutUpperLimitInSec = 8 * 3600
 )
 
+var (
+	_ autoConfigHintAwareTask = (*workflowTask)(nil)
+	_ autoConfigHintAwareTask = (*activityTask)(nil)
+)
+
 type (
 	// workflowExecutionEventHandler process a single event.
 	workflowExecutionEventHandler interface {
@@ -72,9 +77,15 @@ type (
 		Close()
 	}
 
+	// autoConfigHintAwareTask is a task that can provide auto config hint
+	autoConfigHintAwareTask interface {
+		getAutoConfigHint() *s.AutoConfigHint
+	}
+
 	// workflowTask wraps a decision task.
 	workflowTask struct {
 		task            *s.PollForDecisionTaskResponse
+		autoConfigHint  *s.AutoConfigHint
 		historyIterator HistoryIterator
 		doneCh          chan struct{}
 		laResultCh      chan *localActivityResult
@@ -82,8 +93,9 @@ type (
 
 	// activityTask wraps a activity task.
 	activityTask struct {
-		task          *s.PollForActivityTaskResponse
-		pollStartTime time.Time
+		task           *s.PollForActivityTaskResponse
+		autoConfigHint *s.AutoConfigHint
+		pollStartTime  time.Time
 	}
 
 	// resetStickinessTask wraps a ResetStickyTaskListRequest.
@@ -152,6 +164,26 @@ type (
 		Message string
 	}
 )
+
+func (t *workflowTask) getAutoConfigHint() *s.AutoConfigHint {
+	if t.autoConfigHint != nil {
+		return t.autoConfigHint
+	}
+	if t.task != nil {
+		return t.task.AutoConfigHint
+	}
+	return nil
+}
+
+func (t *activityTask) getAutoConfigHint() *s.AutoConfigHint {
+	if t.autoConfigHint != nil {
+		return t.autoConfigHint
+	}
+	if t.task != nil {
+		return t.task.AutoConfigHint
+	}
+	return nil
+}
 
 func newHistory(task *workflowTask, eventsHandler *workflowExecutionEventHandlerImpl) *history {
 	result := &history{

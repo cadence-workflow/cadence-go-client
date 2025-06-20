@@ -219,6 +219,9 @@ type (
 
 	// ShadowOptions is used to configure a WorkflowShadower.
 	ShadowOptions = internal.ShadowOptions
+	// AutoScalerOptions is used to configure the auto scaler.
+	AutoScalerOptions = internal.AutoScalerOptions
+
 	// ShadowMode is an enum for configuring if shadowing should continue after all workflows matches the WorkflowQuery have been replayed.
 	ShadowMode = internal.ShadowMode
 	// TimeFilter represents a time range through the min and max timestamp

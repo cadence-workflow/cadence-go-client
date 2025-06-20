@@ -114,4 +114,7 @@ const (
 	ServerSideHistorySize    = CadenceMetricsPrefix + "server-side-history-size"
 	ConcurrentTaskQuota      = CadenceMetricsPrefix + "concurrent-task-quota"
 	PollerRequestBufferUsage = CadenceMetricsPrefix + "poller-request-buffer-usage"
+
+	// Concurrency Auto Scaler
+	ConcurrencyAutoScalerScope = CadenceMetricsPrefix + "concurrency-auto-scaler"
 )
