@@ -1274,6 +1274,92 @@ func (s *WorkflowTestSuiteUnitTest) Test_GetVersion() {
 	env.AssertExpectations(s.T())
 }
 
+func (s *WorkflowTestSuiteUnitTest) Test_GetVersion_ExecuteWithMinVersion() {
+	oldActivity := func(ctx context.Context, msg string) (string, error) {
+		return "hello" + "_" + msg, nil
+	}
+	newActivity := func(ctx context.Context, msg string) (string, error) {
+		return "hello" + "_" + msg, nil
+	}
+	workflowFn := func(ctx Context) error {
+		ctx = WithActivityOptions(ctx, s.activityOptions)
+		var f Future
+		v := GetVersion(ctx, "test_change_id", DefaultVersion, 2, ExecuteWithMinVersion())
+		if v == DefaultVersion {
+			f = ExecuteActivity(ctx, oldActivity, "ols_msg")
+		} else {
+			f = ExecuteActivity(ctx, newActivity, "new_msg")
+		}
+		err := f.Get(ctx, nil) // wait for result
+		if err != nil {
+			return err
+		}
+
+		// test no search attributes
+		wfInfo := GetWorkflowInfo(ctx)
+		s.Nil(wfInfo.SearchAttributes)
+		return err
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowFn)
+	env.RegisterActivity(oldActivity)
+	env.RegisterActivity(newActivity)
+	env.OnActivity(oldActivity, mock.Anything, "ols_msg").Return("hello_ols_msg", nil).Once()
+	env.ExecuteWorkflow(workflowFn)
+
+	s.True(env.IsWorkflowCompleted())
+	s.Nil(env.GetWorkflowError())
+	env.AssertExpectations(s.T())
+}
+
+func (s *WorkflowTestSuiteUnitTest) Test_GetVersion_ExecuteWithVersion() {
+	oldActivity := func(ctx context.Context, msg string) (string, error) {
+		return "hello" + "_" + msg, nil
+	}
+	newActivity := func(ctx context.Context, msg string) (string, error) {
+		return "hello" + "_" + msg, nil
+	}
+	workflowFn := func(ctx Context) error {
+		ctx = WithActivityOptions(ctx, s.activityOptions)
+		var f Future
+		v := GetVersion(ctx, "test_change_id", DefaultVersion, 2, ExecuteWithVersion(1))
+		if v == DefaultVersion {
+			f = ExecuteActivity(ctx, oldActivity, "ols_msg")
+		} else {
+			f = ExecuteActivity(ctx, newActivity, "new_msg")
+		}
+		err := f.Get(ctx, nil) // wait for result
+		if err != nil {
+			return err
+		}
+
+		// test searchable change version
+		wfInfo := GetWorkflowInfo(ctx)
+		s.NotNil(wfInfo.SearchAttributes)
+		changeVersionsBytes, ok := wfInfo.SearchAttributes.IndexedFields[CadenceChangeVersion]
+		s.True(ok)
+		var changeVersions []string
+		err = json.Unmarshal(changeVersionsBytes, &changeVersions)
+		s.NoError(err)
+		s.Equal(1, len(changeVersions))
+		s.Equal("test_change_id-1", changeVersions[0])
+
+		return err
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowFn)
+	env.RegisterActivity(oldActivity)
+	env.RegisterActivity(newActivity)
+	env.OnActivity(newActivity, mock.Anything, "new_msg").Return("hello new_mock_msg", nil).Once()
+	env.ExecuteWorkflow(workflowFn)
+
+	s.True(env.IsWorkflowCompleted())
+	s.Nil(env.GetWorkflowError())
+	env.AssertExpectations(s.T())
+}
+
 func (s *WorkflowTestSuiteUnitTest) Test_MockGetVersion() {
 	oldActivity := func(ctx context.Context, msg string) (string, error) {
 		return "hello" + "_" + msg, nil
