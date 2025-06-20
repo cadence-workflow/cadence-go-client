@@ -16,6 +16,7 @@ const (
 	// FooActivityName and BarActivityName are the names of the activities used in the workflows.
 	FooActivityName = "FooActivity"
 	BarActivityName = "BarActivity"
+	BazActivityName = "BazActivity"
 
 	// VersionedWorkflowName is the name of the versioned workflow.
 	VersionedWorkflowName = "VersionedWorkflow"
@@ -110,6 +111,52 @@ func VersionedWorkflowV4(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
+// VersionedWorkflowV5 is the fifth version of the workflow. It supports Version 1 and 2.
+// All workflows started by this version will have the change ID set to Version 1.
+// It supports workflow executions started by VersionedWorkflowV3, VersionedWorkflowV4,
+// VersionedWorkflowV5, VersionedWorkflowV6
+func VersionedWorkflowV5(ctx workflow.Context, _ string) (string, error) {
+	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+
+	var result string
+	var err error
+
+	version := workflow.GetVersion(ctx, TestChangeID, 1, 2, workflow.ExecuteWithVersion(1))
+	if version == 1 {
+		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
+	} else {
+		err = workflow.ExecuteActivity(ctx, BazActivityName, "data").Get(ctx, &result)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return result, nil
+}
+
+// VersionedWorkflowV6 is the sixth version of the workflow. It supports Version 1 and 2.
+// All workflows started by this version will have the change ID set to Version 2.
+// It supports workflow executions started by VersionedWorkflowV3, VersionedWorkflowV4,
+// VersionedWorkflowV5, VersionedWorkflowV6
+func VersionedWorkflowV6(ctx workflow.Context, _ string) (string, error) {
+	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+
+	var result string
+	var err error
+
+	version := workflow.GetVersion(ctx, TestChangeID, 1, 2)
+	if version == 1 {
+		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
+	} else {
+		err = workflow.ExecuteActivity(ctx, BazActivityName, "data").Get(ctx, &result)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return result, nil
+}
+
 // FooActivity returns "foo" as a result of the activity execution.
 func FooActivity(ctx context.Context, _ string) (string, error) {
 	return "foo", nil
@@ -118,6 +165,11 @@ func FooActivity(ctx context.Context, _ string) (string, error) {
 // BarActivity returns "bar" as a result of the activity execution.
 func BarActivity(ctx context.Context, _ string) (string, error) {
 	return "bar", nil
+}
+
+// BazActivity returns "baz" as a result of the activity execution.
+func BazActivity(ctx context.Context, _ string) (string, error) {
+	return "baz", nil
 }
 
 // SetupWorkerForVersionedWorkflowV1 registers VersionedWorkflowV1 and FooActivity
@@ -144,4 +196,18 @@ func SetupWorkerForVersionedWorkflowV3(w worker.Registry) {
 func SetupWorkerForVersionedWorkflowV4(w worker.Registry) {
 	w.RegisterWorkflowWithOptions(VersionedWorkflowV4, workflow.RegisterOptions{Name: VersionedWorkflowName})
 	w.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: BarActivityName})
+}
+
+// SetupWorkerForVersionedWorkflowV5 registers VersionedWorkflowV6, BarActivity and BazActivity
+func SetupWorkerForVersionedWorkflowV5(w worker.Registry) {
+	w.RegisterWorkflowWithOptions(VersionedWorkflowV5, workflow.RegisterOptions{Name: VersionedWorkflowName})
+	w.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: BarActivityName})
+	w.RegisterActivityWithOptions(BazActivity, activity.RegisterOptions{Name: BazActivityName})
+}
+
+// SetupWorkerForVersionedWorkflowV6 registers VersionedWorkflowV6, BarActivity and BazActivity
+func SetupWorkerForVersionedWorkflowV6(w worker.Registry) {
+	w.RegisterWorkflowWithOptions(VersionedWorkflowV6, workflow.RegisterOptions{Name: VersionedWorkflowName})
+	w.RegisterActivityWithOptions(BarActivity, activity.RegisterOptions{Name: BarActivityName})
+	w.RegisterActivityWithOptions(BazActivity, activity.RegisterOptions{Name: BazActivityName})
 }

@@ -219,6 +219,15 @@ func TestContinueAsNew(t *testing.T) {
 // * VersionedWorkflowV4 - which supports Version 1, and can execute BarActivity
 //   - This workflow is able to replay the history only of VersionedWorkflowBar
 //
+// * VersionedWorkflowV5 - which supports Version 1 and 2, and can execute BarActivity and BazActivity
+//   - This workflow is able to replay the history only of VersionedWorkflowBar
+//   - A first execution of this workflow will should execute BarActivity, because of usage workflow.ExecuteWithMinVersion(),
+//     but the test can't check it due to Replay
+//
+// * VersionedWorkflowV6 - which supports Version 1 and 2, and can execute BarActivity and BazActivity
+//   - This workflow is able to replay the history only of VersionedWorkflowBar
+//   - A first execution of this workflow will should execute BazActivity, but the test can't check it due to Replay
+//
 // So the test focusing workflows supports forward and backward compatibility of the workflows
 func TestVersionedWorkflows(t *testing.T) {
 	const (
@@ -274,6 +283,36 @@ func TestVersionedWorkflows(t *testing.T) {
 	t.Run("VersionedWorkflowV4", func(t *testing.T) {
 		replayer := worker.NewWorkflowReplayer()
 		SetupWorkerForVersionedWorkflowV4(replayer)
+
+		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+		})
+
+		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowBar history")
+		})
+	})
+
+	t.Run("VersionedWorkflowV5", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		SetupWorkerForVersionedWorkflowV5(replayer)
+
+		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
+			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+		})
+
+		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
+			require.NoError(t, err, "Failed to replay VersionedWorkflowBar history")
+		})
+	})
+
+	t.Run("VersionedWorkflowV6", func(t *testing.T) {
+		replayer := worker.NewWorkflowReplayer()
+		SetupWorkerForVersionedWorkflowV6(replayer)
 
 		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
