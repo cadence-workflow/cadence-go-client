@@ -754,6 +754,22 @@ func TestGetVersion(t *testing.T) {
 		res := weh.GetVersion("test", 1, 3)
 		assert.Equal(t, Version(2), res)
 	})
+	t.Run("version exists, ExecuteWithVersion is used", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		weh.changeVersions = map[string]Version{
+			"test": 2,
+		}
+		res := weh.GetVersion("test", 1, 3, ExecuteWithVersion(3))
+		assert.Equal(t, Version(2), res)
+	})
+	t.Run("version exists, ExecuteWithMinVersion is used", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		weh.changeVersions = map[string]Version{
+			"test": 2,
+		}
+		res := weh.GetVersion("test", 1, 3, ExecuteWithMinVersion())
+		assert.Equal(t, Version(2), res)
+	})
 	t.Run("version doesn't exist in replay", func(t *testing.T) {
 		weh := testWorkflowExecutionEventHandler(t, newRegistry())
 		weh.isReplay = true
@@ -769,6 +785,55 @@ func TestGetVersion(t *testing.T) {
 		require.Contains(t, weh.changeVersions, "test")
 		assert.Equal(t, Version(3), weh.changeVersions["test"])
 		assert.Equal(t, []byte(`["test-3"]`), weh.workflowInfo.SearchAttributes.IndexedFields[CadenceChangeVersion], "ensure search attributes are updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithVersion is used", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		res := weh.GetVersion("test", DefaultVersion, 3, ExecuteWithVersion(2))
+		assert.Equal(t, Version(2), res)
+		require.Contains(t, weh.changeVersions, "test")
+		assert.Equal(t, Version(2), weh.changeVersions["test"])
+		assert.Equal(t, []byte(`["test-2"]`), weh.workflowInfo.SearchAttributes.IndexedFields[CadenceChangeVersion], "ensure search attributes are updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithVersion is used, DefaultVersion is used", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		res := weh.GetVersion("test", DefaultVersion, 3, ExecuteWithVersion(DefaultVersion))
+		assert.Equal(t, DefaultVersion, res)
+		require.Contains(t, weh.changeVersions, "test")
+		assert.Equal(t, DefaultVersion, weh.changeVersions["test"])
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithMinVersion is used, min is non DefaultVersion", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		res := weh.GetVersion("test", 1, 3, ExecuteWithMinVersion())
+		assert.Equal(t, Version(1), res)
+		require.Contains(t, weh.changeVersions, "test")
+		assert.Equal(t, Version(1), weh.changeVersions["test"])
+		assert.Equal(t, []byte(`["test-1"]`), weh.workflowInfo.SearchAttributes.IndexedFields[CadenceChangeVersion], "ensure search attributes are updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithMinVersion is used, DefaultVersion is used", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		res := weh.GetVersion("test", DefaultVersion, 3, ExecuteWithMinVersion())
+		assert.Equal(t, DefaultVersion, res)
+		require.Contains(t, weh.changeVersions, "test")
+		assert.Equal(t, DefaultVersion, weh.changeVersions["test"])
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
+	})
+
+	t.Run("version doesn't exist, ExecuteWithVersion is used, version > maximum version", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		assert.PanicsWithValue(t, `Workflow code is too old to support version 10 for "test" changeID. The maximum supported version is 3`, func() {
+			weh.GetVersion("test", DefaultVersion, 3, ExecuteWithVersion(10))
+		})
+
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
+	})
+	t.Run("version doesn't exist, ExecuteWithVersion is used, version < minimum version", func(t *testing.T) {
+		weh := testWorkflowExecutionEventHandler(t, newRegistry())
+		assert.PanicsWithValue(t, `Workflow code removed support of version 0. for "test" changeID. The oldest supported version is 1`, func() {
+			weh.GetVersion("test", 1, 3, ExecuteWithVersion(0))
+		})
+
+		require.Nil(t, weh.workflowInfo.SearchAttributes, "ensure search attributes are not updated")
 	})
 }
 
@@ -982,6 +1047,13 @@ func TestWorkflowExecutionEnvironment_NewTimer_immediate_calls(t *testing.T) {
 }
 
 func testWorkflowExecutionEventHandler(t *testing.T, registry *registry) *workflowExecutionEventHandlerImpl {
+	var testWorkflowInfo = &WorkflowInfo{
+		WorkflowType: WorkflowType{
+			Name: "test",
+			Path: "",
+		},
+	}
+
 	return newWorkflowExecutionEventHandler(
 		testWorkflowInfo,
 		func(result []byte, err error) {},
@@ -994,13 +1066,6 @@ func testWorkflowExecutionEventHandler(t *testing.T, registry *registry) *workfl
 		opentracing.NoopTracer{},
 		nil,
 	).(*workflowExecutionEventHandlerImpl)
-}
-
-var testWorkflowInfo = &WorkflowInfo{
-	WorkflowType: WorkflowType{
-		Name: "test",
-		Path: "",
-	},
 }
 
 func getSerializedDetails[T, V any](t *testing.T, id T, data V) []byte {
