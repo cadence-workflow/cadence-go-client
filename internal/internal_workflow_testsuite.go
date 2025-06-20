@@ -1947,9 +1947,43 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		validateVersion(changeID, version, minSupported, maxSupported)
 		return version
 	}
-	env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, maxSupported, env.changeVersions))
-	env.changeVersions[changeID] = maxSupported
-	return maxSupported
+
+	// Apply options to determine which version to use
+	options := &GetVersionOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Determine the version to use based on the options provided
+	var version Version
+	switch {
+	// If ExecuteWithVersion option is used, use the custom version provided
+	case options.CustomVersion != nil:
+		version = *options.CustomVersion
+
+	// If ExecuteWithMinVersion option is set, use the minimum supported version
+	case options.UseMinVersion:
+		version = minSupported
+
+	// Otherwise, use the maximum supported version
+	default:
+		version = maxSupported
+	}
+
+	// Validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
+	validateVersion(changeID, version, minSupported, maxSupported)
+
+	// If the version is not the DefaultVersion, update search attributes
+	// Keeping the DefaultVersion as a special case where no version marker is recorded
+	if version != DefaultVersion {
+		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, env.changeVersions))
+	}
+
+	// Store the version in the changeVersions
+	// ensuring that it can be retrieved later
+	env.changeVersions[changeID] = version
+	return version
 }
 
 func (env *testWorkflowEnvironmentImpl) getMockedVersion(mockedChangeID, changeID string, minSupported, maxSupported Version) (Version, bool) {
