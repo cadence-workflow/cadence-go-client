@@ -99,7 +99,7 @@ func scanWorkflowExecutionsHelper(
 				tchCtx, cancel, opt := newChannelContext(ctx, FeatureFlags{})
 
 				var err error
-				resp, err = service.ScanWorkflowExecutions(tchCtx, request, opt...)
+				resp, err = service.ListWorkflowExecutions(tchCtx, request, opt...)
 				cancel()
 
 				return err
