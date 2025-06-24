@@ -90,7 +90,7 @@ func (s *workflowShadowerActivitiesSuite) TearDownTest() {
 
 func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_Succeed() {
 	numExecutions := 1000
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(numExecutions),
 		NextPageToken: []byte{1, 2, 3},
 	}, nil).Times(1)
@@ -113,7 +113,7 @@ func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_Succeed() {
 
 func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_MinResultSize() {
 	numExecutionsPerScan := 3
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(numExecutionsPerScan),
 		NextPageToken: []byte{1, 2, 3},
 	}, nil).Times(int(math.Ceil(float64(minScanWorkflowResultSize) / float64(numExecutionsPerScan))))
@@ -135,7 +135,7 @@ func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_MinResultSize
 
 func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_CompletionTime() {
 	activityTimeoutSeconds := int32(1)
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(1),
 		NextPageToken: []byte{1, 2, 3},
 	}, nil).MaxTimes(int(time.Duration(activityTimeoutSeconds) * time.Second / scanWorkflowWaitPeriod))
@@ -163,7 +163,7 @@ func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_CompletionTim
 }
 
 func (s *workflowShadowerActivitiesSuite) TestScanWorkflowActivity_InvalidQuery() {
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, &shared.BadRequestError{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, &shared.BadRequestError{
 		Message: "invalid query",
 	}).Times(1)
 

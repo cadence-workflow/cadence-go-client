@@ -260,7 +260,7 @@ func (s *workflowShadowerSuite) TestShadowOptionsWithExcludeTypes() {
 	shadower, err := NewWorkflowShadower(s.mockService, "testDomain", options, ReplayOptions{}, nil)
 	s.NoError(err)
 	s.mockService.EXPECT().
-		ScanWorkflowExecutions(gomock.Any(), gomock.Any(), gomock.Any()).
+		ListWorkflowExecutions(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, request *shared.ListWorkflowExecutionsRequest, opts ...interface{}) (*shared.ListWorkflowExecutionsResponse, error) {
 			s.Equal(expectedQuery, *request.Query)
 			return &shared.ListWorkflowExecutionsResponse{
@@ -280,7 +280,7 @@ func (s *workflowShadowerSuite) TestShadowWorkerExitCondition_ExpirationTime() {
 		ExpirationInterval: expirationTime,
 	}
 
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(totalWorkflows),
 		NextPageToken: nil,
 	}, nil).Times(1)
@@ -301,7 +301,7 @@ func (s *workflowShadowerSuite) TestShadowWorkerExitCondition_MaxShadowingCount(
 		ShadowCount: maxShadowCount,
 	}
 
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(maxShadowCount * 2),
 		NextPageToken: []byte{1, 2, 3},
 	}, nil).Times(1)
@@ -325,7 +325,7 @@ func (s *workflowShadowerSuite) TestShadowWorker_NormalMode() {
 		if i == numScan-1 {
 			scanResp.NextPageToken = nil
 		}
-		s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(scanResp, nil).Times(1)
+		s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(scanResp, nil).Times(1)
 	}
 
 	s.mockService.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.GetWorkflowExecutionHistoryResponse{
@@ -349,7 +349,7 @@ func (s *workflowShadowerSuite) TestShadowWorker_ContinuousMode() {
 		scanResp := &shared.ListWorkflowExecutionsResponse{
 			Executions: workflowExecutions,
 		}
-		s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(scanResp, nil).Times(1)
+		s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(scanResp, nil).Times(1)
 	}
 
 	s.mockService.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.GetWorkflowExecutionHistoryResponse{
@@ -379,7 +379,7 @@ func (s *workflowShadowerSuite) TestShadowWorker_ContinuousMode() {
 
 func (s *workflowShadowerSuite) TestShadowWorker_ReplayFailed() {
 	successfullyReplayed := 5
-	s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+	s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 		Executions:    newTestWorkflowExecutions(successfullyReplayed * 2),
 		NextPageToken: []byte{1, 2, 3},
 	}, nil).Times(1)
@@ -428,7 +428,7 @@ func (s *workflowShadowerSuite) TestShadowWorker_ExpectedReplayError() {
 
 	for _, test := range testCases {
 		s.T().Run(test.msg, func(t *testing.T) {
-			s.mockService.EXPECT().ScanWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
+			s.mockService.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any(), callOptions()...).Return(&shared.ListWorkflowExecutionsResponse{
 				Executions:    newTestWorkflowExecutions(1),
 				NextPageToken: nil,
 			}, nil).Times(1)
