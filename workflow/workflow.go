@@ -45,9 +45,6 @@ type (
 	// Version represents a change version. See GetVersion call.
 	Version = internal.Version
 
-	// GetVersionOption configures GetVersion behaviour
-	GetVersionOption = internal.GetVersionOption
-
 	// ChildWorkflowOptions stores all child workflow specific parameters that will be stored inside of a Context.
 	ChildWorkflowOptions = internal.ChildWorkflowOptions
 
@@ -356,7 +353,7 @@ func MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, 
 // DefaultVersion is a version returned by GetVersion for code that wasn't versioned before
 const DefaultVersion Version = internal.DefaultVersion
 
-// ExecuteWithVersion returns a GetVersionOption that forces a specific version to be returned
+// ExecuteWithVersion returns a GetVersionOptions that forces a specific version to be returned
 // when executed for the first time, instead of returning maxSupported version.
 //
 // This option can be used when you want to separate the versioning of the workflow code and
@@ -412,19 +409,15 @@ const DefaultVersion Version = internal.DefaultVersion
 //
 // ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed, as
 // both versions of the workflow code are compatible with each other.
-func ExecuteWithVersion(version Version) GetVersionOption {
-	return func(o *internal.GetVersionOptions) {
-		o.CustomVersion = &version
-	}
+func ExecuteWithVersion(version Version) internal.GetVersionOptions {
+	return internal.ExecuteWithVersion(version)
 }
 
-// ExecuteWithMinVersion returns a GetVersionOption that makes GetVersion return minSupported version
+// ExecuteWithMinVersion returns a GetVersionOptions that makes GetVersion return minSupported version
 // when executed for the first time, instead of returning maxSupported version.
 // To see how this option can be used, see the ExecuteWithVersion option
-func ExecuteWithMinVersion() GetVersionOption {
-	return func(o *internal.GetVersionOptions) {
-		o.UseMinVersion = true
-	}
+func ExecuteWithMinVersion() internal.GetVersionOptions {
+	return internal.ExecuteWithMinVersion()
 }
 
 // GetVersion is used to safely perform backwards incompatible changes to workflow definitions.
@@ -492,7 +485,7 @@ func ExecuteWithMinVersion() GetVersionOption {
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...internal.GetVersionOptions) Version {
 	return internal.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 

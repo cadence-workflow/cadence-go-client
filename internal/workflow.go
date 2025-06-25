@@ -1567,9 +1567,6 @@ const DefaultVersion Version = -1
 // CadenceChangeVersion is used as search attributes key to find workflows with specific change version.
 const CadenceChangeVersion = "CadenceChangeVersion"
 
-// GetVersionOption configures GetVersion behavior
-type GetVersionOption func(*GetVersionOptions)
-
 // GetVersionOptions contains options for GetVersion
 type GetVersionOptions struct {
 	// CustomVersion is used to force GetVersion to return a specific version
@@ -1581,7 +1578,7 @@ type GetVersionOptions struct {
 	UseMinVersion bool
 }
 
-// ExecuteWithVersion returns a GetVersionOption that forces a specific version to be returned
+// ExecuteWithVersion returns a GetVersionOptions that forces a specific version to be returned
 // when executed for the first time, instead of returning maxSupported version.
 //
 // This option can be used when you want to separate the versioning of the workflow code and
@@ -1637,18 +1634,18 @@ type GetVersionOptions struct {
 //
 // ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed, as
 // both versions of the workflow code are compatible with each other.
-func ExecuteWithVersion(version Version) GetVersionOption {
-	return func(o *GetVersionOptions) {
-		o.CustomVersion = &version
+func ExecuteWithVersion(version Version) GetVersionOptions {
+	return GetVersionOptions{
+		CustomVersion: &version,
 	}
 }
 
-// ExecuteWithMinVersion returns a GetVersionOption that makes GetVersion return minSupported version
+// ExecuteWithMinVersion returns a GetVersionOptions that makes GetVersion return minSupported version
 // when executed for the first time, instead of returning maxSupported version.
 // To see how this option can be used, see the ExecuteWithVersion option
-func ExecuteWithMinVersion() GetVersionOption {
-	return func(o *GetVersionOptions) {
-		o.UseMinVersion = true
+func ExecuteWithMinVersion() GetVersionOptions {
+	return GetVersionOptions{
+		UseMinVersion: true,
 	}
 }
 
@@ -1718,12 +1715,12 @@ func ExecuteWithMinVersion() GetVersionOption {
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOptions) Version {
 	i := getWorkflowInterceptor(ctx)
 	return i.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 
-func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOptions) Version {
 	return wc.env.GetVersion(changeID, minSupported, maxSupported, opts...)
 }
 
