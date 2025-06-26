@@ -31,8 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/cadence/test/replaytests"
-
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -40,13 +39,12 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/opentracing/opentracing-go/mocktracer"
-
 	"go.uber.org/cadence"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/client"
 	"go.uber.org/cadence/interceptors"
 	"go.uber.org/cadence/internal"
+	"go.uber.org/cadence/test/replaytests"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/workflow"
 )

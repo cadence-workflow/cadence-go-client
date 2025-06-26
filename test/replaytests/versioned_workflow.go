@@ -38,15 +38,14 @@ const (
 	VersionWorkflowVersionV4
 	VersionWorkflowVersionV5
 	VersionWorkflowVersionV6
+
+	// MaxVersionWorkflowVersion is the maximum version of the VersionedWorkflow.
+	// Update this constant when adding new versions to the workflow.
+	MaxVersionWorkflowVersion = VersionWorkflowVersionV6
 )
 
-// MaxVersionWorkflowVersion is the maximum version of the VersionedWorkflow.
-// Update this constant when adding new versions to the workflow.
-const MaxVersionWorkflowVersion = VersionWorkflowVersionV6
-
-// VersionedWorkflowV1 is the first version of the workflow, and it supports only DefaultVersion.
-// It supports workflow executions started by this version VersionedWorkflowV1
-// and VersionedWorkflowV2, as all of them will have the change ID set to DefaultVersion.
+// VersionedWorkflowV1 is the first version of the workflow, supports only DefaultVersion.
+// All workflows started by this version will have the change ID set to DefaultVersion.
 func VersionedWorkflowV1(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -59,12 +58,8 @@ func VersionedWorkflowV1(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
-// VersionedWorkflowV2 is the second version of the workflow. It supports DefaultVersion and Version 1.
+// VersionedWorkflowV2 is the second version of the workflow, supports DefaultVersion and 1
 // All workflows started by this version will have the change ID set to DefaultVersion.
-// It supports workflow executions started by VersionedWorkflowV1 and VersionedWorkflowV2,
-// as all of them will have the change ID set to DefaultVersion.
-// It also supports workflow executions started by VersionedWorkflowV3 and VersionedWorkflowV4
-// because the code supports execution of Version 1 of the workflow.
 func VersionedWorkflowV2(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -84,12 +79,8 @@ func VersionedWorkflowV2(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
-// VersionedWorkflowV3 is the third version of the workflow. It supports DefaultVersion and Version 1 as well.
-// However, all workflows started by this version will have the change ID set to Version 1.
-// It supports workflow executions started by VersionedWorkflowV1 and VersionedWorkflowV2,
-// as all of them will have the change ID set to DefaultVersion, and it supports them.
-// It also supports workflow executions started by VersionedWorkflowV3 and VersionedWorkflowV4,
-// because the code supports execution of Version 1 of the workflow.
+// VersionedWorkflowV3 is the third version of the workflow, supports DefaultVersion and 1
+// All workflows started by this version will have the change ID set to 1.
 func VersionedWorkflowV3(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -109,10 +100,8 @@ func VersionedWorkflowV3(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
-// VersionedWorkflowV4 is the fourth version of the workflow. It supports only Version 1.
-// All workflows started by this version will have the change ID set to Version 1.
-// It supports workflow executions started by VersionedWorkflowV3 and VersionedWorkflowV4,
-// as all of them will have the change ID set to Version 1.
+// VersionedWorkflowV4 is the fourth version of the workflow, supports only version 1
+// All workflows started by this version will have the change ID set to 1.
 func VersionedWorkflowV4(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -127,10 +116,8 @@ func VersionedWorkflowV4(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
-// VersionedWorkflowV5 is the fifth version of the workflow. It supports Version 1 and 2.
-// All workflows started by this version will have the change ID set to Version 1.
-// It supports workflow executions started by VersionedWorkflowV3, VersionedWorkflowV4,
-// VersionedWorkflowV5, VersionedWorkflowV6
+// VersionedWorkflowV5 is the fifth version of the workflow, supports versions 1 and 2
+// All workflows started by this version will have the change ID set to 1.
 func VersionedWorkflowV5(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -150,10 +137,8 @@ func VersionedWorkflowV5(ctx workflow.Context, _ string) (string, error) {
 	return result, nil
 }
 
-// VersionedWorkflowV6 is the sixth version of the workflow. It supports Version 1 and 2.
-// All workflows started by this version will have the change ID set to Version 2.
-// It supports workflow executions started by VersionedWorkflowV3, VersionedWorkflowV4,
-// VersionedWorkflowV5, VersionedWorkflowV6
+// VersionedWorkflowV6 is the sixth version of the workflow, supports versions 1 and 2
+// All workflows started by this version will have the change ID set to 2.
 func VersionedWorkflowV6(ctx workflow.Context, _ string) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
@@ -188,6 +173,7 @@ func BazActivity(_ context.Context, _ string) (string, error) {
 	return "baz", nil
 }
 
+// SetupWorkerForVersionedWorkflow registers the versioned workflow and its activities
 func SetupWorkerForVersionedWorkflow(version VersionWorkflowVersion, w worker.Registry) {
 	switch version {
 	case VersionWorkflowVersionV1:
