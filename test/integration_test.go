@@ -674,8 +674,8 @@ type testVersionedWorkflowTestCase struct {
 // but not on worker with inCompatibleVersions
 func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTestCase) {
 	SetupWorkerForVersionedWorkflow(c.version, ts.worker)
-	wfId := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
-	execution, err := ts.executeWorkflow(wfId, VersionedWorkflowName, nil, "arg")
+	wfID := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
+	execution, err := ts.executeWorkflow(wfID, VersionedWorkflowName, nil, "arg")
 	ts.NoError(err)
 
 	c.compatibleVersions = append(c.compatibleVersions, c.version)
