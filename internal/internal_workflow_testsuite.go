@@ -1948,10 +1948,10 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		return version
 	}
 
-	// Apply options to determine which version to use
-	options := &GetVersionOptions{}
-	for _, opt := range opts {
-		opt(options)
+	// Use the first option if they're present
+	var options GetVersionOptions
+	if len(opts) > 0 {
+		options = opts[0]
 	}
 
 	// Determine the version to use based on the options provided
