@@ -1603,8 +1603,8 @@ type GetVersionOptions struct {
 //	}
 //
 // The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
-// All new workflow executions will execute foo activity, because
-// GetVersion with the ExecuteWithVersion option returns DefaultVersion, that will be recorded into the workflow history
+// All new workflow executions will execute foo activity, because GetVersion with ExecuteWithMinVersion option
+// returns DefaultVersion, that will be recorded into the workflow history.
 //
 // 2. Enable execution of bar activity
 //
@@ -1617,7 +1617,7 @@ type GetVersionOptions struct {
 //
 // The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
 // All new workflow executions will execute bar activity, because
-// GetVersion returns the maximum supported version - 1, that will be recorded into the workflow history
+// GetVersion returns the maximum supported version - 1, that will be recorded into the workflow history.
 //
 // 3. Remove a support of foo activity:
 //
@@ -1626,7 +1626,7 @@ type GetVersionOptions struct {
 //
 // When there are no workflow executions running DefaultVersion the support of foo activity can be removed.
 //
-// The ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed.
+// ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed.
 func ExecuteWithVersion(version Version) GetVersionOptions {
 	return GetVersionOptions{
 		CustomVersion: &version,
@@ -1634,15 +1634,8 @@ func ExecuteWithVersion(version Version) GetVersionOptions {
 }
 
 // ExecuteWithMinVersion forces minSupported version to be returned when GetVersion is executed for the first time,
-// instead of returning maxSupported version. This option can be used when you want to separate
-// the versioning of the workflow code and activation of the new logic in the workflow code,
-// to ensure that your changes can be safely rolled back, if needed.
-// 2 options below are equivalent to each other:
-//
-//	GetVersion(ctx, "fooChange", 1, 2,  ExecuteWithVersion(1))
-//	GetVersion(ctx, "fooChange", 1, 2,  ExecuteWithMinVersion())
-//
-// Check the ExecuteWithVersion documentation for more details on how to use ExecuteWithMinVersion.
+// instead of returning maxSupported version. The option is equivalent to ExecuteWithVersion(minSupportedVersion).
+// Check the ExecuteWithVersion documentation for more details.
 func ExecuteWithMinVersion() GetVersionOptions {
 	return GetVersionOptions{
 		UseMinVersion: true,
