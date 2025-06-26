@@ -175,7 +175,6 @@ func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 
 	ts.worker = worker.New(ts.rpcClient.Interface, domainName, ts.taskListName, options)
 	ts.registerWorkflowsAndActivities(ts.worker)
-	ts.beforeVersionedWorkflowTest(testName, ts.worker)
 	ts.Nil(ts.worker.Start())
 }
 
@@ -559,111 +558,151 @@ func (ts *IntegrationTestSuite) TestOverrideSpanContext() {
 	ts.Equal("some-value", result["mockpfx-baggage-some-key"])
 }
 
-// beforeVersionedWorkflowTest registers appropriate versioned workflow and activity to emulate the versioned workflow test.
-func (ts *IntegrationTestSuite) beforeVersionedWorkflowTest(testName string, w worker.Worker) {
-	switch testName {
-	case "TestVersionedWorkflowV1":
-		replaytests.SetupWorkerForVersionedWorkflowV1(w)
-	case "TestVersionedWorkflowV2":
-		replaytests.SetupWorkerForVersionedWorkflowV2(w)
-	case "TestVersionedWorkflowV3":
-		replaytests.SetupWorkerForVersionedWorkflowV3(w)
-	case "TestVersionedWorkflowV4":
-		replaytests.SetupWorkerForVersionedWorkflowV4(w)
-	case "TestVersionedWorkflowV5":
-		replaytests.SetupWorkerForVersionedWorkflowV5(w)
-	case "TestVersionedWorkflowV6":
-		replaytests.SetupWorkerForVersionedWorkflowV6(w)
-	}
-}
-
 // TestVersionedWorkflowV1 tests that a workflow started on the worker with VersionedWorkflowV1
 // can be replayed on worker with VersionedWorkflowV2 and VersionedWorkflowV3,
 // but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV1() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v1", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV2, execution), "Failed to replay on the replayer with VersionedWorkflowV2")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV3, execution), "Failed to replay on the replayer with VersionedWorkflowV3")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV4, execution), "Expected to fail replaying the replayer with VersionedWorkflowV4")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV5, execution), "Expected to fail replaying the replayer with VersionedWorkflowV5")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV6, execution), "Expected to fail replaying the replayer with VersionedWorkflowV6")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV1,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV2,
+			replaytests.VersionWorkflowVersionV3,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV4,
+			replaytests.VersionWorkflowVersionV5,
+			replaytests.VersionWorkflowVersionV6,
+		},
+	})
 }
 
 // TestVersionedWorkflowV2 tests that a workflow started on the worker with VersionedWorkflowV2
 // can be replayed on worker with VersionedWorkflowV1 and VersionedWorkflowV3,
 // but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV2() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v2", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV1, execution), "Failed to replay on the replayer with VersionedWorkflowV1")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV3, execution), "Failed to replay on the replayer with VersionedWorkflowV3")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV4, execution), "Expected to fail replaying the replayer with VersionedWorkflowV4")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV5, execution), "Expected to fail replaying the replayer with VersionedWorkflowV5")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV6, execution), "Expected to fail replaying the replayer with VersionedWorkflowV6")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV2,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV1,
+			replaytests.VersionWorkflowVersionV3,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV4,
+			replaytests.VersionWorkflowVersionV5,
+			replaytests.VersionWorkflowVersionV6,
+		},
+	})
 }
 
 // TestVersionedWorkflowV3 tests that a workflow started on the worker with VersionedWorkflowV3
 // can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6
 // but not on VersionedWorkflowV1
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV3() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v3", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV1, execution), "Expected to fail replaying the replayer with VersionedWorkflowV1")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV2, execution), "Failed to replay on the replayer with VersionedWorkflowV2")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV4, execution), "Failed to replay on the replayer with VersionedWorkflowV4")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV5, execution), "Failed to replay on the replayer with VersionedWorkflowV5")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV6, execution), "Failed to replay on the replayer with VersionedWorkflowV6")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV3,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV2,
+			replaytests.VersionWorkflowVersionV4,
+			replaytests.VersionWorkflowVersionV5,
+			replaytests.VersionWorkflowVersionV6,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV1,
+		},
+	})
 }
 
 // TestVersionedWorkflowV4 tests that a workflow started on the worker with VersionedWorkflowV4
 // can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV5, VersionedWorkflowV6
 // but not on VersionedWorkflowV1
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV4() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v4", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV1, execution), "Expected to fail replaying the replayer with VersionedWorkflowV1")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV2, execution), "Failed to replay on the replayer with VersionedWorkflowV2")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV3, execution), "Failed to replay on the replayer with VersionedWorkflowV3")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV5, execution), "Failed to replay on the replayer with VersionedWorkflowV5")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV6, execution), "Failed to replay on the replayer with VersionedWorkflowV6")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV4,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV2,
+			replaytests.VersionWorkflowVersionV3,
+			replaytests.VersionWorkflowVersionV5,
+			replaytests.VersionWorkflowVersionV6,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV1,
+		},
+	})
 }
 
 // TestVersionedWorkflowV5 tests that a workflow started on the worker with VersionedWorkflowV5
 // can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4, VersionedWorkflowV6,
 // but not on VersionedWorkflowV1.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV5() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v5", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV1, execution), "Expected to fail replaying the replayer with VersionedWorkflowV1")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV2, execution), "Failed to replay on the replayer with VersionedWorkflowV2")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV3, execution), "Failed to replay on the replayer with VersionedWorkflowV3")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV4, execution), "Failed to replay on the replayer with VersionedWorkflowV4")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV6, execution), "Failed to replay on the replayer with VersionedWorkflowV6")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV5,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV2,
+			replaytests.VersionWorkflowVersionV3,
+			replaytests.VersionWorkflowVersionV4,
+			replaytests.VersionWorkflowVersionV6,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV1,
+		},
+	})
 }
 
 // TestVersionedWorkflowV6 tests that a workflow started on the worker with VersionedWorkflowV6
 // can be replayed on worker with VersionedWorkflowV5
 // but not on VersionedWorkflowV1, VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV6() {
-	execution, err := ts.executeWorkflow("test-versioned-workflow-v6", replaytests.VersionedWorkflowName, nil, "arg")
-	ts.NoError(err)
-
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV1, execution), "Expected to fail replaying the replayer with VersionedWorkflowV1")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV2, execution), "Expected to fail replaying the replayer with VersionedWorkflowV2")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV3, execution), "Expected to fail replaying the replayer with VersionedWorkflowV3")
-	ts.Error(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV4, execution), "Expected to fail replaying the replayer with VersionedWorkflowV4")
-	ts.NoError(ts.replayVersionedWorkflow(replaytests.SetupWorkerForVersionedWorkflowV5, execution), "Failed to replay on the replayer with VersionedWorkflowV5")
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: replaytests.VersionWorkflowVersionV6,
+		compatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV5,
+		},
+		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
+			replaytests.VersionWorkflowVersionV1,
+			replaytests.VersionWorkflowVersionV2,
+			replaytests.VersionWorkflowVersionV3,
+			replaytests.VersionWorkflowVersionV4,
+		},
+	})
 }
 
-func (ts *IntegrationTestSuite) replayVersionedWorkflow(setupWorkerFunc func(w worker.Registry), execution *workflow.Execution) error {
+type testVersionedWorkflowTestCase struct {
+	version              replaytests.VersionWorkflowVersion
+	compatibleVersions   []replaytests.VersionWorkflowVersion
+	inCompatibleVersions []replaytests.VersionWorkflowVersion
+}
+
+// testVersionedWorkflow tests that a workflow started on the worker with version
+// can be replayed on worker with compatibleVersions
+// but not on worker with inCompatibleVersions
+func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTestCase) {
+	replaytests.SetupWorkerForVersionedWorkflow(c.version, ts.worker)
+	wfId := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
+	execution, err := ts.executeWorkflow(wfId, replaytests.VersionedWorkflowName, nil, "arg")
+	ts.NoError(err)
+
+	c.compatibleVersions = append(c.compatibleVersions, c.version)
+
+	ts.Require().Equalf(len(c.compatibleVersions)+len(c.inCompatibleVersions), int(replaytests.MaxVersionWorkflowVersion),
+		"Test case should cover all versions, but got %d compatible (one of them the testing version itself) and %d incompatible versions, that not equal to %d",
+		len(c.compatibleVersions),
+		len(c.inCompatibleVersions),
+		replaytests.MaxVersionWorkflowVersion)
+
+	for _, replayedVersion := range c.compatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.NoErrorf(err, "Failed to replay on the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+
+	for _, replayedVersion := range c.inCompatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.Errorf(err, "Expected to fail replaying the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+}
+
+func (ts *IntegrationTestSuite) replayVersionedWorkflow(version replaytests.VersionWorkflowVersion, execution *workflow.Execution) error {
 	replayer := worker.NewWorkflowReplayer()
-	setupWorkerFunc(replayer)
+	replaytests.SetupWorkerForVersionedWorkflow(version, replayer)
 	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
 }
 

@@ -28,6 +28,22 @@ var activityOptions = workflow.ActivityOptions{
 	HeartbeatTimeout:       time.Second * 20,
 }
 
+// VersionWorkflowVersion is an enum representing the version of the VersionedWorkflow
+type VersionWorkflowVersion int
+
+const (
+	VersionWorkflowVersionV1 VersionWorkflowVersion = iota + 1
+	VersionWorkflowVersionV2
+	VersionWorkflowVersionV3
+	VersionWorkflowVersionV4
+	VersionWorkflowVersionV5
+	VersionWorkflowVersionV6
+)
+
+// MaxVersionWorkflowVersion is the maximum version of the VersionedWorkflow.
+// Update this constant when adding new versions to the workflow.
+const MaxVersionWorkflowVersion = VersionWorkflowVersionV6
+
 // VersionedWorkflowV1 is the first version of the workflow, and it supports only DefaultVersion.
 // It supports workflow executions started by this version VersionedWorkflowV1
 // and VersionedWorkflowV2, as all of them will have the change ID set to DefaultVersion.
@@ -158,18 +174,37 @@ func VersionedWorkflowV6(ctx workflow.Context, _ string) (string, error) {
 }
 
 // FooActivity returns "foo" as a result of the activity execution.
-func FooActivity(ctx context.Context, _ string) (string, error) {
+func FooActivity(_ context.Context, _ string) (string, error) {
 	return "foo", nil
 }
 
 // BarActivity returns "bar" as a result of the activity execution.
-func BarActivity(ctx context.Context, _ string) (string, error) {
+func BarActivity(_ context.Context, _ string) (string, error) {
 	return "bar", nil
 }
 
 // BazActivity returns "baz" as a result of the activity execution.
-func BazActivity(ctx context.Context, _ string) (string, error) {
+func BazActivity(_ context.Context, _ string) (string, error) {
 	return "baz", nil
+}
+
+func SetupWorkerForVersionedWorkflow(version VersionWorkflowVersion, w worker.Registry) {
+	switch version {
+	case VersionWorkflowVersionV1:
+		SetupWorkerForVersionedWorkflowV1(w)
+	case VersionWorkflowVersionV2:
+		SetupWorkerForVersionedWorkflowV2(w)
+	case VersionWorkflowVersionV3:
+		SetupWorkerForVersionedWorkflowV3(w)
+	case VersionWorkflowVersionV4:
+		SetupWorkerForVersionedWorkflowV4(w)
+	case VersionWorkflowVersionV5:
+		SetupWorkerForVersionedWorkflowV5(w)
+	case VersionWorkflowVersionV6:
+		SetupWorkerForVersionedWorkflowV6(w)
+	default:
+		panic("unsupported version for versioned workflow")
+	}
 }
 
 // SetupWorkerForVersionedWorkflowV1 registers VersionedWorkflowV1 and FooActivity

@@ -24,15 +24,12 @@ import (
 	"strings"
 	"testing"
 
-	"go.uber.org/cadence/activity"
-
 	"github.com/stretchr/testify/assert"
-
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
-
+	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/workflow"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestReplayWorkflowHistoryFromFile(t *testing.T) {
@@ -202,7 +199,7 @@ func TestContinueAsNew(t *testing.T) {
 // * VersionedWorkflowBar - which is the second version of the workflow which version of change id is 1
 //   - This workflow is supposed to execute BarActivity
 //
-// There are 4 versions of the workflow:
+// There are 6 versions of the workflow:
 //
 // * VersionedWorkflowV1 - which supports only DefaultVersion and executes FooActivity
 //   - This workflow is able to replay the history of only of VersionedWorkflowFoo
@@ -247,6 +244,7 @@ func TestVersionedWorkflows(t *testing.T) {
 		t.Run("fail to replay with VersionedWorkflowBar", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowBarHistoryFile)
 			require.Error(t, err, "Expected to fail replaying VersionedWorkflowBar history")
+			assert.ErrorContains(t, err, "nondeterministic workflow")
 		})
 	})
 
@@ -287,6 +285,7 @@ func TestVersionedWorkflows(t *testing.T) {
 		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
 			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
 		})
 
 		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
@@ -302,6 +301,7 @@ func TestVersionedWorkflows(t *testing.T) {
 		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
 			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
 		})
 
 		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
@@ -317,6 +317,7 @@ func TestVersionedWorkflows(t *testing.T) {
 		t.Run("fail to replay with VersionedWorkflowFoo", func(t *testing.T) {
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), versionedWorkflowFooHistoryFile)
 			require.Error(t, err, "Expected to fail replaying VersionedWorkflowFoo history")
+			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
 		})
 
 		t.Run("successfully replayed with VersionedWorkflowBar", func(t *testing.T) {
