@@ -44,7 +44,6 @@ import (
 	"go.uber.org/cadence/client"
 	"go.uber.org/cadence/interceptors"
 	"go.uber.org/cadence/internal"
-	"go.uber.org/cadence/test/replaytests"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/workflow"
 )
@@ -561,15 +560,15 @@ func (ts *IntegrationTestSuite) TestOverrideSpanContext() {
 // but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV1() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV1,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV2,
-			replaytests.VersionWorkflowVersionV3,
+		version: VersionedWorkflowVersionV1,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV4,
-			replaytests.VersionWorkflowVersionV5,
-			replaytests.VersionWorkflowVersionV6,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
 		},
 	})
 }
@@ -579,15 +578,15 @@ func (ts *IntegrationTestSuite) TestVersionedWorkflowV1() {
 // but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV2() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV2,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV1,
-			replaytests.VersionWorkflowVersionV3,
+		version: VersionedWorkflowVersionV2,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV3,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV4,
-			replaytests.VersionWorkflowVersionV5,
-			replaytests.VersionWorkflowVersionV6,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
 		},
 	})
 }
@@ -597,15 +596,15 @@ func (ts *IntegrationTestSuite) TestVersionedWorkflowV2() {
 // but not on VersionedWorkflowV1
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV3() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV3,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV2,
-			replaytests.VersionWorkflowVersionV4,
-			replaytests.VersionWorkflowVersionV5,
-			replaytests.VersionWorkflowVersionV6,
+		version: VersionedWorkflowVersionV3,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV1,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
 		},
 	})
 }
@@ -615,15 +614,15 @@ func (ts *IntegrationTestSuite) TestVersionedWorkflowV3() {
 // but not on VersionedWorkflowV1
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV4() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV4,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV2,
-			replaytests.VersionWorkflowVersionV3,
-			replaytests.VersionWorkflowVersionV5,
-			replaytests.VersionWorkflowVersionV6,
+		version: VersionedWorkflowVersionV4,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV1,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
 		},
 	})
 }
@@ -633,15 +632,15 @@ func (ts *IntegrationTestSuite) TestVersionedWorkflowV4() {
 // but not on VersionedWorkflowV1.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV5() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV5,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV2,
-			replaytests.VersionWorkflowVersionV3,
-			replaytests.VersionWorkflowVersionV4,
-			replaytests.VersionWorkflowVersionV6,
+		version: VersionedWorkflowVersionV5,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV6,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV1,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
 		},
 	})
 }
@@ -651,41 +650,41 @@ func (ts *IntegrationTestSuite) TestVersionedWorkflowV5() {
 // but not on VersionedWorkflowV1, VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4.
 func (ts *IntegrationTestSuite) TestVersionedWorkflowV6() {
 	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
-		version: replaytests.VersionWorkflowVersionV6,
-		compatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV5,
+		version: VersionedWorkflowVersionV6,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV5,
 		},
-		inCompatibleVersions: []replaytests.VersionWorkflowVersion{
-			replaytests.VersionWorkflowVersionV1,
-			replaytests.VersionWorkflowVersionV2,
-			replaytests.VersionWorkflowVersionV3,
-			replaytests.VersionWorkflowVersionV4,
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
 		},
 	})
 }
 
 type testVersionedWorkflowTestCase struct {
-	version              replaytests.VersionWorkflowVersion
-	compatibleVersions   []replaytests.VersionWorkflowVersion
-	inCompatibleVersions []replaytests.VersionWorkflowVersion
+	version              VersionedWorkflowVersion
+	compatibleVersions   []VersionedWorkflowVersion
+	inCompatibleVersions []VersionedWorkflowVersion
 }
 
 // testVersionedWorkflow tests that a workflow started on the worker with version
 // can be replayed on worker with compatibleVersions
 // but not on worker with inCompatibleVersions
 func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTestCase) {
-	replaytests.SetupWorkerForVersionedWorkflow(c.version, ts.worker)
+	SetupWorkerForVersionedWorkflow(c.version, ts.worker)
 	wfId := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
-	execution, err := ts.executeWorkflow(wfId, replaytests.VersionedWorkflowName, nil, "arg")
+	execution, err := ts.executeWorkflow(wfId, VersionedWorkflowName, nil, "arg")
 	ts.NoError(err)
 
 	c.compatibleVersions = append(c.compatibleVersions, c.version)
 
-	ts.Require().Equalf(len(c.compatibleVersions)+len(c.inCompatibleVersions), int(replaytests.MaxVersionWorkflowVersion),
+	ts.Require().Equalf(len(c.compatibleVersions)+len(c.inCompatibleVersions), int(MaxVersionedWorkflowVersion),
 		"Test case should cover all versions, but got %d compatible (one of them the testing version itself) and %d incompatible versions, that not equal to %d",
 		len(c.compatibleVersions),
 		len(c.inCompatibleVersions),
-		replaytests.MaxVersionWorkflowVersion)
+		MaxVersionedWorkflowVersion)
 
 	for _, replayedVersion := range c.compatibleVersions {
 		err := ts.replayVersionedWorkflow(replayedVersion, execution)
@@ -698,9 +697,9 @@ func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTes
 	}
 }
 
-func (ts *IntegrationTestSuite) replayVersionedWorkflow(version replaytests.VersionWorkflowVersion, execution *workflow.Execution) error {
+func (ts *IntegrationTestSuite) replayVersionedWorkflow(version VersionedWorkflowVersion, execution *workflow.Execution) error {
 	replayer := worker.NewWorkflowReplayer()
-	replaytests.SetupWorkerForVersionedWorkflow(version, replayer)
+	SetupWorkerForVersionedWorkflow(version, replayer)
 	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
 }
 

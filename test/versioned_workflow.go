@@ -1,4 +1,4 @@
-package replaytests
+package test
 
 import (
 	"context"
@@ -28,20 +28,20 @@ var activityOptions = workflow.ActivityOptions{
 	HeartbeatTimeout:       time.Second * 20,
 }
 
-// VersionWorkflowVersion is an enum representing the version of the VersionedWorkflow
-type VersionWorkflowVersion int
+// VersionedWorkflowVersion is an enum representing the version of the VersionedWorkflow
+type VersionedWorkflowVersion int
 
 const (
-	VersionWorkflowVersionV1 VersionWorkflowVersion = iota + 1
-	VersionWorkflowVersionV2
-	VersionWorkflowVersionV3
-	VersionWorkflowVersionV4
-	VersionWorkflowVersionV5
-	VersionWorkflowVersionV6
+	VersionedWorkflowVersionV1 VersionedWorkflowVersion = iota + 1
+	VersionedWorkflowVersionV2
+	VersionedWorkflowVersionV3
+	VersionedWorkflowVersionV4
+	VersionedWorkflowVersionV5
+	VersionedWorkflowVersionV6
 
-	// MaxVersionWorkflowVersion is the maximum version of the VersionedWorkflow.
+	// MaxVersionedWorkflowVersion is the maximum version of the VersionedWorkflow.
 	// Update this constant when adding new versions to the workflow.
-	MaxVersionWorkflowVersion = VersionWorkflowVersionV6
+	MaxVersionedWorkflowVersion = VersionedWorkflowVersionV6
 )
 
 // VersionedWorkflowV1 is the first version of the workflow, supports only DefaultVersion.
@@ -174,19 +174,19 @@ func BazActivity(_ context.Context, _ string) (string, error) {
 }
 
 // SetupWorkerForVersionedWorkflow registers the versioned workflow and its activities
-func SetupWorkerForVersionedWorkflow(version VersionWorkflowVersion, w worker.Registry) {
+func SetupWorkerForVersionedWorkflow(version VersionedWorkflowVersion, w worker.Registry) {
 	switch version {
-	case VersionWorkflowVersionV1:
+	case VersionedWorkflowVersionV1:
 		SetupWorkerForVersionedWorkflowV1(w)
-	case VersionWorkflowVersionV2:
+	case VersionedWorkflowVersionV2:
 		SetupWorkerForVersionedWorkflowV2(w)
-	case VersionWorkflowVersionV3:
+	case VersionedWorkflowVersionV3:
 		SetupWorkerForVersionedWorkflowV3(w)
-	case VersionWorkflowVersionV4:
+	case VersionedWorkflowVersionV4:
 		SetupWorkerForVersionedWorkflowV4(w)
-	case VersionWorkflowVersionV5:
+	case VersionedWorkflowVersionV5:
 		SetupWorkerForVersionedWorkflowV5(w)
-	case VersionWorkflowVersionV6:
+	case VersionedWorkflowVersionV6:
 		SetupWorkerForVersionedWorkflowV6(w)
 	default:
 		panic("unsupported version for versioned workflow")
