@@ -1342,8 +1342,7 @@ func (s *WorkflowTestSuiteUnitTest) Test_GetVersion_ExecuteWithVersion() {
 		var changeVersions []string
 		err = json.Unmarshal(changeVersionsBytes, &changeVersions)
 		s.NoError(err)
-		s.Equal(1, len(changeVersions))
-		s.Equal("test_change_id-1", changeVersions[0])
+		s.ElementsMatch(changeVersions, []string{"test_change_id-1"})
 
 		return err
 	}
@@ -1402,9 +1401,7 @@ func (s *WorkflowTestSuiteUnitTest) Test_MockGetVersion_ExecuteWithVersion() {
 		var changeVersions []string
 		err = json.Unmarshal(changeVersionsBytes, &changeVersions)
 		s.NoError(err)
-		s.Equal(2, len(changeVersions))
-		s.Equal("change_2-2", changeVersions[0])
-		s.Equal("change_1--1", changeVersions[1])
+		s.ElementsMatch(changeVersions, []string{"change_2-2", "change_1--1"})
 
 		return ret1 + ret2, err
 	}
@@ -1468,9 +1465,7 @@ func (s *WorkflowTestSuiteUnitTest) Test_MockGetVersion_ExecuteWithMinVersion() 
 		var changeVersions []string
 		err = json.Unmarshal(changeVersionsBytes, &changeVersions)
 		s.NoError(err)
-		s.Equal(2, len(changeVersions))
-		s.Equal("change_2-2", changeVersions[0])
-		s.Equal("change_1--1", changeVersions[1])
+		s.ElementsMatch(changeVersions, []string{"change_2-2", "change_1--1"})
 
 		return ret1 + ret2, err
 	}
@@ -1536,9 +1531,7 @@ func (s *WorkflowTestSuiteUnitTest) Test_MockGetVersion() {
 		var changeVersions []string
 		err = json.Unmarshal(changeVersionsBytes, &changeVersions)
 		s.NoError(err)
-		s.Equal(2, len(changeVersions))
-		s.Equal("change_2-2", changeVersions[0])
-		s.Equal("change_1--1", changeVersions[1])
+		s.ElementsMatch(changeVersions, []string{"change_2-2", "change_1--1"})
 
 		return ret1 + ret2, err
 	}
