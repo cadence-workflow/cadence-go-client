@@ -602,20 +602,49 @@ func validateVersion(changeID string, version, minSupported, maxSupported Versio
 	}
 }
 
-func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version) Version {
+func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+	// Check if the changeID already has a version assigned
+	// If it does, validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
 	if version, ok := wc.changeVersions[changeID]; ok {
 		validateVersion(changeID, version, minSupported, maxSupported)
 		return version
 	}
 
+	// Apply the functional options to get the configuration
+	config := &getVersionConfig{}
+	for _, opt := range opts {
+		opt.apply(config)
+	}
+
 	var version Version
-	if wc.isReplay {
-		// GetVersion for changeID is called first time in replay mode, use DefaultVersion
+	switch {
+
+	// GetVersion for changeID is called first time in replay mode, use DefaultVersion
+	case wc.isReplay:
 		version = DefaultVersion
-	} else {
-		// GetVersion for changeID is called first time (non-replay mode), generate a marker decision for it.
-		// Also upsert search attributes to enable ability to search by changeVersion.
+
+	// If ExecuteWithVersion option is used, use the custom version provided
+	case config.CustomVersion != nil:
+		version = *config.CustomVersion
+
+	// If ExecuteWithMinVersion option is set, use the minimum supported version
+	case config.UseMinVersion:
+		version = minSupported
+
+	// Otherwise, use the maximum supported version
+	default:
 		version = maxSupported
+	}
+
+	// Validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
+	validateVersion(changeID, version, minSupported, maxSupported)
+
+	// If the version is not the DefaultVersion, and it's not a replay, record it and update search attributes
+	// Keeping the DefaultVersion as a special case where no version marker is recorded
+	if !wc.isReplay && version != DefaultVersion {
+		// Record the version marker and update search attributes
 		wc.decisionsHelper.recordVersionMarker(changeID, version, wc.GetDataConverter())
 		err := wc.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, wc.changeVersions))
 		if err != nil {
@@ -623,7 +652,8 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 		}
 	}
 
-	validateVersion(changeID, version, minSupported, maxSupported)
+	// Store the version to ensure that the version is stable
+	// during the workflow execution
 	wc.changeVersions[changeID] = version
 	return version
 }

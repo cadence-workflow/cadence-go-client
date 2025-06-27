@@ -1928,7 +1928,7 @@ func (env *testWorkflowEnvironmentImpl) SideEffect(f func() ([]byte, error), cal
 	callback(f())
 }
 
-func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version) (retVersion Version) {
+func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) (retVersion Version) {
 	if mockVersion, ok := env.getMockedVersion(changeID, changeID, minSupported, maxSupported); ok {
 		// GetVersion for changeID is mocked
 		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, mockVersion, env.changeVersions))
@@ -1947,9 +1947,43 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		validateVersion(changeID, version, minSupported, maxSupported)
 		return version
 	}
-	env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, maxSupported, env.changeVersions))
-	env.changeVersions[changeID] = maxSupported
-	return maxSupported
+
+	// Apply the functional options to get the configuration
+	config := &getVersionConfig{}
+	for _, opt := range opts {
+		opt.apply(config)
+	}
+
+	// Determine the version to use based on the options provided
+	var version Version
+	switch {
+	// If ExecuteWithVersion option is used, use the custom version provided
+	case config.CustomVersion != nil:
+		version = *config.CustomVersion
+
+	// If ExecuteWithMinVersion option is set, use the minimum supported version
+	case config.UseMinVersion:
+		version = minSupported
+
+	// Otherwise, use the maximum supported version
+	default:
+		version = maxSupported
+	}
+
+	// Validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
+	validateVersion(changeID, version, minSupported, maxSupported)
+
+	// If the version is not the DefaultVersion, update search attributes
+	// Keeping the DefaultVersion as a special case where no search attributes are updated
+	if version != DefaultVersion {
+		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, env.changeVersions))
+	}
+
+	// Store the version to ensure that the version is stable
+	// during the workflow execution
+	env.changeVersions[changeID] = version
+	return version
 }
 
 func (env *testWorkflowEnvironmentImpl) getMockedVersion(mockedChangeID, changeID string, minSupported, maxSupported Version) (Version, bool) {

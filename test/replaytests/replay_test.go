@@ -24,13 +24,11 @@ import (
 	"strings"
 	"testing"
 
-	"go.uber.org/cadence/activity"
-
 	"github.com/stretchr/testify/assert"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
+	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/workflow"
 )

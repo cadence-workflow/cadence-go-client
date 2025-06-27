@@ -59,6 +59,9 @@ type (
 	Info = internal.WorkflowInfo
 
 	RegistryInfo = internal.RegistryWorkflowInfo
+
+	// GetVersionOption is used to specify options for GetVersion
+	GetVersionOption = internal.GetVersionOption
 )
 
 // Register - registers a workflow function with the framework.
@@ -353,6 +356,65 @@ func MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, 
 // DefaultVersion is a version returned by GetVersion for code that wasn't versioned before
 const DefaultVersion Version = internal.DefaultVersion
 
+// ExecuteWithVersion forces a specific version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. This option can be used when you want to separate the versioning of the workflow code and
+// activation of the new logic in the workflow code, to ensure that your changes can be safely rolled back, if needed.
+//
+// For example, initially a workflow has the following code:
+//
+//	err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
+//
+// It should be updated to:
+//
+//	err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
+//
+// Following the steps below, your changes will be forward and backward compatible, keeping possible a safe rollback
+// to the previous version of the workflow code:
+//
+// 1. Keep execution of foo activity, add support for bar activity
+//
+//	v := GetVersion(ctx, "fooChange", DefaultVersion, 1,  ExecuteWithVersion(DefaultVersion))
+//	if v == DefaultVersion {
+//		err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
+//	} else {
+//		err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
+//	}
+//
+// The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
+// All new workflow executions will execute foo activity, because ExecuteWithVersion(DefaultVersion)
+// causes GetVersion to return DefaultVersion rather than 1.
+// In this example, this is also exactly the same as using ExecuteWithMinVersion().
+//
+// 2. Enable execution of bar activity
+//
+//	v := GetVersion(ctx, "fooChange", DefaultVersion, 1)
+//	if v == DefaultVersion {
+//	    err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
+//	} else {
+//	    err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
+//	}
+//
+// The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
+// All new workflow executions will execute bar activity, because
+// GetVersion returns the maximum supported version (1), which will be recorded into the workflow history.
+//
+// 3. Remove a support of foo activity:
+//
+//	GetVersion(ctx, "fooChange", 1, 1)
+//	err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
+//
+// When there are no workflow executions running DefaultVersion the support of foo activity can be removed.
+func ExecuteWithVersion(version Version) GetVersionOption {
+	return internal.ExecuteWithVersion(version)
+}
+
+// ExecuteWithMinVersion forces minSupported version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. The option is equivalent to ExecuteWithVersion(minSupportedVersion).
+// Check the ExecuteWithVersion documentation for more details.
+func ExecuteWithMinVersion() GetVersionOption {
+	return internal.ExecuteWithMinVersion()
+}
+
 // GetVersion is used to safely perform backwards incompatible changes to workflow definitions.
 // It is not allowed to update workflow code while there are workflows running as it is going to break
 // determinism. The solution is to have both old code that is used to replay existing workflows
@@ -360,6 +422,8 @@ const DefaultVersion Version = internal.DefaultVersion
 // GetVersion returns maxSupported version when is executed for the first time. This version is recorded into the
 // workflow history as a marker event. Even if maxSupported version is changed the version that was recorded is
 // returned on replay. DefaultVersion constant contains version of code that wasn't versioned before.
+// Check documentation for ExecuteWithVersion and ExecuteWithMinVersion to make your changes forward and backward compatible.
+//
 // For example initially workflow has the following code:
 //
 //	err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
@@ -418,8 +482,8 @@ const DefaultVersion Version = internal.DefaultVersion
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
-	return internal.GetVersion(ctx, changeID, minSupported, maxSupported)
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+	return internal.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 
 // SetQueryHandler sets the query handler to handle workflow query. The queryType specify which query type this handler

@@ -31,14 +31,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/goleak"
 	"go.uber.org/zap/zaptest"
-
-	"github.com/opentracing/opentracing-go/mocktracer"
 
 	"go.uber.org/cadence"
 	"go.uber.org/cadence/.gen/go/shared"
@@ -182,7 +181,7 @@ func (ts *IntegrationTestSuite) TearDownTest() {
 
 func (ts *IntegrationTestSuite) TestBasic() {
 	var expected []string
-	err := ts.executeWorkflow("test-basic", ts.workflows.Basic, &expected)
+	_, err := ts.executeWorkflow("test-basic", ts.workflows.Basic, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 	ts.Equal([]string{"ExecuteWorkflow begin", "ExecuteActivity", "ExecuteActivity", "ExecuteWorkflow end"},
@@ -191,27 +190,27 @@ func (ts *IntegrationTestSuite) TestBasic() {
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnError() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-error", ts.workflows.ActivityRetryOnError, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-error", ts.workflows.ActivityRetryOnError, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnTimeoutStableError() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-timeout-stable-error", ts.workflows.RetryTimeoutStableErrorWorkflow, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-timeout-stable-error", ts.workflows.RetryTimeoutStableErrorWorkflow, &expected)
 	ts.Nil(err)
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOptionsChange() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-options-change", ts.workflows.ActivityRetryOptionsChange, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-options-change", ts.workflows.ActivityRetryOptionsChange, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnStartToCloseTimeout() {
 	var expected []string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-activity-retry-on-start2close-timeout",
 		ts.workflows.ActivityRetryOnTimeout,
 		&expected,
@@ -223,21 +222,21 @@ func (ts *IntegrationTestSuite) TestActivityRetryOnStartToCloseTimeout() {
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnHBTimeout() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-hbtimeout", ts.workflows.ActivityRetryOnHBTimeout, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-hbtimeout", ts.workflows.ActivityRetryOnHBTimeout, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityAutoHeartbeat() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-auto-heartbeat", ts.workflows.ActivityAutoHeartbeat, &expected)
+	_, err := ts.executeWorkflow("test-activity-auto-heartbeat", ts.workflows.ActivityAutoHeartbeat, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNew() {
 	var result int
-	err := ts.executeWorkflow("test-continueasnew", ts.workflows.ContinueAsNew, &result, 4, ts.taskListName)
+	_, err := ts.executeWorkflow("test-continueasnew", ts.workflows.ContinueAsNew, &result, 4, ts.taskListName)
 	ts.NoError(err)
 	ts.Equal(999, result)
 }
@@ -251,7 +250,7 @@ func (ts *IntegrationTestSuite) TestContinueAsNewCarryOver() {
 	startOptions.SearchAttributes = map[string]interface{}{
 		"CustomKeywordField": "searchAttr",
 	}
-	err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithOptions, &result, 4, ts.taskListName)
+	_, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithOptions, &result, 4, ts.taskListName)
 	ts.NoError(err)
 	ts.Equal("memoVal,searchAttr", result)
 }
@@ -320,7 +319,7 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseRejectDuplicate() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -338,7 +337,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseRejectDuplicate() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly1() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate-failed-only1",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -356,7 +355,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly1() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly2() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate-failed-only2",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -371,7 +370,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly2() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicate() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-allow-duplicate",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -387,7 +386,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicate() {
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseErrorViaStartWorkflow() {
 	duplicatedWID := "test-workflowidreuse-duplicate-start-error"
 	// setup: run any workflow once to consume the ID
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		duplicatedWID,
 		ts.workflows.SimplestWorkflow,
 		nil,
@@ -407,14 +406,14 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseErrorViaStartWorkflow() {
 }
 
 func (ts *IntegrationTestSuite) TestChildWFRetryOnError() {
-	err := ts.executeWorkflow("test-childwf-retry-on-error", ts.workflows.ChildWorkflowRetryOnError, nil)
+	_, err := ts.executeWorkflow("test-childwf-retry-on-error", ts.workflows.ChildWorkflowRetryOnError, nil)
 	ts.Error(err)
 	ts.Truef(client.IsWorkflowError(err), "child error should be a workflow error: %#v", err)
 	ts.EqualValues([]string{"toUpper", "toUpper", "toUpper"}, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestChildWFRetryOnTimeout() {
-	err := ts.executeWorkflow("test-childwf-retry-on-timeout", ts.workflows.ChildWorkflowRetryOnTimeout, nil)
+	_, err := ts.executeWorkflow("test-childwf-retry-on-timeout", ts.workflows.ChildWorkflowRetryOnTimeout, nil)
 	ts.Error(err)
 	ts.Truef(client.IsWorkflowError(err), "child-timeout error should be a workflow error: %#v", err)
 	ts.EqualValues([]string{"sleep", "sleep", "sleep"}, ts.activities.invoked())
@@ -422,7 +421,7 @@ func (ts *IntegrationTestSuite) TestChildWFRetryOnTimeout() {
 
 func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 	var result string
-	err := ts.executeWorkflow("test-childwf-success-memo-searchAttr", ts.workflows.ChildWorkflowSuccess, &result)
+	_, err := ts.executeWorkflow("test-childwf-success-memo-searchAttr", ts.workflows.ChildWorkflowSuccess, &result)
 	ts.NoError(err)
 	ts.EqualValues([]string{"getMemoAndSearchAttr"}, ts.activities.invoked())
 	ts.Equal("memoVal, searchAttrVal", result)
@@ -432,7 +431,7 @@ func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyTerminate, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyTerminate, &childWorkflowID)
 	ts.NoError(err)
 	// Need to wait for child workflow to finish as well otherwise test becomes flaky
 	ts.waitForWorkflowFinish(childWorkflowID, "")
@@ -443,7 +442,7 @@ func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
 
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyAbandon() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyAbandon, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyAbandon, &childWorkflowID)
 	ts.NoError(err)
 	resp, err := ts.libClient.DescribeWorkflowExecution(context.Background(), childWorkflowID, "")
 	ts.NoError(err)
@@ -452,7 +451,7 @@ func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyAbandon() {
 
 func (ts *IntegrationTestSuite) TestChildWFCancel() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-cancel", ts.workflows.ChildWorkflowCancel, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-cancel", ts.workflows.ChildWorkflowCancel, &childWorkflowID)
 	ts.NoError(err)
 	resp, err := ts.libClient.DescribeWorkflowExecution(context.Background(), childWorkflowID, "")
 	ts.NoError(err)
@@ -468,14 +467,14 @@ func (ts *IntegrationTestSuite) TestActivityCancelUsingReplay() {
 
 func (ts *IntegrationTestSuite) TestActivityCancelRepro() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-cancel-sm", ts.workflows.ActivityCancelRepro, &expected)
+	_, err := ts.executeWorkflow("test-activity-cancel-sm", ts.workflows.ActivityCancelRepro, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestWorkflowWithLocalActivityCtxPropagation() {
 	var expected string
-	err := ts.executeWorkflow("test-wf-local-activity-ctx-prop", ts.workflows.WorkflowWithLocalActivityCtxPropagation, &expected)
+	_, err := ts.executeWorkflow("test-wf-local-activity-ctx-prop", ts.workflows.WorkflowWithLocalActivityCtxPropagation, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, "test-data-in-contexttest-data-in-context")
 }
@@ -497,12 +496,12 @@ func (ts *IntegrationTestSuite) TestLargeQueryResultError() {
 }
 
 func (ts *IntegrationTestSuite) TestInspectActivityInfo() {
-	err := ts.executeWorkflow("test-activity-info", ts.workflows.InspectActivityInfo, nil)
+	_, err := ts.executeWorkflow("test-activity-info", ts.workflows.InspectActivityInfo, nil)
 	ts.Nil(err)
 }
 
 func (ts *IntegrationTestSuite) TestInspectLocalActivityInfo() {
-	err := ts.executeWorkflow("test-local-activity-info", ts.workflows.InspectLocalActivityInfo, nil)
+	_, err := ts.executeWorkflow("test-local-activity-info", ts.workflows.InspectLocalActivityInfo, nil)
 	ts.Nil(err)
 }
 
@@ -523,7 +522,7 @@ func (ts *IntegrationTestSuite) TestDomainUpdate() {
 }
 
 func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowFailPolicy() {
-	err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
+	_, err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
 	var customErr *internal.CustomError
 	ok := errors.As(err, &customErr)
 	ts.Truef(ok, "expected CustomError but got %T", err)
@@ -551,9 +550,157 @@ func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowQuery() {
 
 func (ts *IntegrationTestSuite) TestOverrideSpanContext() {
 	var result map[string]string
-	err := ts.executeWorkflow("test-override-span-context", ts.workflows.OverrideSpanContext, &result)
+	_, err := ts.executeWorkflow("test-override-span-context", ts.workflows.OverrideSpanContext, &result)
 	ts.NoError(err)
 	ts.Equal("some-value", result["mockpfx-baggage-some-key"])
+}
+
+// TestVersionedWorkflowV1 tests that a workflow started on the worker with VersionedWorkflowV1
+// can be replayed on worker with VersionedWorkflowV2 and VersionedWorkflowV3,
+// but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV1() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV1,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+	})
+}
+
+// TestVersionedWorkflowV2 tests that a workflow started on the worker with VersionedWorkflowV2
+// can be replayed on worker with VersionedWorkflowV1 and VersionedWorkflowV3,
+// but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV2() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV2,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV3,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+	})
+}
+
+// TestVersionedWorkflowV3 tests that a workflow started on the worker with VersionedWorkflowV3
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6
+// but not on VersionedWorkflowV1
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV3() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV3,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV4 tests that a workflow started on the worker with VersionedWorkflowV4
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV5, VersionedWorkflowV6
+// but not on VersionedWorkflowV1
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV4() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV4,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV5 tests that a workflow started on the worker with VersionedWorkflowV5
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4, VersionedWorkflowV6,
+// but not on VersionedWorkflowV1.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV5() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV5,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV6 tests that a workflow started on the worker with VersionedWorkflowV6
+// can be replayed on worker with VersionedWorkflowV5
+// but not on VersionedWorkflowV1, VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV6() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV6,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV5,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
+		},
+	})
+}
+
+type testVersionedWorkflowTestCase struct {
+	version              VersionedWorkflowVersion
+	compatibleVersions   []VersionedWorkflowVersion
+	inCompatibleVersions []VersionedWorkflowVersion
+}
+
+// testVersionedWorkflow tests that a workflow started on the worker with version
+// can be replayed on worker with compatibleVersions
+// but not on worker with inCompatibleVersions
+func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTestCase) {
+	SetupWorkerForVersionedWorkflow(c.version, ts.worker)
+	wfID := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
+	execution, err := ts.executeWorkflow(wfID, VersionedWorkflowName, nil, "arg")
+	ts.NoError(err)
+
+	c.compatibleVersions = append(c.compatibleVersions, c.version)
+
+	ts.Require().Equalf(len(c.compatibleVersions)+len(c.inCompatibleVersions), int(MaxVersionedWorkflowVersion),
+		"Test case should cover all versions, but got %d compatible (one of them the testing version itself) and %d incompatible versions, that not equal to %d",
+		len(c.compatibleVersions),
+		len(c.inCompatibleVersions),
+		MaxVersionedWorkflowVersion)
+
+	for _, replayedVersion := range c.compatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.NoErrorf(err, "Failed to replay on the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+
+	for _, replayedVersion := range c.inCompatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.Errorf(err, "Expected to fail replaying the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+}
+
+func (ts *IntegrationTestSuite) replayVersionedWorkflow(version VersionedWorkflowVersion, execution *workflow.Execution) error {
+	replayer := worker.NewWorkflowReplayer()
+	SetupWorkerForVersionedWorkflow(version, replayer)
+	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
 }
 
 func (ts *IntegrationTestSuite) registerDomain() {
@@ -574,12 +721,12 @@ func (ts *IntegrationTestSuite) registerDomain() {
 	time.Sleep(domainCacheRefreshInterval) // wait for domain cache refresh on cadence-server
 	// bellow is used to guarantee domain is ready
 	var dummyReturn string
-	err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
+	_, err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
 	numOfRetry := 20
 	for err != nil && numOfRetry >= 0 {
 		if _, ok := err.(*shared.EntityNotExistsError); ok {
 			time.Sleep(domainCacheRefreshInterval)
-			err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
+			_, err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
 		} else {
 			break
 		}
@@ -588,21 +735,19 @@ func (ts *IntegrationTestSuite) registerDomain() {
 }
 
 // executeWorkflow executes a given workflow and waits for the result
-func (ts *IntegrationTestSuite) executeWorkflow(
-	wfID string, wfFunc interface{}, retValPtr interface{}, args ...interface{}) error {
+func (ts *IntegrationTestSuite) executeWorkflow(wfID string, wfFunc interface{}, retValPtr interface{}, args ...interface{}) (*workflow.Execution, error) {
 	options := ts.startWorkflowOptions(wfID)
 	return ts.executeWorkflowWithOption(options, wfFunc, retValPtr, args...)
 }
 
-func (ts *IntegrationTestSuite) executeWorkflowWithOption(
-	options client.StartWorkflowOptions, wfFunc interface{}, retValPtr interface{}, args ...interface{}) error {
+func (ts *IntegrationTestSuite) executeWorkflowWithOption(options client.StartWorkflowOptions, wfFunc interface{}, retValPtr interface{}, args ...interface{}) (*workflow.Execution, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 	span := ts.workflows.tracer.StartSpan("test-workflow")
 	defer span.Finish()
 	execution, err := ts.libClient.StartWorkflow(ctx, options, wfFunc, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	run := ts.libClient.GetWorkflow(ctx, execution.ID, execution.RunID)
 	err = run.Get(ctx, retValPtr)
@@ -617,7 +762,7 @@ func (ts *IntegrationTestSuite) executeWorkflowWithOption(
 			logger.Info(event.String())
 		}
 	}
-	return err
+	return execution, err
 }
 
 func (ts *IntegrationTestSuite) startWorkflowOptions(wfID string) client.StartWorkflowOptions {

@@ -1567,6 +1567,49 @@ const DefaultVersion Version = -1
 // CadenceChangeVersion is used as search attributes key to find workflows with specific change version.
 const CadenceChangeVersion = "CadenceChangeVersion"
 
+// GetVersionOption is an interface for functional options that can be applied to GetVersion
+type GetVersionOption interface {
+	apply(*getVersionConfig)
+}
+
+// getVersionConfig holds the configuration for GetVersion
+type getVersionConfig struct {
+	// CustomVersion is used to force GetVersion to return a specific version
+	// instead of maxSupported version. Set up via ExecuteWithVersion option.
+	CustomVersion *Version
+
+	// UseMinVersion is used to force GetVersion to return minSupported version
+	// instead of maxSupported version. Set up via ExecuteWithMinVersion option.
+	UseMinVersion bool
+}
+
+// customVersionOption forces GetVersion to return a specific version
+type customVersionOption Version
+
+func (c customVersionOption) apply(config *getVersionConfig) {
+	version := Version(c)
+	config.CustomVersion = &version
+}
+
+// ExecuteWithVersion forces a specific version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. Check public documentation of workflow.ExecuteWithVersion
+func ExecuteWithVersion(version Version) GetVersionOption {
+	return customVersionOption(version)
+}
+
+// useMinVersionOption forces GetVersion to return minSupported version
+type useMinVersionOption struct{}
+
+func (useMinVersionOption) apply(config *getVersionConfig) {
+	config.UseMinVersion = true
+}
+
+// ExecuteWithMinVersion forces minSupported version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. Check public documentation of workflow.ExecuteWithMinVersion
+func ExecuteWithMinVersion() GetVersionOption {
+	return useMinVersionOption{}
+}
+
 // GetVersion is used to safely perform backwards incompatible changes to workflow definitions.
 // It is not allowed to update workflow code while there are workflows running as it is going to break
 // determinism. The solution is to have both old code that is used to replay existing workflows
@@ -1574,6 +1617,8 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 // GetVersion returns maxSupported version when is executed for the first time. This version is recorded into the
 // workflow history as a marker event. Even if maxSupported version is changed the version that was recorded is
 // returned on replay. DefaultVersion constant contains version of code that wasn't versioned before.
+// Check documentation for ExecuteWithVersion and ExecuteWithMinVersion to make your changes forward and backward compatible.
+//
 // For example initially workflow has the following code:
 //
 //	err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
@@ -1617,14 +1662,14 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 //	err = workflow.ExecuteActivity(ctx, baz).Get(ctx, nil)
 //
 // The reason to keep it is: 1) it ensures that if there is older version execution still running, it will fail here
-// and not proceed; 2) if you ever need to make more changes for “fooChange”, for example change activity from baz to qux,
+// and not proceed; 2) if you ever need to make more changes for "fooChange", for example change activity from baz to qux,
 // you just need to update the maxVersion from 2 to 3.
 //
 // Note that, you only need to preserve the first call to GetVersion() for each changeID. All subsequent call to GetVersion()
 // with same changeID are safe to remove. However, if you really want to get rid of the first GetVersion() call as well,
-// you can do so, but you need to make sure: 1) all older version executions are completed; 2) you can no longer use “fooChange”
+// you can do so, but you need to make sure: 1) all older version executions are completed; 2) you can no longer use "fooChange"
 // as changeID. If you ever need to make changes to that same part like change from baz to qux, you would need to use a
-// different changeID like “fooChange-fix2”, and start minVersion from DefaultVersion again. The code would looks like:
+// different changeID like "fooChange-fix2", and start minVersion from DefaultVersion again. The code would looks like:
 //
 //	v := workflow.GetVersion(ctx, "fooChange-fix2", workflow.DefaultVersion, 1)
 //	if v == workflow.DefaultVersion {
@@ -1632,13 +1677,13 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
 	i := getWorkflowInterceptor(ctx)
-	return i.GetVersion(ctx, changeID, minSupported, maxSupported)
+	return i.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 
-func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
-	return wc.env.GetVersion(changeID, minSupported, maxSupported)
+func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+	return wc.env.GetVersion(changeID, minSupported, maxSupported, opts...)
 }
 
 // SetQueryHandler sets the query handler to handle workflow query. The queryType specify which query type this handler
