@@ -59,6 +59,9 @@ type (
 	Info = internal.WorkflowInfo
 
 	RegistryInfo = internal.RegistryWorkflowInfo
+
+	// GetVersionOption is used to specify options for GetVersion
+	GetVersionOption = internal.GetVersionOption
 )
 
 // Register - registers a workflow function with the framework.
@@ -401,14 +404,14 @@ const DefaultVersion Version = internal.DefaultVersion
 //	err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
 //
 // When there are no workflow executions running DefaultVersion the support of foo activity can be removed.
-func ExecuteWithVersion(version Version) internal.GetVersionOptions {
+func ExecuteWithVersion(version Version) GetVersionOption {
 	return internal.ExecuteWithVersion(version)
 }
 
 // ExecuteWithMinVersion forces minSupported version to be returned when GetVersion is executed for the first time,
 // instead of returning maxSupported version. The option is equivalent to ExecuteWithVersion(minSupportedVersion).
 // Check the ExecuteWithVersion documentation for more details.
-func ExecuteWithMinVersion() internal.GetVersionOptions {
+func ExecuteWithMinVersion() GetVersionOption {
 	return internal.ExecuteWithMinVersion()
 }
 
@@ -416,7 +419,9 @@ func ExecuteWithMinVersion() internal.GetVersionOptions {
 // It is not allowed to update workflow code while there are workflows running as it is going to break
 // determinism. The solution is to have both old code that is used to replay existing workflows
 // as well as the new one that is used when it is executed for the first time.
-// GetVersion returns maxSupported version when is executed for the first time. This version is recorded into the
+// GetVersion returns maxSupported version
+// (to return another version for a potential safe rollback, check documentation for ExecuteWithVersion and ExecuteWithMinVersion),
+// when is executed for the first time. This version is recorded into the
 // workflow history as a marker event. Even if maxSupported version is changed the version that was recorded is
 // returned on replay. DefaultVersion constant contains version of code that wasn't versioned before.
 // For example initially workflow has the following code:
@@ -477,7 +482,7 @@ func ExecuteWithMinVersion() internal.GetVersionOptions {
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...internal.GetVersionOptions) Version {
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
 	return internal.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 

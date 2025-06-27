@@ -602,7 +602,7 @@ func validateVersion(changeID string, version, minSupported, maxSupported Versio
 	}
 }
 
-func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOptions) Version {
+func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
 	// Check if the changeID already has a version assigned
 	// If it does, validate the version against the min and max supported versions
 	// ensuring it is within the acceptable range
@@ -611,10 +611,10 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 		return version
 	}
 
-	// Use the first option if they're present
-	var options GetVersionOptions
-	if len(opts) > 0 {
-		options = opts[0]
+	// Apply the functional options to get the configuration
+	config := &getVersionConfig{}
+	for _, opt := range opts {
+		opt.apply(config)
 	}
 
 	var version Version
@@ -625,11 +625,11 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 		version = DefaultVersion
 
 	// If ExecuteWithVersion option is used, use the custom version provided
-	case options.CustomVersion != nil:
-		version = *options.CustomVersion
+	case config.CustomVersion != nil:
+		version = *config.CustomVersion
 
 	// If ExecuteWithMinVersion option is set, use the minimum supported version
-	case options.UseMinVersion:
+	case config.UseMinVersion:
 		version = minSupported
 
 	// Otherwise, use the maximum supported version

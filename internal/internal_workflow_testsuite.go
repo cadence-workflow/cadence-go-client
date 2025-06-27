@@ -1928,7 +1928,7 @@ func (env *testWorkflowEnvironmentImpl) SideEffect(f func() ([]byte, error), cal
 	callback(f())
 }
 
-func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOptions) (retVersion Version) {
+func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) (retVersion Version) {
 	if mockVersion, ok := env.getMockedVersion(changeID, changeID, minSupported, maxSupported); ok {
 		// GetVersion for changeID is mocked
 		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, mockVersion, env.changeVersions))
@@ -1948,21 +1948,21 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		return version
 	}
 
-	// Use the first option if they're present
-	var options GetVersionOptions
-	if len(opts) > 0 {
-		options = opts[0]
+	// Apply the functional options to get the configuration
+	config := &getVersionConfig{}
+	for _, opt := range opts {
+		opt.apply(config)
 	}
 
 	// Determine the version to use based on the options provided
 	var version Version
 	switch {
 	// If ExecuteWithVersion option is used, use the custom version provided
-	case options.CustomVersion != nil:
-		version = *options.CustomVersion
+	case config.CustomVersion != nil:
+		version = *config.CustomVersion
 
 	// If ExecuteWithMinVersion option is set, use the minimum supported version
-	case options.UseMinVersion:
+	case config.UseMinVersion:
 		version = minSupported
 
 	// Otherwise, use the maximum supported version
