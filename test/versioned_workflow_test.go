@@ -46,132 +46,77 @@ const (
 
 // VersionedWorkflowV1 is the first version of the workflow, supports only DefaultVersion.
 // All workflows started by this version will have the change ID set to DefaultVersion.
-func VersionedWorkflowV1(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV1(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
-	var result string
-	err := workflow.ExecuteActivity(ctx, FooActivityName, "data").Get(ctx, &result)
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, FooActivityName).Get(ctx, nil)
 }
 
 // VersionedWorkflowV2 is the second version of the workflow, supports DefaultVersion and 1
 // All workflows started by this version will have the change ID set to DefaultVersion.
-func VersionedWorkflowV2(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV2(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
-
-	var result string
-	var err error
 
 	version := workflow.GetVersion(ctx, TestChangeID, workflow.DefaultVersion, 1, workflow.ExecuteWithMinVersion())
 	if version == workflow.DefaultVersion {
-		err = workflow.ExecuteActivity(ctx, FooActivityName, "data").Get(ctx, &result)
-	} else {
-		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
+		return workflow.ExecuteActivity(ctx, FooActivityName).Get(ctx, nil)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, BarActivityName).Get(ctx, nil)
 }
 
 // VersionedWorkflowV3 is the third version of the workflow, supports DefaultVersion and 1
 // All workflows started by this version will have the change ID set to 1.
-func VersionedWorkflowV3(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV3(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
-
-	var result string
-	var err error
 
 	version := workflow.GetVersion(ctx, TestChangeID, workflow.DefaultVersion, 1)
 	if version == workflow.DefaultVersion {
-		err = workflow.ExecuteActivity(ctx, FooActivityName, "data").Get(ctx, &result)
-	} else {
-		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
+		return workflow.ExecuteActivity(ctx, FooActivityName).Get(ctx, nil)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, BarActivityName).Get(ctx, nil)
 }
 
 // VersionedWorkflowV4 is the fourth version of the workflow, supports only version 1
 // All workflows started by this version will have the change ID set to 1.
-func VersionedWorkflowV4(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV4(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
-	var result string
-
 	workflow.GetVersion(ctx, TestChangeID, 1, 1)
-	err := workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, BarActivityName).Get(ctx, nil)
 }
 
 // VersionedWorkflowV5 is the fifth version of the workflow, supports versions 1 and 2
 // All workflows started by this version will have the change ID set to 1.
-func VersionedWorkflowV5(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV5(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
-
-	var result string
-	var err error
 
 	version := workflow.GetVersion(ctx, TestChangeID, 1, 2, workflow.ExecuteWithVersion(1))
 	if version == 1 {
-		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
-	} else {
-		err = workflow.ExecuteActivity(ctx, BazActivityName, "data").Get(ctx, &result)
+		return workflow.ExecuteActivity(ctx, BarActivityName).Get(ctx, nil)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, BazActivityName).Get(ctx, nil)
 }
 
 // VersionedWorkflowV6 is the sixth version of the workflow, supports versions 1 and 2
 // All workflows started by this version will have the change ID set to 2.
-func VersionedWorkflowV6(ctx workflow.Context, _ string) (string, error) {
+func VersionedWorkflowV6(ctx workflow.Context) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
-
-	var result string
-	var err error
 
 	version := workflow.GetVersion(ctx, TestChangeID, 1, 2)
 	if version == 1 {
-		err = workflow.ExecuteActivity(ctx, BarActivityName, "data").Get(ctx, &result)
-	} else {
-		err = workflow.ExecuteActivity(ctx, BazActivityName, "data").Get(ctx, &result)
+		return workflow.ExecuteActivity(ctx, BarActivityName).Get(ctx, nil)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return result, nil
+	return workflow.ExecuteActivity(ctx, BazActivityName).Get(ctx, nil)
 }
 
 // FooActivity returns "foo" as a result of the activity execution.
-func FooActivity(_ context.Context, _ string) (string, error) {
-	return "foo", nil
-}
+func FooActivity(_ context.Context) (string, error) { return "foo", nil }
 
 // BarActivity returns "bar" as a result of the activity execution.
-func BarActivity(_ context.Context, _ string) (string, error) {
-	return "bar", nil
-}
+func BarActivity(_ context.Context) (string, error) { return "bar", nil }
 
 // BazActivity returns "baz" as a result of the activity execution.
-func BazActivity(_ context.Context, _ string) (string, error) {
-	return "baz", nil
-}
+func BazActivity(_ context.Context) (string, error) { return "baz", nil }
 
 // SetupWorkerForVersionedWorkflow registers the versioned workflow and its activities
 func SetupWorkerForVersionedWorkflow(version VersionedWorkflowVersion, w worker.Registry) {
