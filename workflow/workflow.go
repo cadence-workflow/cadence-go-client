@@ -368,7 +368,7 @@ const DefaultVersion Version = internal.DefaultVersion
 // Following the steps below, your changes will be forward and backward compatible, keeping possible a safe rollback
 // to the previous version of the workflow code:
 //
-// 1. Keep execution of foo activity, add a support of bar activity
+// 1. Keep execution of foo activity, add support for bar activity
 //
 //	v := GetVersion(ctx, "fooChange", DefaultVersion, 1,  ExecuteWithVersion(DefaultVersion))
 //	if v == DefaultVersion {
@@ -378,8 +378,9 @@ const DefaultVersion Version = internal.DefaultVersion
 //	}
 //
 // The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
-// All new workflow executions will execute foo activity, because GetVersion with ExecuteWithMinVersion option
-// returns DefaultVersion, that will be recorded into the workflow history.
+// All new workflow executions will execute foo activity, because ExecuteWithVersion(DefaultVersion)
+// causes GetVersion to return DefaultVersion rather than 1.
+// In this example, this is also exactly the same as using ExecuteWithMinVersion().
 //
 // 2. Enable execution of bar activity
 //
@@ -392,7 +393,7 @@ const DefaultVersion Version = internal.DefaultVersion
 //
 // The code above supports replaying of workflow execution with both versions DefaultVersion and 1.
 // All new workflow executions will execute bar activity, because
-// GetVersion returns the maximum supported version - 1, that will be recorded into the workflow history.
+// GetVersion returns the maximum supported version (1), which will be recorded into the workflow history.
 //
 // 3. Remove a support of foo activity:
 //
@@ -400,8 +401,6 @@ const DefaultVersion Version = internal.DefaultVersion
 //	err = workflow.ExecuteActivity(ctx, bar).Get(ctx, nil)
 //
 // When there are no workflow executions running DefaultVersion the support of foo activity can be removed.
-//
-// ExecuteWithVersion option is useful when you want to ensure that your changes can be safely rolled back if needed.
 func ExecuteWithVersion(version Version) internal.GetVersionOptions {
 	return internal.ExecuteWithVersion(version)
 }

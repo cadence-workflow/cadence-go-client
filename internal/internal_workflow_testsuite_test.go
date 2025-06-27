@@ -1414,10 +1414,8 @@ func (s *WorkflowTestSuiteUnitTest) Test_MockGetVersion_ExecuteWithVersion() {
 	env.RegisterActivity(oldActivity)
 	env.RegisterActivity(newActivity)
 
-	env.OnGetVersion("change_1", DefaultVersion, 2).Return(func(string, Version, Version) Version {
-		return DefaultVersion
-	})
-	env.OnGetVersion(mock.Anything, DefaultVersion, 2).Return(Version(2))
+	env.OnGetVersion("change_1", DefaultVersion, 2).Return(DefaultVersion)
+	env.OnGetVersion("change_2", DefaultVersion, 2).Return(Version(2))
 	env.ExecuteWorkflow(workflowFn)
 
 	s.True(env.IsWorkflowCompleted())
