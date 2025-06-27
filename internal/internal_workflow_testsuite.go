@@ -1980,8 +1980,8 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, env.changeVersions))
 	}
 
-	// Store the version in the changeVersions
-	// ensuring that it can be retrieved later
+	// Store the version to ensure that the version is stable
+	// during the workflow execution
 	env.changeVersions[changeID] = version
 	return version
 }

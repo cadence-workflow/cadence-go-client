@@ -652,8 +652,8 @@ func (wc *workflowEnvironmentImpl) GetVersion(changeID string, minSupported, max
 		}
 	}
 
-	// Store the version in the changeVersions
-	// ensuring that it can be retrieved later
+	// Store the version to ensure that the version is stable
+	// during the workflow execution
 	wc.changeVersions[changeID] = version
 	return version
 }
