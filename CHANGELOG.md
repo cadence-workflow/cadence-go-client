@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added worker.NewV2 with validation on decision poller count (#1370)
 - Upgraded internal tooling to support Go 1.24, should be no user-noticeable changes (#1421)
 
+### Fixed
+- **Significant** test-suite-only change: `RetryPolicy` handling in tests has been off by 1 for many years.
+  This is now fixed, and your tests will likely need to be updated. (#1414)
+
 ## [v1.2.10] - 2024-07-10
 ### Added
 - Revert "Handle panics while polling for tasks (#1352)" (#1357)
