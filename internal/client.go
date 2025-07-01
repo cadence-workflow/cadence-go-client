@@ -471,25 +471,6 @@ type (
 		// This will only be used and override DelayStart and JitterStart if provided in the first run
 		// Optional: defaulted to Unix epoch time
 		FirstRunAt time.Time
-
-		// CronOverlapPolicy - Policy for handling cron workflow overlaps when a previous execution is still running by the
-		// start of next scheduled execution.
-		//
-		// Example scenario: A workflow scheduled to run every 5 minutes takes 8 minutes to complete in one of the runs.
-		// Without CronOverlapPolicy, assuming the start of that run r1 is t0, then the next scheduled run r2 that is
-		// supposed to run at t0+5 is skipped, and the next run r3 is scheduled at t0+10.
-		//
-		// Currently supported values are:
-		// - CronOverlapPolicySkip: skip the new execution if the previous one takes too long.
-		//   This is the default behavior and is the same with not specifying this option.
-		//   Run r2 will be skipped and next run will be scheduled at t0+10.
-		// - CronOverlapPolicyBufferOne: start the next run immediately after the previous one that takes too long completes.
-		//   In this case, run r2 will be started at t0+8, and the next run r3 will be scheduled at t0+10.
-		//   (assuming r2 finishes by then, otherwise r3 will start immediately after r2 completes).
-		//
-		// Note: JitterStart remains used when determining the actual start time of executions.
-		// Optional: defaulted to CronOverlapPolicySkip
-		CronOverlapPolicy s.CronOverlapPolicy
 	}
 
 	// RetryPolicy defines the retry policy.

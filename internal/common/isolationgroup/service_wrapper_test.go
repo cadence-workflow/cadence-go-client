@@ -398,14 +398,6 @@ func TestAPICalls(t *testing.T) {
 			},
 			expectedResponse: &shared.ClusterInfo{},
 		},
-		"DeleteDomain": {
-			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
-				return nil, sw.DeleteDomain(ctx, &shared.DeleteDomainRequest{})
-			},
-			affordance: func(m *workflowservicetest.MockClient) {
-				m.EXPECT().DeleteDomain(gomock.Any(), &shared.DeleteDomainRequest{}, gomock.Any()).Times(1).Return(nil)
-			},
-		},
 	}
 
 	for name, td := range tests {

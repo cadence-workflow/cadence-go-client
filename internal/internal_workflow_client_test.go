@@ -2539,7 +2539,6 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
 				DelayStart:                      0 * time.Second,
 				JitterStart:                     0 * time.Second,
-				CronOverlapPolicy:               shared.CronOverlapPolicyBufferone,
 			},
 			workflowFunc: func(ctx Context) {},
 			wantRequest: &shared.StartWorkflowExecutionRequest{
@@ -2559,7 +2558,6 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				CronSchedule:                        common.StringPtr(""),
 				Header:                              &shared.Header{Fields: map[string][]byte{}},
 				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
-				CronOverlapPolicy:                   shared.CronOverlapPolicyBufferone.Ptr(),
 			},
 		},
 		{

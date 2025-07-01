@@ -1092,7 +1092,6 @@ func (wc *workflowClient) getWorkflowStartRequest(
 		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
 		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
 		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
-		CronOverlapPolicy:                   common.CronOverlapPolicyPtr(options.CronOverlapPolicy),
 	}
 
 	return startRequest, nil
@@ -1195,7 +1194,6 @@ func (wc *workflowClient) getSignalWithStartRequest(
 		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
 		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
 		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
-		CronOverlapPolicy:                   common.CronOverlapPolicyPtr(options.CronOverlapPolicy),
 	}
 
 	return signalWithStartRequest, nil

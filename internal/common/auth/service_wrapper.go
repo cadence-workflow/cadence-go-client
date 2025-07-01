@@ -511,13 +511,3 @@ func (w *workflowServiceAuthWrapper) RestartWorkflowExecution(ctx context.Contex
 	opts = append(opts, *tokenHeader)
 	return w.service.RestartWorkflowExecution(ctx, request, opts...)
 }
-
-func (w *workflowServiceAuthWrapper) DeleteDomain(ctx context.Context, DeleteRequest *shared.DeleteDomainRequest, opts ...yarpc.CallOption) error {
-	tokenHeader, err := w.getYarpcJWTHeader()
-	if err != nil {
-		return err
-	}
-	opts = append(opts, *tokenHeader)
-	err = w.service.DeleteDomain(ctx, DeleteRequest, opts...)
-	return err
-}

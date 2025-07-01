@@ -731,19 +731,3 @@ func (s *serviceWrapperSuite) TestGetClusterInfoInvalidToken() {
 	_, err := sw.GetClusterInfo(ctx)
 	s.EqualError(err, "error")
 }
-
-func (s *serviceWrapperSuite) TestDeleteDomainValidToken() {
-	s.Service.EXPECT().DeleteDomain(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
-	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
-	ctx, _ := thrift.NewContext(time.Minute)
-	err := sw.DeleteDomain(ctx, &shared.DeleteDomainRequest{})
-	s.NoError(err)
-}
-
-func (s *serviceWrapperSuite) TestDeleteDomainInvalidToken() {
-	s.AuthProvider = newJWTAuthIncorrect()
-	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
-	ctx, _ := thrift.NewContext(time.Minute)
-	err := sw.DeleteDomain(ctx, &shared.DeleteDomainRequest{})
-	s.EqualError(err, "error")
-}

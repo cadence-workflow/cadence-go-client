@@ -49,7 +49,6 @@ func TestPtrHelpers(t *testing.T) {
 	assert.Equal(t, s.QueryTaskCompletedTypeCompleted, *QueryTaskCompletedTypePtr(s.QueryTaskCompletedTypeCompleted))
 	assert.Equal(t, s.TaskListKindNormal, *TaskListKindPtr(s.TaskListKindNormal))
 	assert.Equal(t, s.QueryResultTypeFailed, *QueryResultTypePtr(s.QueryResultTypeFailed))
-	assert.Equal(t, s.CronOverlapPolicyBufferone, *CronOverlapPolicyPtr(s.CronOverlapPolicyBufferone))
 }
 
 func TestCeilHelpers(t *testing.T) {
