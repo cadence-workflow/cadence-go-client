@@ -53,6 +53,7 @@ const (
 
 var (
 	pollOperationRetryPolicy = createPollRetryPolicy()
+	concurrentTaskHistogramBuckets = tally.ValueBuckets{10, 20, 50, 100, 150, 200, 400, 600, 800, 1000, 1500, 2000, 3000, 5000, 10000}
 )
 
 var errShutdown = errors.New("worker shutting down")
@@ -265,8 +266,8 @@ func (bw *baseWorker) runPoller() {
 			// emit metrics on concurrent task permit quota and current task permit count
 			// NOTE task permit doesn't mean there is a task running, it still needs to poll until it gets a task to process
 			// thus the metrics is only an estimated value of how many tasks are running concurrently
-			bw.metricsScope.Gauge(metrics.ConcurrentTaskQuota).Update(float64(bw.concurrency.TaskPermit.Quota()))
-			bw.metricsScope.Gauge(metrics.PollerRequestBufferUsage).Update(float64(bw.concurrency.TaskPermit.Count()))
+			bw.metricsScope.Histogram(metrics.ConcurrentTaskQuota, concurrentTaskHistogramBuckets).RecordValue(float64(bw.concurrency.TaskPermit.Quota()))
+			bw.metricsScope.Histogram(metrics.PollerRequestBufferUsage, concurrentTaskHistogramBuckets).RecordValue(float64(bw.concurrency.TaskPermit.Count()))
 			if bw.sessionTokenBucket != nil {
 				bw.sessionTokenBucket.waitForAvailableToken()
 			}
