@@ -115,18 +115,18 @@ type (
 
 	// baseWorkerOptions options to configure base worker.
 	baseWorkerOptions struct {
-		pollerAutoScaler  AutoScalerOptions
-		pollerCount       int
-		pollerRate        int
-		maxConcurrentTask int
-		maxTaskPerSecond  float64
-		taskWorker        taskPoller
-		identity          string
-		workerType        string
-		shutdownTimeout   time.Duration
-		userContextCancel context.CancelFunc
-		host              string
-		pollerTracker     debug.PollerTracker
+		pollerAutoScaler              AutoScalerOptions
+		pollerCountWithoutAutoScaling int
+		pollerRate                    int
+		maxConcurrentTask             int
+		maxTaskPerSecond              float64
+		taskWorker                    taskPoller
+		identity                      string
+		workerType                    string
+		shutdownTimeout               time.Duration
+		userContextCancel             context.CancelFunc
+		host                          string
+		pollerTracker                 debug.PollerTracker
 	}
 
 	// baseWorker that wraps worker activities.
@@ -172,12 +172,16 @@ func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope t
 	metricsScope = tagScope(metricsScope, tagWorkerType, options.workerType)
 
 	concurrency := &worker.ConcurrencyLimit{
-		PollerPermit: worker.NewResizablePermit(options.pollerCount),
+		PollerPermit: worker.NewResizablePermit(options.pollerCountWithoutAutoScaling),
 		TaskPermit:   worker.NewResizablePermit(options.maxConcurrentTask),
 	}
 
 	var concurrencyAS *worker.ConcurrencyAutoScaler
 	if pollerOptions := options.pollerAutoScaler; pollerOptions.Enabled {
+		concurrency = &worker.ConcurrencyLimit{
+			PollerPermit: worker.NewResizablePermit(pollerOptions.PollerInitCount),
+			TaskPermit:   worker.NewResizablePermit(options.maxConcurrentTask),
+		}
 		concurrencyAS = worker.NewConcurrencyAutoScaler(worker.ConcurrencyAutoScalerInput{
 			Concurrency:              concurrency,
 			Cooldown:                 pollerOptions.Cooldown,
@@ -221,7 +225,11 @@ func (bw *baseWorker) Start() {
 
 	bw.concurrencyAutoScaler.Start()
 
-	for i := 0; i < bw.options.pollerCount; i++ {
+	maxPollerCount := bw.options.pollerCountWithoutAutoScaling
+	if bw.options.pollerAutoScaler.Enabled {
+		maxPollerCount = bw.options.pollerAutoScaler.PollerMaxCount
+	}
+	for i := 0; i < maxPollerCount; i++ {
 		bw.shutdownWG.Add(1)
 		go bw.runPoller()
 	}
@@ -232,9 +240,13 @@ func (bw *baseWorker) Start() {
 	bw.isWorkerStarted = true
 	traceLog(func() {
 		bw.logger.Info("Started Worker",
-			zap.Int("PollerCount", bw.options.pollerCount),
+			zap.Int("PollerCountWithoutAutoScaling", bw.options.pollerCountWithoutAutoScaling),
 			zap.Int("MaxConcurrentTask", bw.options.maxConcurrentTask),
 			zap.Float64("MaxTaskPerSecond", bw.options.maxTaskPerSecond),
+			zap.Bool("AutoscalerEnabled", bw.options.pollerAutoScaler.Enabled),
+			zap.Int("AutoscalerPollerMaxCount", bw.options.pollerAutoScaler.PollerMaxCount),
+			zap.Int("AutoscalerPollerMinCount", bw.options.pollerAutoScaler.PollerMinCount),
+			zap.Int("AutoscalerPollerInitialCount", bw.options.pollerAutoScaler.PollerInitCount),
 		)
 	})
 }

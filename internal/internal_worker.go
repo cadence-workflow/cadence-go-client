@@ -276,21 +276,17 @@ func newWorkflowTaskWorkerInternal(
 		domain,
 		params,
 	)
-	pollerCount := params.MaxConcurrentDecisionTaskPollers
-	if params.AutoScalerOptions.Enabled {
-		pollerCount = params.AutoScalerOptions.PollerInitCount
-	}
 	worker := newBaseWorker(baseWorkerOptions{
-		pollerAutoScaler:  params.AutoScalerOptions,
-		pollerCount:       pollerCount,
-		pollerRate:        defaultPollerRate,
-		maxConcurrentTask: params.MaxConcurrentDecisionTaskExecutionSize,
-		maxTaskPerSecond:  params.WorkerDecisionTasksPerSecond,
-		taskWorker:        poller,
-		identity:          params.Identity,
-		workerType:        "DecisionWorker",
-		shutdownTimeout:   params.WorkerStopTimeout,
-		pollerTracker:     params.WorkerStats.PollerTracker,
+		pollerAutoScaler:              params.AutoScalerOptions,
+		pollerCountWithoutAutoScaling: params.MaxConcurrentDecisionTaskPollers,
+		pollerRate:                    defaultPollerRate,
+		maxConcurrentTask:             params.MaxConcurrentDecisionTaskExecutionSize,
+		maxTaskPerSecond:              params.WorkerDecisionTasksPerSecond,
+		taskWorker:                    poller,
+		identity:                      params.Identity,
+		workerType:                    "DecisionWorker",
+		shutdownTimeout:               params.WorkerStopTimeout,
+		pollerTracker:                 params.WorkerStats.PollerTracker,
 	},
 		params.Logger,
 		params.MetricsScope,
@@ -308,14 +304,14 @@ func newWorkflowTaskWorkerInternal(
 	// 2) local activity task poller will poll from laTunnel, and result will be pushed to laTunnel
 	localActivityTaskPoller := newLocalActivityPoller(params, laTunnel)
 	localActivityWorker := newBaseWorker(baseWorkerOptions{
-		pollerCount:       1, // 1 poller (from local channel) is enough for local activity
-		maxConcurrentTask: params.MaxConcurrentLocalActivityExecutionSize,
-		maxTaskPerSecond:  params.WorkerLocalActivitiesPerSecond,
-		taskWorker:        localActivityTaskPoller,
-		identity:          params.Identity,
-		workerType:        "LocalActivityWorker",
-		shutdownTimeout:   params.WorkerStopTimeout,
-		pollerTracker:     params.WorkerStats.PollerTracker,
+		pollerCountWithoutAutoScaling: 1, // 1 poller (from local channel) is enough for local activity
+		maxConcurrentTask:             params.MaxConcurrentLocalActivityExecutionSize,
+		maxTaskPerSecond:              params.WorkerLocalActivitiesPerSecond,
+		taskWorker:                    localActivityTaskPoller,
+		identity:                      params.Identity,
+		workerType:                    "LocalActivityWorker",
+		shutdownTimeout:               params.WorkerStopTimeout,
+		pollerTracker:                 params.WorkerStats.PollerTracker,
 	},
 		params.Logger,
 		params.MetricsScope,
@@ -472,23 +468,19 @@ func newActivityTaskWorker(
 	workerType string,
 ) (worker *activityWorker) {
 	ensureRequiredParams(&workerParams)
-	pollerCount := workerParams.MaxConcurrentActivityTaskPollers
-	if workerParams.AutoScalerOptions.Enabled {
-		pollerCount = workerParams.AutoScalerOptions.PollerInitCount
-	}
 	base := newBaseWorker(
 		baseWorkerOptions{
-			pollerAutoScaler:  workerParams.AutoScalerOptions,
-			pollerCount:       pollerCount,
-			pollerRate:        defaultPollerRate,
-			maxConcurrentTask: workerParams.MaxConcurrentActivityExecutionSize,
-			maxTaskPerSecond:  workerParams.WorkerActivitiesPerSecond,
-			taskWorker:        poller,
-			identity:          workerParams.Identity,
-			workerType:        workerType,
-			shutdownTimeout:   workerParams.WorkerStopTimeout,
-			userContextCancel: workerParams.UserContextCancel,
-			pollerTracker:     workerParams.WorkerStats.PollerTracker,
+			pollerAutoScaler:              workerParams.AutoScalerOptions,
+			pollerCountWithoutAutoScaling: workerParams.MaxConcurrentActivityTaskPollers,
+			pollerRate:                    defaultPollerRate,
+			maxConcurrentTask:             workerParams.MaxConcurrentActivityExecutionSize,
+			maxTaskPerSecond:              workerParams.WorkerActivitiesPerSecond,
+			taskWorker:                    poller,
+			identity:                      workerParams.Identity,
+			workerType:                    workerType,
+			shutdownTimeout:               workerParams.WorkerStopTimeout,
+			userContextCancel:             workerParams.UserContextCancel,
+			pollerTracker:                 workerParams.WorkerStats.PollerTracker,
 		},
 
 		workerParams.Logger,
