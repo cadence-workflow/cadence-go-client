@@ -53,7 +53,7 @@ const (
 
 var (
 	pollOperationRetryPolicy       = createPollRetryPolicy()
-	concurrentTaskHistogramBuckets = tally.ValueBuckets{10, 20, 50, 100, 150, 200, 400, 600, 800, 1000, 1500, 2000, 3000, 5000, 10000}
+	concurrentTaskHistogramBuckets = tally.ValueBuckets{0, 10, 20, 50, 100, 150, 200, 400, 600, 800, 1000, 1500, 2000, 3000, 5000, 10000}
 )
 
 var errShutdown = errors.New("worker shutting down")
