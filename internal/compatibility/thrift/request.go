@@ -226,6 +226,7 @@ func RegisterDomainRequest(t *apiv1.RegisterDomainRequest) *shared.RegisterDomai
 		WorkflowExecutionRetentionPeriodInDays: durationToDays(t.WorkflowExecutionRetentionPeriod),
 		Clusters:                               ClusterReplicationConfigurationArray(t.Clusters),
 		ActiveClusterName:                      &t.ActiveClusterName,
+		ActiveClustersByRegion:                 t.ActiveClustersByRegion,
 		Data:                                   t.Data,
 		SecurityToken:                          &t.SecurityToken,
 		IsGlobalDomain:                         &t.IsGlobalDomain,

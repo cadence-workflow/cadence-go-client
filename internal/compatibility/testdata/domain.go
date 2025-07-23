@@ -88,4 +88,8 @@ var (
 	ClusterReplicationConfigurationArray = []*apiv1.ClusterReplicationConfiguration{
 		&ClusterReplicationConfiguration,
 	}
+	ActiveClustersByRegion = map[string]string{
+		"Region1": ClusterName1,
+		"Region2": ClusterName2,
+	}
 )

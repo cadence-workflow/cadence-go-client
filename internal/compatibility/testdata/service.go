@@ -34,6 +34,7 @@ var (
 		WorkflowExecutionRetentionPeriod: DomainRetention,
 		Clusters:                         ClusterReplicationConfigurationArray,
 		ActiveClusterName:                ClusterName1,
+		ActiveClustersByRegion:           ActiveClustersByRegion,
 		Data:                             DomainData,
 		SecurityToken:                    SecurityToken,
 		IsGlobalDomain:                   true,
