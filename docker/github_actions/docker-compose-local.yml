@@ -45,7 +45,7 @@ services:
   integ-test-sticky-off:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
+      dockerfile: ./docker/github_actions/Dockerfile
     command:
       - /bin/sh
       - -e
@@ -67,7 +67,7 @@ services:
   integ-test-sticky-on:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
+      dockerfile: ./docker/github_actions/Dockerfile
     command:
       - /bin/sh
       - -e
@@ -89,7 +89,7 @@ services:
   integ-test-grpc:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
+      dockerfile: ./docker/github_actions/Dockerfile
     command:
       - /bin/sh
       - -e
@@ -112,7 +112,7 @@ services:
   unit-test:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
+      dockerfile: ./docker/github_actions/Dockerfile
     command:
       - /bin/sh
       - -e
@@ -131,7 +131,7 @@ services:
   coverage-report:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
+      dockerfile: ./docker/github_actions/Dockerfile
     command:
       - /bin/sh
       - -e
@@ -147,5 +147,3 @@ networks:
   services-network:
     name: services-network
     driver: bridge
-
-# TODO: delete this file after migration to github actions

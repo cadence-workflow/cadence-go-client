@@ -11,3 +11,5 @@ EXIT_STATUS=$?
 
 echo "fossa script exits with status $EXIT_STATUS"
 exit $EXIT_STATUS
+
+# TODO: delete this file after migration to github actions

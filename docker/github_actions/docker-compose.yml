@@ -42,16 +42,10 @@ services:
         aliases:
           - cadence
 
-  integ-test-sticky-off:
+  integ-test:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
-    command:
-      - /bin/sh
-      - -e
-      - -c
-      - |
-        make integ_test_sticky_off
+      dockerfile: ./docker/github_actions/Dockerfile
     environment:
       - "SERVICE_ADDR=cadence:7933"
       - "GO111MODULE=on"
@@ -62,40 +56,12 @@ services:
     networks:
       services-network:
         aliases:
-          - integ-test-sticky-off
-
-  integ-test-sticky-on:
-    build:
-      context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
-    command:
-      - /bin/sh
-      - -e
-      - -c
-      - |
-        make integ_test_sticky_on
-    environment:
-      - "SERVICE_ADDR=cadence:7933"
-      - "GO111MODULE=on"
-    depends_on:
-      - cadence
-    volumes:
-      - ../../:/go/src/go.uber.org/cadence
-    networks:
-      services-network:
-        aliases:
-          - integ-test-sticky-on
+          - integ-test
 
   integ-test-grpc:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
-    command:
-      - /bin/sh
-      - -e
-      - -c
-      - |
-        make integ_test_grpc
+      dockerfile: ./docker/github_actions/Dockerfile
     environment:
       - "SERVICE_ADDR=cadence:7833"
       - "ENABLE_GRPC_ADAPTER=true"
@@ -107,18 +73,12 @@ services:
     networks:
       services-network:
         aliases:
-          - integ-test-grpc
+          - integ-test
 
   unit-test:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
-    command:
-      - /bin/sh
-      - -e
-      - -c
-      - |
-        make unit_test
+      dockerfile: ./docker/github_actions/Dockerfile
     environment:
       - "GO111MODULE=on"
     volumes:
@@ -131,14 +91,9 @@ services:
   coverage-report:
     build:
       context: ../../
-      dockerfile: ./docker/buildkite/Dockerfile
-    command:
-      - /bin/sh
-      - -e
-      - -c
-      - |
-        make coverage_report
+      dockerfile: ./docker/github_actions/Dockerfile
     environment:
+      - CI
       - "GO111MODULE=on"
     volumes:
       - ../../:/go/src/go.uber.org/cadence
@@ -147,5 +102,3 @@ networks:
   services-network:
     name: services-network
     driver: bridge
-
-# TODO: delete this file after migration to github actions

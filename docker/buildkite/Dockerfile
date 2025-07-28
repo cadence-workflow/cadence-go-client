@@ -18,3 +18,5 @@ RUN echo \
   "deb [signed-by=/usr/share/keyrings/buildkite-agent-archive-keyring.gpg] https://apt.buildkite.com/buildkite-agent stable main" | \
   tee /etc/apt/sources.list.d/buildkite-agent.list
 RUN apt-get update && apt-get install -yy --no-install-recommends buildkite-agent
+
+# TODO: delete this file after migration to github actions
