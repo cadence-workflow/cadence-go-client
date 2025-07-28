@@ -105,19 +105,6 @@ jobs:
           command: |
             docker compose -f docker/github_actions/docker-compose.yml run integ-test bash -c "make integ_test_sticky_on"
 
-      - name: Debug file structure
-        run: |
-          echo "=== Debug: Listing .build directory ==="
-          find .build -type f -name "*.out" 2>/dev/null || echo "No .out files found"
-          echo "=== Debug: Listing .build directory structure ==="
-          find .build -type d 2>/dev/null || echo "No .build directory found"
-          echo "=== Debug: Current directory contents ==="
-          ls -la
-          echo "=== Debug: Checking if files exist in container ==="
-          docker compose -f docker/github_actions/docker-compose.yml run --rm integ-test bash -c "find .build -type f -name '*.out' 2>/dev/null || echo 'No .out files found in container'"
-          echo "=== Debug: Container directory structure ==="
-          docker compose -f docker/github_actions/docker-compose.yml run --rm integ-test bash -c "find .build -type d 2>/dev/null || echo 'No .build directory found in container'"
-
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
