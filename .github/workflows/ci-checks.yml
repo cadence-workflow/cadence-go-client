@@ -31,6 +31,7 @@ jobs:
             .build/*/coverage/*.out
             .build/cover.out
             .build/metadata.txt
+          include-hidden-files: true
 
   golangci-lint-validate-code-is-clean:
     name: Golangci lint validate code is clean
@@ -110,7 +111,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-sticky-on-coverage
-          path: .build/go1.24.5_linux_amd64/coverage/integ_test_sticky_on_cover.out
+          path: .build/*/coverage/*.out
+          include-hidden-files: true
 
   golang-integration-test-grpc:
     name: Golang integration test gRPC adapter
@@ -141,3 +143,5 @@ jobs:
         with:
           name: go-integration-grpc-coverage
           path: .build/*/coverage/*.out
+          include-hidden-files: true
+          
