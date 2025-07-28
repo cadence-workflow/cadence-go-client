@@ -26,15 +26,16 @@ jobs:
           max_attempts: 2
           timeout_minutes: 30
           command: |
-            docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "make cover_profile && ./scripts/gen_coverage_metadata.sh .build/coverage/metadata.txt"
+            docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "make unit_test && ./scripts/gen_coverage_metadata.sh .build/metadata.txt"
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
           name: go-unit-test-coverage
           path: |
-            .build/coverage/*.out
-            .build/coverage/metadata.txt
+            .build/*/coverage/*.out
+            .build/cover.out
+            .build/metadata.txt
 
   golangci-lint-validate-code-is-clean:
     name: Golangci lint validate code is clean
@@ -53,7 +54,7 @@ jobs:
           go-version: '1.23.4'
 
       - name: Run golint
-        run: docker compose -f docker/github_actions/docker-compose.yml run coverage-report bash -c "./scripts/golint.sh"
+        run: docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "./scripts/golint.sh"
 
   golang-integration-test-sticky-off:
     name: Golang integration test sticky off
@@ -83,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-sticky-off-coverage
-          path: .build/coverage/*.out
+          path: .build/*/coverage/*.out
 
   golang-integration-test-sticky-on:
     name: Golang integration test sticky on
@@ -113,7 +114,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-sticky-on-coverage
-          path: .build/coverage/*.out
+          path: .build/*/coverage/*.out
 
   golang-integration-test-grpc:
     name: Golang integration test gRPC adapter
@@ -143,4 +144,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-grpc-coverage
-          path: .build/coverage/*.out
+          path: .build/*/coverage/*.out
