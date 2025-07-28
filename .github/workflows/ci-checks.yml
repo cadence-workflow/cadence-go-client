@@ -80,6 +80,7 @@ jobs:
         with:
           name: go-integration-sticky-off-coverage
           path: .build/*/coverage/*.out
+          include-hidden-files: true
 
   golang-integration-test-sticky-on:
     name: Golang integration test sticky on
