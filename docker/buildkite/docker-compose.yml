@@ -120,3 +120,5 @@ networks:
   services-network:
     name: services-network
     driver: bridge
+
+# TODO: delete this file after migration to github actions

@@ -1,0 +1,147 @@
+name: CI Checks
+on: 
+  push:
+  pull_request:
+
+jobs:
+  golang-unit-test:
+    name: Golang unit test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0 # get full history for branch checking
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      
+      - name: Run unit test
+        run: docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "make unit_test && ./scripts/gen_coverage_metadata.sh .build/metadata.txt"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-unit-test-coverage
+          path: |
+            .build/*/coverage/*.out
+            .build/cover.out
+            .build/metadata.txt
+          include-hidden-files: true
+
+  golangci-lint-validate-code-is-clean:
+    name: Golangci lint validate code is clean
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0 # get full history for branch checking
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+
+      - name: Run golint
+        run: docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "./scripts/golint.sh"
+
+  golang-integration-test-sticky-off:
+    name: Golang integration test sticky off
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0 # get full history for branch checking
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      
+      - name: Run integration test sticky off
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 2
+          timeout_minutes: 30
+          command: |
+            docker compose -f docker/github_actions/docker-compose.yml run integ-test bash -c "make integ_test_sticky_off"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-integration-sticky-off-coverage
+          path: .build/*/coverage/*.out
+          include-hidden-files: true
+
+  golang-integration-test-sticky-on:
+    name: Golang integration test sticky on
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0 # get full history for branch checking
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      
+      - name: Run integration test sticky on
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 2
+          timeout_minutes: 30
+          command: |
+            docker compose -f docker/github_actions/docker-compose.yml run integ-test bash -c "make integ_test_sticky_on"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-integration-sticky-on-coverage
+          path: .build/*/coverage/*.out
+          include-hidden-files: true
+
+  golang-integration-test-grpc:
+    name: Golang integration test gRPC adapter
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0 # get full history for branch checking
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      
+      - name: Run integration test gRPC
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 2
+          timeout_minutes: 30
+          command: |
+            docker compose -f docker/github_actions/docker-compose.yml run integ-test-grpc bash -c "make integ_test_grpc"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-integration-grpc-coverage
+          path: .build/*/coverage/*.out
+          include-hidden-files: true
+          
