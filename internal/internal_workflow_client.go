@@ -445,6 +445,26 @@ func (wc *workflowClient) TerminateWorkflow(ctx context.Context, workflowID stri
 	return err
 }
 
+// GetWorkflowHistoryWithOptionsRequest is the request to GetWorkflowHistoryWithOptions
+type GetWorkflowHistoryWithOptionsRequest struct {
+	// WorkflowID specifies the workflow to request. Required.
+	WorkflowID string
+	// RunID is an optional field used to identify a specific run of the workflow.
+	// If RunID is not provided the latest run will be used.
+	RunID string
+	// IsLongPoll is an optional field indicating whether to continue polling for new events until the workflow is terminal.
+	// If IsLongPoll is true, the client can continue to iterate on new events that occur after the initial request.
+	// Note that this means the client request will remain open until the workflow is terminal.
+	IsLongPoll bool
+	// FilterType is an optional field used to specify which events to return.
+	// CloseEvent will only return the last event in the workflow history.
+	FilterType s.HistoryEventFilterType
+	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
+	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
+	// If not set, server will use the default consistency level.
+	QueryConsistencyLevel *s.QueryConsistencyLevel
+}
+
 // GetWorkflowHistory return a channel which contains the history events of a given workflow
 func (wc *workflowClient) GetWorkflowHistory(
 	ctx context.Context,
@@ -800,6 +820,19 @@ func (wc *workflowClient) GetSearchAttributes(ctx context.Context) (*s.GetSearch
 	return response, nil
 }
 
+// DescribeWorkflowExecutionWithOptionsRequest is the request to DescribeWorkflowExecutionWithOptions
+type DescribeWorkflowExecutionWithOptionsRequest struct {
+	// WorkflowID specifies the workflow to request. Required.
+	WorkflowID string
+	// RunID is an optional field used to identify a specific run of the workflow.
+	// If RunID is not provided the latest run will be used.
+	RunID string
+	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
+	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
+	// If not set, server will use the default consistency level.
+	QueryConsistencyLevel *s.QueryConsistencyLevel
+}
+
 // DescribeWorkflowExecution returns information about the specified workflow execution.
 // The errors it can return:
 //   - BadRequestError
@@ -907,39 +940,6 @@ type QueryWorkflowWithOptionsResponse struct {
 
 	// QueryRejected contains information about the query rejection.
 	QueryRejected *s.QueryRejected
-}
-
-// GetWorkflowHistoryWithOptionsRequest is the request to GetWorkflowHistoryWithOptions
-type GetWorkflowHistoryWithOptionsRequest struct {
-	// WorkflowID specifies the workflow to request. Required.
-	WorkflowID string
-	// RunID is an optional field used to identify a specific run of the workflow.
-	// If RunID is not provided the latest run will be used.
-	RunID string
-	// IsLongPoll is an optional field indicating whether to continue polling for new events until the workflow is terminal.
-	// If IsLongPoll is true, the client can continue to iterate on new events that occur after the initial request.
-	// Note that this means the client request will remain open until the workflow is terminal.
-	IsLongPoll bool
-	// FilterType is an optional field used to specify which events to return.
-	// CloseEvent will only return the last event in the workflow history.
-	FilterType s.HistoryEventFilterType
-	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
-	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
-	// If not set, server will use the default consistency level.
-	QueryConsistencyLevel *s.QueryConsistencyLevel
-}
-
-// DescribeWorkflowExecutionWithOptionsRequest is the request to DescribeWorkflowExecutionWithOptions
-type DescribeWorkflowExecutionWithOptionsRequest struct {
-	// WorkflowID specifies the workflow to request. Required.
-	WorkflowID string
-	// RunID is an optional field used to identify a specific run of the workflow.
-	// If RunID is not provided the latest run will be used.
-	RunID string
-	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
-	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
-	// If not set, server will use the default consistency level.
-	QueryConsistencyLevel *s.QueryConsistencyLevel
 }
 
 // QueryWorkflowWithOptions queries a given workflow execution and returns the query result synchronously.

@@ -376,7 +376,7 @@ type (
 		//  - EntityNotExistError
 		DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error)
 
-		// DescribeWorkflowExecutionWithOptions returns information about workflow execution with additional options including query consistency level.
+		// DescribeWorkflowExecutionWithOptions returns information about the specified workflow execution.
 		// See DescribeWorkflowExecutionWithOptionsRequest for more information.
 		// The errors it can return:
 		//  - BadRequestError
