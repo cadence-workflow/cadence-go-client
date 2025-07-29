@@ -1,5 +1,5 @@
 # Go framework for Cadence
-[![Build Status](https://badge.buildkite.com/e7241785444519bdfd1defc68839fd19a89c15adb3477c73f7.svg?theme=github&branch=master)](https://buildkite.com/uberopensource/cadence-go-client)
+[![CI Checks](https://github.com/cadence-workflow/cadence-go-client/actions/workflows/ci-checks.yml/badge.svg)](https://github.com/cadence-workflow/cadence-go-client/actions/workflows/ci-checks.yml)
 [![Coverage](https://codecov.io/gh/uber-go/cadence-client/graph/badge.svg?token=iEpqo5HbDe)](https://codecov.io/gh/uber-go/cadence-client)
 [![GoDoc](https://godoc.org/go.uber.org/cadence?status.svg)](https://godoc.org/go.uber.org/cadence)
 
