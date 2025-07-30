@@ -155,6 +155,11 @@ func getActivityEnv(ctx context.Context) *activityEnvironment {
 	return env.(*activityEnvironment)
 }
 
+func hasActivityEnv(ctx context.Context) bool {
+	env := ctx.Value(activityEnvContextKey)
+	return env != nil
+}
+
 func getActivityOptions(ctx Context) *activityOptions {
 	eap := ctx.Value(activityOptionsContextKey)
 	if eap == nil {
