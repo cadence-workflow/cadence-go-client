@@ -552,6 +552,7 @@ func DescribeDomainResponseDomain(t *shared.DescribeDomainResponse) *apiv1.Domai
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &domain
 }
@@ -694,4 +695,22 @@ func ActivityLocalDispatchInfoMap(t map[string]*shared.ActivityLocalDispatchInfo
 		v[key] = ActivityLocalDispatchInfo(t[key])
 	}
 	return v
+}
+
+func ActiveClusters(ac *shared.ActiveClusters) *apiv1.ActiveClusters {
+	if ac == nil {
+		return nil
+	}
+
+	regToCl := make(map[string]*apiv1.ActiveClusterInfo)
+	for reg, clusterInfo := range ac.ActiveClustersByRegion {
+		regToCl[reg] = &apiv1.ActiveClusterInfo{
+			ActiveClusterName: clusterInfo.GetActiveClusterName(),
+			FailoverVersion:   clusterInfo.GetFailoverVersion(),
+		}
+	}
+
+	return &apiv1.ActiveClusters{
+		RegionToCluster: regToCl,
+	}
 }

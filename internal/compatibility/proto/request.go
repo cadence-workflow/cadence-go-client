@@ -519,6 +519,7 @@ const (
 	DomainUpdateVisibilityArchivalURIField    = "visibility_archival_uri"
 	DomainUpdateActiveClusterNameField        = "active_cluster_name"
 	DomainUpdateClustersField                 = "clusters"
+	DomainUpdateActiveClustersField           = "active_clusters"
 	DomainUpdateDeleteBadBinaryField          = "delete_bad_binary"
 	DomainUpdateFailoverTimeoutField          = "failover_timeout"
 )
@@ -582,6 +583,10 @@ func UpdateDomainRequest(t *shared.UpdateDomainRequest) *apiv1.UpdateDomainReque
 		if replicationConfiguration.Clusters != nil {
 			request.Clusters = ClusterReplicationConfigurationArray(replicationConfiguration.Clusters)
 			fields = append(fields, DomainUpdateClustersField)
+		}
+		if replicationConfiguration.ActiveClusters != nil {
+			request.ActiveClusters = ActiveClusters(replicationConfiguration.ActiveClusters)
+			fields = append(fields, DomainUpdateActiveClustersField)
 		}
 	}
 	if t.DeleteBadBinary != nil {
