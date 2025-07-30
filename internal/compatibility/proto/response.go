@@ -62,6 +62,7 @@ func DescribeDomainResponse(t *shared.DescribeDomainResponse) *apiv1.DescribeDom
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &apiv1.DescribeDomainResponse{Domain: &domain}
 }
@@ -341,6 +342,7 @@ func UpdateDomainResponse(t *shared.UpdateDomainResponse) *apiv1.UpdateDomainRes
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &apiv1.UpdateDomainResponse{
 		Domain: domain,

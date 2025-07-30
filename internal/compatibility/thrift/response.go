@@ -60,6 +60,7 @@ func DescribeDomainResponse(t *apiv1.DescribeDomainResponse) *shared.DescribeDom
 		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
 			ActiveClusterName: &t.Domain.ActiveClusterName,
 			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
 		},
 		FailoverVersion: &t.Domain.FailoverVersion,
 		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
@@ -353,6 +354,7 @@ func UpdateDomainResponse(t *apiv1.UpdateDomainResponse) *shared.UpdateDomainRes
 		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
 			ActiveClusterName: &t.Domain.ActiveClusterName,
 			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
 		},
 		FailoverVersion: &t.Domain.FailoverVersion,
 		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
