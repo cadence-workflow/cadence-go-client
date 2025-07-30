@@ -87,6 +87,11 @@ type (
 	// ParentClosePolicy defines the behavior performed on a child workflow when its parent is closed
 	ParentClosePolicy = internal.ParentClosePolicy
 
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel = internal.QueryConsistencyLevel
+
 	// CancelOption values are functional options for the CancelWorkflow method.
 	// Supported values can be created with:
 	//  - WithCancelReason(...)
@@ -490,6 +495,15 @@ const (
 	ParentClosePolicyRequestCancel = internal.ParentClosePolicyRequestCancel
 	// ParentClosePolicyAbandon means not doing anything on the child workflow
 	ParentClosePolicyAbandon = internal.ParentClosePolicyAbandon
+)
+
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified = internal.QueryConsistencyLevelUnspecified
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual = internal.QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong = internal.QueryConsistencyLevelStrong
 )
 
 // NewClient creates an instance of a workflow client

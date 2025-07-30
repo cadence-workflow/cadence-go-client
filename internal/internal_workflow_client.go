@@ -462,7 +462,7 @@ type GetWorkflowHistoryWithOptionsRequest struct {
 	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
 	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
 	// If not set, server will use the default consistency level.
-	QueryConsistencyLevel *s.QueryConsistencyLevel
+	QueryConsistencyLevel QueryConsistencyLevel
 }
 
 // GetWorkflowHistory return a channel which contains the history events of a given workflow
@@ -478,7 +478,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 		RunID:                 runID,
 		IsLongPoll:            isLongPoll,
 		FilterType:            filterType,
-		QueryConsistencyLevel: nil, // Use server default
+		QueryConsistencyLevel: QueryConsistencyLevelUnspecified,
 	}
 	iter, _ := wc.GetWorkflowHistoryWithOptions(ctx, request)
 	return iter
@@ -503,7 +503,7 @@ func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, req
 			HistoryEventFilterType: &request.FilterType,
 			NextPageToken:          nextToken,
 			SkipArchival:           common.BoolPtr(request.IsLongPoll),
-			QueryConsistencyLevel:  request.QueryConsistencyLevel,
+			QueryConsistencyLevel:  convertQueryConsistencyLevel(request.QueryConsistencyLevel),
 		}
 
 		var response *s.GetWorkflowExecutionHistoryResponse
@@ -830,7 +830,7 @@ type DescribeWorkflowExecutionWithOptionsRequest struct {
 	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
 	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
 	// If not set, server will use the default consistency level.
-	QueryConsistencyLevel *s.QueryConsistencyLevel
+	QueryConsistencyLevel QueryConsistencyLevel
 }
 
 // DescribeWorkflowExecution returns information about the specified workflow execution.
@@ -842,7 +842,7 @@ func (wc *workflowClient) DescribeWorkflowExecution(ctx context.Context, workflo
 	request := &DescribeWorkflowExecutionWithOptionsRequest{
 		WorkflowID:            workflowID,
 		RunID:                 runID,
-		QueryConsistencyLevel: nil, // Use server default
+		QueryConsistencyLevel: QueryConsistencyLevelUnspecified,
 	}
 	return wc.DescribeWorkflowExecutionWithOptions(ctx, request)
 }
@@ -860,7 +860,7 @@ func (wc *workflowClient) DescribeWorkflowExecutionWithOptions(ctx context.Conte
 			WorkflowId: common.StringPtr(request.WorkflowID),
 			RunId:      common.StringPtr(request.RunID),
 		},
-		QueryConsistencyLevel: request.QueryConsistencyLevel,
+		QueryConsistencyLevel: convertQueryConsistencyLevel(request.QueryConsistencyLevel),
 	}
 	var response *s.DescribeWorkflowExecutionResponse
 	err := backoff.Retry(ctx,

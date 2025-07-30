@@ -2056,7 +2056,7 @@ func (s *workflowClientTestSuite) TestDescribeWorkflowExecutionWithOptions() {
 			request: &DescribeWorkflowExecutionWithOptionsRequest{
 				WorkflowID:            workflowID,
 				RunID:                 runID,
-				QueryConsistencyLevel: shared.QueryConsistencyLevelEventual.Ptr(),
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
 			},
 			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
 				s.Equal(domain, req.GetDomain())
@@ -2077,7 +2077,7 @@ func (s *workflowClientTestSuite) TestDescribeWorkflowExecutionWithOptions() {
 			request: &DescribeWorkflowExecutionWithOptionsRequest{
 				WorkflowID:            workflowID,
 				RunID:                 runID,
-				QueryConsistencyLevel: shared.QueryConsistencyLevelStrong.Ptr(),
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
 			},
 			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
 				s.Equal(domain, req.GetDomain())
@@ -2673,7 +2673,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				RunID:                 runID,
 				IsLongPoll:            true,
 				FilterType:            shared.HistoryEventFilterTypeCloseEvent,
-				QueryConsistencyLevel: shared.QueryConsistencyLevelEventual.Ptr(),
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
 			},
 			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
 				s.Equal(domain, req.GetDomain())
@@ -2709,7 +2709,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				RunID:                 runID,
 				IsLongPoll:            false,
 				FilterType:            shared.HistoryEventFilterTypeAllEvent,
-				QueryConsistencyLevel: shared.QueryConsistencyLevelStrong.Ptr(),
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
 			},
 			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
 				s.Equal(domain, req.GetDomain())
@@ -2745,7 +2745,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				RunID:                 runID,
 				IsLongPoll:            false,
 				FilterType:            shared.HistoryEventFilterTypeAllEvent,
-				QueryConsistencyLevel: shared.QueryConsistencyLevelStrong.Ptr(),
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
 			},
 			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
 				s.Equal(domain, req.GetDomain())

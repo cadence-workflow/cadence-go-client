@@ -320,7 +320,7 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 	descResp, err := ts.libClient.DescribeWorkflowExecutionWithOptions(ctx, &client.DescribeWorkflowExecutionWithOptionsRequest{
 		WorkflowID:            "test-consistent-query",
 		RunID:                 run.GetRunID(),
-		QueryConsistencyLevel: shared.QueryConsistencyLevelStrong.Ptr(),
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
 	})
 	ts.Nil(err)
 	ts.NotNil(descResp)
@@ -334,7 +334,7 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 		RunID:                 run.GetRunID(),
 		IsLongPoll:            false,
 		FilterType:            shared.HistoryEventFilterTypeAllEvent,
-		QueryConsistencyLevel: shared.QueryConsistencyLevelStrong.Ptr(),
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
 	})
 	ts.Nil(err)
 	ts.NotNil(histIter)

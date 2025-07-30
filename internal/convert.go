@@ -72,3 +72,14 @@ func convertActiveClusterSelectionPolicy(policy *ActiveClusterSelectionPolicy) (
 		return nil, fmt.Errorf("invalid active cluster selection strategy: %d", policy.Strategy)
 	}
 }
+
+func convertQueryConsistencyLevel(level QueryConsistencyLevel) *s.QueryConsistencyLevel {
+	switch level {
+	case QueryConsistencyLevelEventual:
+		return s.QueryConsistencyLevelEventual.Ptr()
+	case QueryConsistencyLevelStrong:
+		return s.QueryConsistencyLevelStrong.Ptr()
+	default:
+		return nil
+	}
+}

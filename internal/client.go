@@ -586,6 +586,11 @@ type (
 	// ParentClosePolicy defines the action on children when parent is closed
 	ParentClosePolicy int
 
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel int
+
 	// ActiveClusterSelectionPolicy defines the policy for selecting the active cluster to start the workflow execution on for active-active domains.
 	// Active-active domains can be configured to be active in multiple clusters (at most one in a given region).
 	// Individual workflows can be configured to be active in one of the active clusters of the domain.
@@ -635,6 +640,15 @@ const (
 	// WorkflowIDReusePolicyTerminateIfRunning terminate current running workflow using the same workflow ID if exist,
 	// then start a new run in one transaction
 	WorkflowIDReusePolicyTerminateIfRunning
+)
+
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified QueryConsistencyLevel = iota
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong
 )
 
 func getFeatureFlags(options *ClientOptions) FeatureFlags {

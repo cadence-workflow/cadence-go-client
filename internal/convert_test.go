@@ -157,3 +157,39 @@ func TestConvertActiveClusterSelectionPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertQueryConsistencyLevel(t *testing.T) {
+	tests := []struct {
+		name           string
+		level          QueryConsistencyLevel
+		expectedThrift *s.QueryConsistencyLevel
+	}{
+		{
+			name:           "QueryConsistencyLevelUnspecified - return nil",
+			level:          QueryConsistencyLevelUnspecified,
+			expectedThrift: nil,
+		},
+		{
+			name:           "QueryConsistencyLevelEventual - return eventual",
+			level:          QueryConsistencyLevelEventual,
+			expectedThrift: s.QueryConsistencyLevelEventual.Ptr(),
+		},
+		{
+			name:           "QueryConsistencyLevelStrong - return strong",
+			level:          QueryConsistencyLevelStrong,
+			expectedThrift: s.QueryConsistencyLevelStrong.Ptr(),
+		},
+		{
+			name:           "invalid level (999) - return nil",
+			level:          QueryConsistencyLevel(999),
+			expectedThrift: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := convertQueryConsistencyLevel(test.level)
+			assert.Equal(t, test.expectedThrift, result)
+		})
+	}
+}
