@@ -225,7 +225,6 @@ func GetActivityInfo(ctx context.Context) ActivityInfo {
 }
 
 // HasActivityInfo returns if the context contains activity information
-// Should be used before GetActivityInfo to avoid panic
 func HasActivityInfo(ctx context.Context) bool {
 	return hasActivityEnv(ctx)
 }
