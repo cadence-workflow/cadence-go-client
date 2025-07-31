@@ -233,3 +233,25 @@ func (s *activityTestSuite) TestGetWorkerStopChannel() {
 	channel := GetWorkerStopChannel(ctx)
 	s.NotNil(channel)
 }
+
+func (s *activityTestSuite) TestHasActivityInfo() {
+	// Test context without activity info
+	ctx := context.Background()
+	s.False(HasActivityInfo(ctx))
+
+	// Test context with activity info
+	activityEnv := &activityEnvironment{
+		activityID:   "test-activity-id",
+		activityType: ActivityType{Name: "test-activity-type"},
+	}
+	ctxWithActivity := context.WithValue(ctx, activityEnvContextKey, activityEnv)
+	s.True(HasActivityInfo(ctxWithActivity))
+
+	// Test context with nil activity env
+	ctxWithNilActivity := context.WithValue(ctx, activityEnvContextKey, nil)
+	s.False(HasActivityInfo(ctxWithNilActivity))
+
+	// Test context with other values in context
+	ctxWithOtherValue := context.WithValue(ctx, activityOptionsContextKey, "other-value")
+	s.False(HasActivityInfo(ctxWithOtherValue))
+}
