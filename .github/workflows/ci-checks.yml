@@ -136,10 +136,10 @@ jobs:
       - name: Run integration test gRPC
         uses: nick-fields/retry@v3
         with:
-          max_attempts: 1
+          max_attempts: 2
           timeout_minutes: 30
           command: |
-            docker compose -f docker/github_actions/docker-compose.yml run integ-test-grpc bash -c "make integ_test_grpc && exit 1"
+            docker compose -f docker/github_actions/docker-compose.yml run integ-test-grpc bash -c "make integ_test_grpc"
 
       - name: Upload coverage artifacts
         if: always()
