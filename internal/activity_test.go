@@ -252,6 +252,6 @@ func (s *activityTestSuite) TestHasActivityInfo() {
 	s.False(HasActivityInfo(ctxWithNilActivity))
 
 	// Test context with other values in context
-	ctxWithOtherValue := context.WithValue(ctx, "other-key", "other-value")
+	ctxWithOtherValue := context.WithValue(ctx, activityOptionsContextKey, "other-value")
 	s.False(HasActivityInfo(ctxWithOtherValue))
 }
