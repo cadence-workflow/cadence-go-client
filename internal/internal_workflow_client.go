@@ -480,7 +480,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 		FilterType:            filterType,
 		QueryConsistencyLevel: QueryConsistencyLevelUnspecified,
 	}
-	iter, _ := wc.GetWorkflowHistoryWithOptions(ctx, request)
+	iter := wc.GetWorkflowHistoryWithOptions(ctx, request)
 	return iter
 }
 
@@ -490,7 +490,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 //   - EntityNotExistsError
 //   - BadRequestError
 //   - InternalServiceError
-func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) (HistoryEventIterator, error) {
+func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator {
 	domain := wc.domain
 	paginate := func(nextToken []byte) (*s.GetWorkflowExecutionHistoryResponse, error) {
 		req := &s.GetWorkflowExecutionHistoryRequest{
@@ -567,7 +567,7 @@ func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, req
 
 	return &historyEventIteratorImpl{
 		paginate: paginate,
-	}, nil
+	}
 }
 
 func isEntityNonExistFromPassive(err error) bool {

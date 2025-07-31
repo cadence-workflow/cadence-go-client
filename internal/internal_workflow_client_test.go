@@ -2629,7 +2629,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 		requestValidator  func(req *shared.GetWorkflowExecutionHistoryRequest)
 		rpcError          error
 		response          *shared.GetWorkflowExecutionHistoryResponse
-		responseValidator func(iter HistoryEventIterator, err error)
+		responseValidator func(iter HistoryEventIterator)
 	}{
 		{
 			name: "success without query consistency level",
@@ -2657,8 +2657,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				},
 				NextPageToken: nil,
 			},
-			responseValidator: func(iter HistoryEventIterator, err error) {
-				s.NoError(err)
+			responseValidator: func(iter HistoryEventIterator) {
 				s.NotNil(iter)
 				s.True(iter.HasNext())
 				event, nextErr := iter.Next()
@@ -2693,8 +2692,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				},
 				NextPageToken: nil,
 			},
-			responseValidator: func(iter HistoryEventIterator, err error) {
-				s.NoError(err)
+			responseValidator: func(iter HistoryEventIterator) {
 				s.NotNil(iter)
 				s.True(iter.HasNext())
 				event, nextErr := iter.Next()
@@ -2729,8 +2727,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				},
 				NextPageToken: nil,
 			},
-			responseValidator: func(iter HistoryEventIterator, err error) {
-				s.NoError(err)
+			responseValidator: func(iter HistoryEventIterator) {
 				s.NotNil(iter)
 				s.True(iter.HasNext())
 				event, nextErr := iter.Next()
@@ -2768,8 +2765,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				},
 				NextPageToken: nil,
 			},
-			responseValidator: func(iter HistoryEventIterator, err error) {
-				s.NoError(err)
+			responseValidator: func(iter HistoryEventIterator) {
 				s.NotNil(iter)
 
 				// Check that the iterator returns all events in order
@@ -2795,8 +2791,7 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {},
 			rpcError:         &shared.AccessDeniedError{},
 			response:         nil,
-			responseValidator: func(iter HistoryEventIterator, err error) {
-				s.NoError(err, "should not return error immediately")
+			responseValidator: func(iter HistoryEventIterator) {
 				s.NotNil(iter, "iterator should be returned")
 
 				// Error should be returned when iterator is used
@@ -2817,8 +2812,8 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
 				}).
 				Return(tt.response, tt.rpcError)
 
-			iter, err := s.client.GetWorkflowHistoryWithOptions(context.Background(), tt.request)
-			tt.responseValidator(iter, err)
+			iter := s.client.GetWorkflowHistoryWithOptions(context.Background(), tt.request)
+			tt.responseValidator(iter)
 		})
 	}
 }

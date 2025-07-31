@@ -302,7 +302,7 @@ func (_m *Client) GetWorkflowHistory(ctx context.Context, workflowID string, run
 }
 
 // GetWorkflowHistoryWithOptions provides a mock function with given fields: ctx, request
-func (_m *Client) GetWorkflowHistoryWithOptions(ctx context.Context, request *internal.GetWorkflowHistoryWithOptionsRequest) (internal.HistoryEventIterator, error) {
+func (_m *Client) GetWorkflowHistoryWithOptions(ctx context.Context, request *internal.GetWorkflowHistoryWithOptionsRequest) internal.HistoryEventIterator {
 	ret := _m.Called(ctx, request)
 
 	if len(ret) == 0 {
@@ -310,10 +310,6 @@ func (_m *Client) GetWorkflowHistoryWithOptions(ctx context.Context, request *in
 	}
 
 	var r0 internal.HistoryEventIterator
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *internal.GetWorkflowHistoryWithOptionsRequest) (internal.HistoryEventIterator, error)); ok {
-		return rf(ctx, request)
-	}
 	if rf, ok := ret.Get(0).(func(context.Context, *internal.GetWorkflowHistoryWithOptionsRequest) internal.HistoryEventIterator); ok {
 		r0 = rf(ctx, request)
 	} else {
@@ -322,13 +318,7 @@ func (_m *Client) GetWorkflowHistoryWithOptions(ctx context.Context, request *in
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *internal.GetWorkflowHistoryWithOptionsRequest) error); ok {
-		r1 = rf(ctx, request)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // ListArchivedWorkflow provides a mock function with given fields: ctx, request

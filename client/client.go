@@ -255,7 +255,7 @@ type (
 		//  - EntityNotExistsError
 		//  - BadRequestError
 		//  - InternalServiceError
-		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) (HistoryEventIterator, error)
+		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator
 
 		// CompleteActivity reports activity completed.
 		// activity Execute method can return activity.ErrResultPending to
