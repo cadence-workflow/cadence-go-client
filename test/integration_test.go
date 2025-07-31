@@ -329,7 +329,7 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 	ts.Equal(run.GetRunID(), descResp.WorkflowExecutionInfo.GetExecution().GetRunId())
 
 	// Test GetWorkflowHistoryWithOptions with QueryConsistencyLevel
-	histIter, err := ts.libClient.GetWorkflowHistoryWithOptions(ctx, &client.GetWorkflowHistoryWithOptionsRequest{
+	histIter := ts.libClient.GetWorkflowHistoryWithOptions(ctx, &client.GetWorkflowHistoryWithOptionsRequest{
 		WorkflowID:            "test-consistent-query",
 		RunID:                 run.GetRunID(),
 		IsLongPoll:            false,
