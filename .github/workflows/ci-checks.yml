@@ -24,6 +24,7 @@ jobs:
         run: docker compose -f docker/github_actions/docker-compose.yml run unit-test bash -c "make unit_test && ./scripts/gen_coverage_metadata.sh .build/metadata.txt"
 
       - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-unit-test-coverage
@@ -77,6 +78,7 @@ jobs:
             docker compose -f docker/github_actions/docker-compose.yml run integ-test bash -c "make integ_test_sticky_off"
 
       - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-sticky-off-coverage
@@ -108,6 +110,7 @@ jobs:
             docker compose -f docker/github_actions/docker-compose.yml run integ-test bash -c "make integ_test_sticky_on"
 
       - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-sticky-on-coverage
@@ -139,6 +142,7 @@ jobs:
             docker compose -f docker/github_actions/docker-compose.yml run integ-test-grpc bash -c "make integ_test_grpc"
 
       - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-integration-grpc-coverage
