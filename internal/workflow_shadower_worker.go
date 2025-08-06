@@ -72,12 +72,15 @@ func newShadowWorker(
 	replayer.registry = registry
 
 	ensureRequiredParams(&params)
-	if len(params.TaskList) != 0 {
+	if params.TaskList.GetName() != "" {
 		// include domain name in tasklist to avoid confliction
 		// since all shadow workflow will be run in a single system domain
-		params.TaskList = generateShadowTaskList(domain, params.TaskList)
-		params.MetricsScope = tagScope(params.MetricsScope, tagTaskList, params.TaskList)
-		params.Logger = params.Logger.With(zap.String(tagTaskList, params.TaskList))
+		params.TaskList = &shared.TaskList{
+			Name: common.StringPtr(generateShadowTaskList(domain, params.TaskList.GetName())),
+			Kind: params.TaskList.GetKind().Ptr(),
+		}
+		params.MetricsScope = tagScope(params.MetricsScope, tagTaskList, params.TaskList.GetName())
+		params.Logger = params.Logger.With(zap.String(tagTaskList, params.TaskList.GetName()))
 	}
 
 	params.UserContext = context.WithValue(params.UserContext, serviceClientContextKey, service)
@@ -105,7 +108,7 @@ func newShadowWorker(
 
 		service:      service,
 		domain:       domain,
-		taskList:     params.TaskList,
+		taskList:     params.TaskList.GetName(),
 		options:      shadowOptions,
 		logger:       params.Logger,
 		featureFlags: params.FeatureFlags,
