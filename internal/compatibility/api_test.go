@@ -629,10 +629,27 @@ func TestDescribeTaskListResponse(t *testing.T) {
 		thrift.DescribeTaskListResponse,
 		proto.DescribeTaskListResponse,
 		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.TaskListKind, c fuzz.Continue) {
+					validValues := []apiv1.TaskListKind{
+						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
+						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
+						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				func(e *apiv1.TaskListType, c fuzz.Continue) {
+					validValues := []apiv1.TaskListType{
+						apiv1.TaskListType_TASK_LIST_TYPE_INVALID,
+						apiv1.TaskListType_TASK_LIST_TYPE_DECISION,
+						apiv1.TaskListType_TASK_LIST_TYPE_ACTIVITY,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
 			ExcludedFields: []string{
 				"PartitionConfig", // [BUG] PartitionConfig field is lost during round trip - complex nested maps with TaskListPartition not preserved
 				"TaskListStatus",  // [BUG] TaskListStatus fields IsolationGroupMetrics and NewTasksPerSecond are not mapped - they become nil/0 after round trip
-				"TaskList",        // [BUG] TaskList field is lost during round trip - mapper not preserving this field correctly
 			},
 		},
 	)

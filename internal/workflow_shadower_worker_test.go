@@ -90,7 +90,7 @@ func (s *shadowWorkerSuite) TestNewShadowWorker() {
 	s.True(ok)
 
 	taskList := shadowWorker.activityWorker.executionParameters.TaskList
-	s.Contains(taskList, testDomain)
+	s.Contains(taskList.GetName(), testDomain)
 }
 
 func (s *shadowWorkerSuite) TestStartShadowWorker_Failed_InvalidShadowOption() {
@@ -228,7 +228,7 @@ func (s *shadowWorkerSuite) TestStartShadowWorker_Succeed() {
 	var workflowParams shadower.WorkflowParams
 	getDefaultDataConverter().FromData(startRequest.Input, &workflowParams)
 	s.Equal(testDomain, workflowParams.GetDomain())
-	s.Equal(generateShadowTaskList(testDomain, testTaskList), workflowParams.GetTaskList())
+	s.Equal(generateShadowTaskList(testDomain, testTaskList.GetName()), workflowParams.GetTaskList())
 	s.Equal(workflowQuery, workflowParams.GetWorkflowQuery())
 	s.Equal(samplingRate, workflowParams.GetSamplingRate())
 	s.Equal(shadowMode.toThriftPtr(), workflowParams.ShadowMode)

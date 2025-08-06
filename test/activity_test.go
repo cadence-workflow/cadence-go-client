@@ -157,6 +157,10 @@ func (a *Activities) InspectActivitySpan(ctx context.Context) (map[string]string
 	return carrier, err
 }
 
+func (a *Activities) GetTaskList(ctx context.Context) (string, error) {
+	return activity.GetInfo(ctx).TaskList, nil
+}
+
 func (a *Activities) register(worker worker.Worker) {
 	// Kept to verify backward compatibility of activity registration.
 	activity.RegisterWithOptions(a, activity.RegisterOptions{Name: "Activities_", DisableAlreadyRegisteredCheck: true})

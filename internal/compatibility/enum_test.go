@@ -266,6 +266,7 @@ func TestTaskListKind(t *testing.T) {
 		apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
 		apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
 		apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+		apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL,
 	} {
 		assert.Equal(t, item, proto.TaskListKind(thrift.TaskListKind(item)))
 	}

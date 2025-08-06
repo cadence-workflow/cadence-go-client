@@ -1074,7 +1074,7 @@ func TestWorkerOptionDefaults(t *testing.T) {
 	require.Nil(t, decisionWorker.executionParameters.ContextPropagators)
 
 	expected := workerExecutionParameters{
-		TaskList: taskList,
+		TaskList: &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers:        defaultConcurrentPollRoutineSize,
 			MaxConcurrentDecisionTaskPollers:        defaultConcurrentPollRoutineSize,
@@ -1140,7 +1140,7 @@ func TestWorkerOptionNonDefaults(t *testing.T) {
 	require.True(t, len(decisionWorker.executionParameters.ContextPropagators) > 0)
 
 	expected := workerExecutionParameters{
-		TaskList: taskList,
+		TaskList: &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers:        options.MaxConcurrentActivityTaskPollers,
 			MaxConcurrentDecisionTaskPollers:        options.MaxConcurrentDecisionTaskPollers,

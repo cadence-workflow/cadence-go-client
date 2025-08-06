@@ -39,6 +39,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/debug"
 
 	"go.uber.org/cadence/internal/common/isolationgroup"
@@ -132,7 +133,7 @@ type (
 		WorkerOptions
 
 		// Task list name to poll.
-		TaskList string
+		TaskList *shared.TaskList
 
 		// Context to store user provided key/value pairs
 		UserContext context.Context
@@ -168,7 +169,7 @@ func ensureRequiredParams(params *workerExecutionParameters) {
 		params.Tracer = opentracing.NoopTracer{}
 	}
 	if params.Identity == "" {
-		params.Identity = getWorkerIdentity(params.TaskList)
+		params.Identity = getWorkerIdentity(params.TaskList.GetName())
 	}
 	if params.Logger == nil {
 		// create default logger if user does not supply one.
@@ -381,13 +382,27 @@ func newSessionWorker(service workflowserviceclient.Interface,
 	}
 	sessionEnvironment := newSessionEnvironment(params.SessionResourceID, maxConcurrentSessionExecutionSize)
 
-	creationTasklist := getCreationTasklist(params.TaskList)
+	creationTasklist := getCreationTasklist(params.TaskList.GetName())
 	params.UserContext = context.WithValue(params.UserContext, sessionEnvironmentContextKey, sessionEnvironment)
-	params.TaskList = sessionEnvironment.GetResourceSpecificTasklist()
+	resourceSpecificTasklist := sessionEnvironment.GetResourceSpecificTasklist()
+	if params.FeatureFlags.EphemeralTaskListsEnabled {
+		params.TaskList = &shared.TaskList{
+			Name: common.StringPtr(resourceSpecificTasklist),
+			Kind: shared.TaskListKindEphemeral.Ptr(),
+		}
+	} else {
+		params.TaskList = &shared.TaskList{
+			Name: common.StringPtr(resourceSpecificTasklist),
+			Kind: shared.TaskListKindNormal.Ptr(),
+		}
+	}
 	activityWorker := newActivityWorker(service, domain, params, overrides, env, nil)
 
 	params.MaxConcurrentActivityTaskPollers = 1
-	params.TaskList = creationTasklist
+	params.TaskList = &shared.TaskList{
+		Name: common.StringPtr(creationTasklist),
+		Kind: shared.TaskListKindNormal.Ptr(),
+	}
 	creationWorker := newActivityWorker(service, domain, params, overrides, env, sessionEnvironment.GetTokenBucket())
 
 	return &sessionWorker{
@@ -1020,8 +1035,11 @@ func newAggregatedWorker(
 	backgroundActivityContext, backgroundActivityContextCancel := context.WithCancel(ctx)
 
 	workerParams := workerExecutionParameters{
-		WorkerOptions:     wOptions,
-		TaskList:          taskList,
+		WorkerOptions: wOptions,
+		TaskList: &shared.TaskList{
+			Name: common.StringPtr(taskList),
+			Kind: shared.TaskListKindNormal.Ptr(),
+		},
 		UserContext:       backgroundActivityContext,
 		UserContextCancel: backgroundActivityContextCancel,
 	}
