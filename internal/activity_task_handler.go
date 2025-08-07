@@ -80,7 +80,7 @@ func newActivityTaskHandlerWithCustomProvider(
 	}
 	return &activityTaskHandlerImpl{
 		clock:              clock,
-		taskListName:       params.TaskList,
+		taskListName:       params.TaskList.GetName(),
 		identity:           params.Identity,
 		service:            service,
 		logger:             params.Logger,
