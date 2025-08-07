@@ -107,6 +107,7 @@ var (
 		SearchAttributes:             &SearchAttributes,
 		JitterStart:                  Duration4,
 		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicyRegionSticky,
 	}
 	FailWorkflowExecutionDecisionAttributes = apiv1.FailWorkflowExecutionDecisionAttributes{
 		Failure: &Failure,
@@ -163,6 +164,8 @@ var (
 		Header:                       &Header,
 		Memo:                         &Memo,
 		SearchAttributes:             &SearchAttributes,
+		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicyRegionSticky,
 	}
 	StartTimerDecisionAttributes = apiv1.StartTimerDecisionAttributes{
 		TimerId:            TimerID,
