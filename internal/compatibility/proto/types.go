@@ -417,6 +417,7 @@ func WorkflowExecutionInfo(t *shared.WorkflowExecutionInfo) *apiv1.WorkflowExecu
 		AutoResetPoints:     ResetPoints(t.AutoResetPoints),
 		TaskList:            t.GetTaskList(),
 		IsCron:              t.GetIsCron(),
+		CronOverlapPolicy:   CronOverlapPolicy(t.CronOverlapPolicy),
 	}
 }
 

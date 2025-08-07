@@ -421,20 +421,21 @@ func WorkflowExecutionInfo(t *apiv1.WorkflowExecutionInfo) *shared.WorkflowExecu
 		return nil
 	}
 	return &shared.WorkflowExecutionInfo{
-		Execution:        WorkflowExecution(t.WorkflowExecution),
-		Type:             WorkflowType(t.Type),
-		StartTime:        timeToUnixNano(t.StartTime),
-		CloseTime:        timeToUnixNano(t.CloseTime),
-		CloseStatus:      WorkflowExecutionCloseStatus(t.CloseStatus),
-		HistoryLength:    &t.HistoryLength,
-		ParentDomainId:   ParentDomainID(t.ParentExecutionInfo),
-		ParentExecution:  ParentWorkflowExecution(t.ParentExecutionInfo),
-		ExecutionTime:    timeToUnixNano(t.ExecutionTime),
-		Memo:             Memo(t.Memo),
-		SearchAttributes: SearchAttributes(t.SearchAttributes),
-		AutoResetPoints:  ResetPoints(t.AutoResetPoints),
-		TaskList:         &t.TaskList,
-		IsCron:           &t.IsCron,
+		Execution:         WorkflowExecution(t.WorkflowExecution),
+		Type:              WorkflowType(t.Type),
+		StartTime:         timeToUnixNano(t.StartTime),
+		CloseTime:         timeToUnixNano(t.CloseTime),
+		CloseStatus:       WorkflowExecutionCloseStatus(t.CloseStatus),
+		HistoryLength:     &t.HistoryLength,
+		ParentDomainId:    ParentDomainID(t.ParentExecutionInfo),
+		ParentExecution:   ParentWorkflowExecution(t.ParentExecutionInfo),
+		ExecutionTime:     timeToUnixNano(t.ExecutionTime),
+		Memo:              Memo(t.Memo),
+		SearchAttributes:  SearchAttributes(t.SearchAttributes),
+		AutoResetPoints:   ResetPoints(t.AutoResetPoints),
+		TaskList:          &t.TaskList,
+		IsCron:            &t.IsCron,
+		CronOverlapPolicy: CronOverlapPolicy(t.CronOverlapPolicy),
 	}
 }
 

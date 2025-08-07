@@ -48,6 +48,7 @@ const (
 	HostName             = "HostName"
 	Identity             = "Identity"
 	CronSchedule         = "CronSchedule"
+	CronOverlapPolicy    = 0
 	Checksum             = "Checksum"
 	Reason               = "Reason"
 	Cause                = "Cause"

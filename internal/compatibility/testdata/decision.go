@@ -106,6 +106,7 @@ var (
 		Memo:                         &Memo,
 		SearchAttributes:             &SearchAttributes,
 		JitterStart:                  Duration4,
+		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
 	}
 	FailWorkflowExecutionDecisionAttributes = apiv1.FailWorkflowExecutionDecisionAttributes{
 		Failure: &Failure,

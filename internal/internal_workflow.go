@@ -183,6 +183,7 @@ type (
 		dataConverter                       DataConverter
 		retryPolicy                         *shared.RetryPolicy
 		cronSchedule                        string
+		cronOverlapPolicy                   shared.CronOverlapPolicy
 		contextPropagators                  []ContextPropagator
 		memo                                map[string]interface{}
 		searchAttributes                    map[string]interface{}
