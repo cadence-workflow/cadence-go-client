@@ -357,6 +357,9 @@ func WithActivityTask(
 		zapcore.Field{Key: tagWorkflowID, Type: zapcore.StringType, String: *task.WorkflowExecution.WorkflowId},
 		zapcore.Field{Key: tagRunID, Type: zapcore.StringType, String: *task.WorkflowExecution.RunId},
 	)
+	if task.Attempt != nil {
+		logger = logger.With(zapcore.Field{Key: tagAttempt, Type: zapcore.Int64Type, Integer: int64(*task.Attempt)})
+	}
 
 	return context.WithValue(ctx, activityEnvContextKey, &activityEnvironment{
 		taskToken:      task.TaskToken,
