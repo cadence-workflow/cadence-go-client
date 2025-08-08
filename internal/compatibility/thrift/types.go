@@ -421,20 +421,22 @@ func WorkflowExecutionInfo(t *apiv1.WorkflowExecutionInfo) *shared.WorkflowExecu
 		return nil
 	}
 	return &shared.WorkflowExecutionInfo{
-		Execution:        WorkflowExecution(t.WorkflowExecution),
-		Type:             WorkflowType(t.Type),
-		StartTime:        timeToUnixNano(t.StartTime),
-		CloseTime:        timeToUnixNano(t.CloseTime),
-		CloseStatus:      WorkflowExecutionCloseStatus(t.CloseStatus),
-		HistoryLength:    &t.HistoryLength,
-		ParentDomainId:   ParentDomainID(t.ParentExecutionInfo),
-		ParentExecution:  ParentWorkflowExecution(t.ParentExecutionInfo),
-		ExecutionTime:    timeToUnixNano(t.ExecutionTime),
-		Memo:             Memo(t.Memo),
-		SearchAttributes: SearchAttributes(t.SearchAttributes),
-		AutoResetPoints:  ResetPoints(t.AutoResetPoints),
-		TaskList:         &t.TaskList,
-		IsCron:           &t.IsCron,
+		Execution:                    WorkflowExecution(t.WorkflowExecution),
+		Type:                         WorkflowType(t.Type),
+		StartTime:                    timeToUnixNano(t.StartTime),
+		CloseTime:                    timeToUnixNano(t.CloseTime),
+		CloseStatus:                  WorkflowExecutionCloseStatus(t.CloseStatus),
+		HistoryLength:                &t.HistoryLength,
+		ParentDomainId:               ParentDomainID(t.ParentExecutionInfo),
+		ParentExecution:              ParentWorkflowExecution(t.ParentExecutionInfo),
+		ExecutionTime:                timeToUnixNano(t.ExecutionTime),
+		Memo:                         Memo(t.Memo),
+		SearchAttributes:             SearchAttributes(t.SearchAttributes),
+		AutoResetPoints:              ResetPoints(t.AutoResetPoints),
+		TaskList:                     &t.TaskList,
+		IsCron:                       &t.IsCron,
+		CronOverlapPolicy:            CronOverlapPolicy(t.CronOverlapPolicy),
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(t.ActiveClusterSelectionPolicy),
 	}
 }
 
@@ -561,6 +563,7 @@ func DescribeDomainResponseDomain(t *apiv1.Domain) *shared.DescribeDomainRespons
 		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
 			ActiveClusterName: &t.ActiveClusterName,
 			Clusters:          ClusterReplicationConfigurationArray(t.Clusters),
+			ActiveClusters:    ActiveClusters(t.ActiveClusters),
 		},
 		FailoverVersion: &t.FailoverVersion,
 		IsGlobalDomain:  &t.IsGlobalDomain,
@@ -705,4 +708,22 @@ func ActivityLocalDispatchInfoMap(t map[string]*apiv1.ActivityLocalDispatchInfo)
 		v[key] = ActivityLocalDispatchInfo(t[key])
 	}
 	return v
+}
+
+func ActiveClusters(ac *apiv1.ActiveClusters) *shared.ActiveClusters {
+	if ac == nil {
+		return nil
+	}
+
+	clByRegion := make(map[string]*shared.ActiveClusterInfo)
+	for region, clInfo := range ac.RegionToCluster {
+		clByRegion[region] = &shared.ActiveClusterInfo{
+			ActiveClusterName: &clInfo.ActiveClusterName,
+			FailoverVersion:   &clInfo.FailoverVersion,
+		}
+	}
+
+	return &shared.ActiveClusters{
+		ActiveClustersByRegion: clByRegion,
+	}
 }

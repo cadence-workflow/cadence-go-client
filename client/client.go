@@ -78,8 +78,19 @@ type (
 	// QueryWorkflowWithOptionsResponse defines the response to QueryWorkflowWithOptions
 	QueryWorkflowWithOptionsResponse = internal.QueryWorkflowWithOptionsResponse
 
+	// GetWorkflowHistoryWithOptionsRequest defines the request to GetWorkflowHistoryWithOptions
+	GetWorkflowHistoryWithOptionsRequest = internal.GetWorkflowHistoryWithOptionsRequest
+
+	// DescribeWorkflowExecutionWithOptionsRequest defines the request to DescribeWorkflowExecutionWithOptions
+	DescribeWorkflowExecutionWithOptionsRequest = internal.DescribeWorkflowExecutionWithOptionsRequest
+
 	// ParentClosePolicy defines the behavior performed on a child workflow when its parent is closed
 	ParentClosePolicy = internal.ParentClosePolicy
+
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel = internal.QueryConsistencyLevel
 
 	// CancelOption values are functional options for the CancelWorkflow method.
 	// Supported values can be created with:
@@ -225,6 +236,26 @@ type (
 		//			events = append(events, event)
 		//		}
 		GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType s.HistoryEventFilterType) HistoryEventIterator
+
+		// GetWorkflowHistoryWithOptions gets history events of a particular workflow.
+		// See GetWorkflowHistoryWithOptionsRequest for more information.
+		// Returns an iterator of HistoryEvents - see shared.HistoryEvent for more details.
+		// Example:-
+		//	To iterate all events,
+		// 		iter := GetWorkflowHistory(ctx, workflowID, runID, isLongPoll, filterType)
+		//		events := []*shared.HistoryEvent{}
+		//		for iter.HasNext() {
+		//			event, err := iter.Next()
+		//			if err != nil {
+		//				return err
+		//			}
+		//			events = append(events, event)
+		//		}
+		// Returns the following errors:
+		//  - EntityNotExistsError
+		//  - BadRequestError
+		//  - InternalServiceError
+		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator
 
 		// CompleteActivity reports activity completed.
 		// activity Execute method can return activity.ErrResultPending to
@@ -383,6 +414,14 @@ type (
 		//  - EntityNotExistError
 		DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error)
 
+		// DescribeWorkflowExecutionWithOptions returns information about the specified workflow execution.
+		// See DescribeWorkflowExecutionWithOptionsRequest for more information.
+		// The errors it can return:
+		//  - BadRequestError
+		//  - InternalServiceError
+		//  - EntityNotExistError
+		DescribeWorkflowExecutionWithOptions(ctx context.Context, request *DescribeWorkflowExecutionWithOptionsRequest) (*s.DescribeWorkflowExecutionResponse, error)
+
 		// DescribeTaskList returns information about the target tasklist, right now this API returns the
 		// pollers which polled this tasklist in last few minutes.
 		// The errors it can return:
@@ -456,6 +495,15 @@ const (
 	ParentClosePolicyRequestCancel = internal.ParentClosePolicyRequestCancel
 	// ParentClosePolicyAbandon means not doing anything on the child workflow
 	ParentClosePolicyAbandon = internal.ParentClosePolicyAbandon
+)
+
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified = internal.QueryConsistencyLevelUnspecified
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual = internal.QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong = internal.QueryConsistencyLevelStrong
 )
 
 // NewClient creates an instance of a workflow client

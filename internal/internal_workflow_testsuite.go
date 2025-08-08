@@ -191,9 +191,10 @@ type (
 		workerStopChannel  chan struct{}
 		sessionEnvironment *testSessionEnvironmentImpl
 
-		cronSchedule   string
-		cronIterations int
-		workflowInput  []byte
+		cronSchedule      string
+		cronIterations    int
+		workflowInput     []byte
+		cronOverlapPolicy shared.CronOverlapPolicy
 	}
 
 	testSessionEnvironmentImpl struct {
@@ -391,6 +392,7 @@ func (env *testWorkflowEnvironmentImpl) newTestWorkflowEnvironmentForChild(param
 	childEnv.workflowInfo.ParentWorkflowDomain = &env.workflowInfo.Domain
 	childEnv.workflowInfo.ParentWorkflowExecution = &env.workflowInfo.WorkflowExecution
 	childEnv.executionTimeout = time.Duration(*params.executionStartToCloseTimeoutSeconds) * time.Second
+	childEnv.cronOverlapPolicy = params.cronOverlapPolicy
 	if workflowHandler, ok := env.runningWorkflows[params.workflowID]; ok {
 		// duplicate workflow ID
 		if !workflowHandler.handled {

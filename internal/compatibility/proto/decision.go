@@ -142,6 +142,8 @@ func Decision(d *shared.Decision) *apiv1.Decision {
 				Memo:                         Memo(attr.Memo),
 				SearchAttributes:             SearchAttributes(attr.SearchAttributes),
 				JitterStart:                  secondsToDuration(attr.JitterStartSeconds),
+				CronOverlapPolicy:            CronOverlapPolicy(attr.CronOverlapPolicy),
+				ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(attr.ActiveClusterSelectionPolicy),
 			},
 		}
 	case shared.DecisionTypeStartChildWorkflowExecution:
@@ -163,6 +165,8 @@ func Decision(d *shared.Decision) *apiv1.Decision {
 				Header:                       Header(attr.Header),
 				Memo:                         Memo(attr.Memo),
 				SearchAttributes:             SearchAttributes(attr.SearchAttributes),
+				CronOverlapPolicy:            CronOverlapPolicy(attr.CronOverlapPolicy),
+				ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(attr.ActiveClusterSelectionPolicy),
 			},
 		}
 	case shared.DecisionTypeSignalExternalWorkflowExecution:

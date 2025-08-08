@@ -168,6 +168,36 @@ func (_m *Client) DescribeWorkflowExecution(ctx context.Context, workflowID stri
 	return r0, r1
 }
 
+// DescribeWorkflowExecutionWithOptions provides a mock function with given fields: ctx, request
+func (_m *Client) DescribeWorkflowExecutionWithOptions(ctx context.Context, request *internal.DescribeWorkflowExecutionWithOptionsRequest) (*shared.DescribeWorkflowExecutionResponse, error) {
+	ret := _m.Called(ctx, request)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DescribeWorkflowExecutionWithOptions")
+	}
+
+	var r0 *shared.DescribeWorkflowExecutionResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *internal.DescribeWorkflowExecutionWithOptionsRequest) (*shared.DescribeWorkflowExecutionResponse, error)); ok {
+		return rf(ctx, request)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *internal.DescribeWorkflowExecutionWithOptionsRequest) *shared.DescribeWorkflowExecutionResponse); ok {
+		r0 = rf(ctx, request)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*shared.DescribeWorkflowExecutionResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *internal.DescribeWorkflowExecutionWithOptionsRequest) error); ok {
+		r1 = rf(ctx, request)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ExecuteWorkflow provides a mock function with given fields: ctx, options, workflow, args
 func (_m *Client) ExecuteWorkflow(ctx context.Context, options internal.StartWorkflowOptions, workflow interface{}, args ...interface{}) (internal.WorkflowRun, error) {
 	var _ca []interface{}
@@ -262,6 +292,26 @@ func (_m *Client) GetWorkflowHistory(ctx context.Context, workflowID string, run
 	var r0 internal.HistoryEventIterator
 	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, shared.HistoryEventFilterType) internal.HistoryEventIterator); ok {
 		r0 = rf(ctx, workflowID, runID, isLongPoll, filterType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(internal.HistoryEventIterator)
+		}
+	}
+
+	return r0
+}
+
+// GetWorkflowHistoryWithOptions provides a mock function with given fields: ctx, request
+func (_m *Client) GetWorkflowHistoryWithOptions(ctx context.Context, request *internal.GetWorkflowHistoryWithOptionsRequest) internal.HistoryEventIterator {
+	ret := _m.Called(ctx, request)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetWorkflowHistoryWithOptions")
+	}
+
+	var r0 internal.HistoryEventIterator
+	if rf, ok := ret.Get(0).(func(context.Context, *internal.GetWorkflowHistoryWithOptionsRequest) internal.HistoryEventIterator); ok {
+		r0 = rf(ctx, request)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(internal.HistoryEventIterator)

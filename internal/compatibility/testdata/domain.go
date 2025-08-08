@@ -81,6 +81,7 @@ var (
 		VisibilityArchivalUri:            VisibilityArchivalURI,
 		ActiveClusterName:                ClusterName1,
 		Clusters:                         ClusterReplicationConfigurationArray,
+		ActiveClusters:                   ActiveClusters,
 	}
 	ClusterReplicationConfiguration = apiv1.ClusterReplicationConfiguration{
 		ClusterName: ClusterName1,
@@ -91,5 +92,17 @@ var (
 	ActiveClustersByRegion = map[string]string{
 		"Region1": ClusterName1,
 		"Region2": ClusterName2,
+	}
+	ActiveClusters = &apiv1.ActiveClusters{
+		RegionToCluster: map[string]*apiv1.ActiveClusterInfo{
+			"Region1": &apiv1.ActiveClusterInfo{
+				ActiveClusterName: ClusterName1,
+				FailoverVersion:   0,
+			},
+			"Region2": &apiv1.ActiveClusterInfo{
+				ActiveClusterName: ClusterName2,
+				FailoverVersion:   0,
+			},
+		},
 	}
 )

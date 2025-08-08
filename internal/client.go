@@ -219,6 +219,15 @@ type (
 		//		}
 		GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType s.HistoryEventFilterType) HistoryEventIterator
 
+		// GetWorkflowHistoryWithOptions gets history events of a particular workflow.
+		// See GetWorkflowHistoryWithOptionsRequest for more information.
+		// Returns an iterator of HistoryEvents - see shared.HistoryEvent for more details.
+		// The errors it can return:
+		//  - EntityNotExistsError
+		//  - BadRequestError
+		//  - InternalServiceError
+		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator
+
 		// CompleteActivity reports activity completed.
 		// activity Execute method can return acitivity.activity.ErrResultPending to
 		// indicate the activity is not completed when it's Execute method returns. In that case, this CompleteActivity() method
@@ -366,6 +375,14 @@ type (
 		//  - InternalServiceError
 		//  - EntityNotExistError
 		DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error)
+
+		// DescribeWorkflowExecutionWithOptions returns information about the specified workflow execution.
+		// See DescribeWorkflowExecutionWithOptionsRequest for more information.
+		// The errors it can return:
+		//  - BadRequestError
+		//  - InternalServiceError
+		//  - EntityNotExistError
+		DescribeWorkflowExecutionWithOptions(ctx context.Context, request *DescribeWorkflowExecutionWithOptionsRequest) (*s.DescribeWorkflowExecutionResponse, error)
 
 		// DescribeTaskList returns information about the target tasklist, right now this API returns the
 		// pollers which polled this tasklist in last few minutes.
@@ -569,6 +586,11 @@ type (
 	// ParentClosePolicy defines the action on children when parent is closed
 	ParentClosePolicy int
 
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel int
+
 	// ActiveClusterSelectionPolicy defines the policy for selecting the active cluster to start the workflow execution on for active-active domains.
 	// Active-active domains can be configured to be active in multiple clusters (at most one in a given region).
 	// Individual workflows can be configured to be active in one of the active clusters of the domain.
@@ -618,6 +640,15 @@ const (
 	// WorkflowIDReusePolicyTerminateIfRunning terminate current running workflow using the same workflow ID if exist,
 	// then start a new run in one transaction
 	WorkflowIDReusePolicyTerminateIfRunning
+)
+
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified QueryConsistencyLevel = iota
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong
 )
 
 func getFeatureFlags(options *ClientOptions) FeatureFlags {

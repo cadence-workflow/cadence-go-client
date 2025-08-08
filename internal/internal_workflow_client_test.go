@@ -2023,6 +2023,107 @@ func (s *workflowClientTestSuite) TestDescribeWorkflowExecution() {
 	}
 }
 
+func (s *workflowClientTestSuite) TestDescribeWorkflowExecutionWithOptions() {
+	testcases := []struct {
+		name              string
+		request           *DescribeWorkflowExecutionWithOptionsRequest
+		requestValidator  func(req *shared.DescribeWorkflowExecutionRequest)
+		rpcError          error
+		response          *shared.DescribeWorkflowExecutionResponse
+		responseValidator func(resp *shared.DescribeWorkflowExecutionResponse, err error)
+	}{
+		{
+			name: "success without query consistency level",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Nil(req.QueryConsistencyLevel, "should be nil when not specified")
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "success with query consistency level eventual",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelEventual, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "success with query consistency level strong",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "RPC failure",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {},
+			rpcError:         &shared.AccessDeniedError{},
+			response:         nil,
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.Equal(&shared.AccessDeniedError{}, err)
+				s.Nil(resp)
+			},
+		},
+	}
+
+	for _, tt := range testcases {
+		s.Run(tt.name, func() {
+			s.service.EXPECT().
+				DescribeWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *shared.DescribeWorkflowExecutionRequest, _ ...interface{}) {
+					tt.requestValidator(req)
+				}).
+				Return(tt.response, tt.rpcError)
+
+			resp, err := s.client.DescribeWorkflowExecutionWithOptions(context.Background(), tt.request)
+			tt.responseValidator(resp, err)
+		})
+	}
+}
+
 func (s *workflowClientTestSuite) TestCompleteActivity() {
 	testcases := []struct {
 		name           string
@@ -2518,6 +2619,202 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistory() {
 		event, err := iterator.Next()
 		s.NoError(err)
 		s.Equal(int64(i), event.GetEventId())
+	}
+}
+
+func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
+	testcases := []struct {
+		name              string
+		request           *GetWorkflowHistoryWithOptionsRequest
+		requestValidator  func(req *shared.GetWorkflowExecutionHistoryRequest)
+		rpcError          error
+		response          *shared.GetWorkflowExecutionHistoryResponse
+		responseValidator func(iter HistoryEventIterator)
+	}{
+		{
+			name: "success without query consistency level",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+				IsLongPoll: false,
+				FilterType: shared.HistoryEventFilterTypeAllEvent,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.Nil(req.QueryConsistencyLevel, "should be nil when not specified")
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(1)},
+						{EventId: common.Int64Ptr(2)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(1), event.GetEventId())
+			},
+		},
+		{
+			name: "success with query consistency level eventual",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            true,
+				FilterType:            shared.HistoryEventFilterTypeCloseEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(true, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeCloseEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelEventual, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(10)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(10), event.GetEventId())
+			},
+		},
+		{
+			name: "success with query consistency level strong",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            false,
+				FilterType:            shared.HistoryEventFilterTypeAllEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(5)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(5), event.GetEventId())
+			},
+		},
+		{
+			name: "success with multiple events and pagination",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            false,
+				FilterType:            shared.HistoryEventFilterTypeAllEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(1)},
+						{EventId: common.Int64Ptr(2)},
+						{EventId: common.Int64Ptr(3)},
+						{EventId: common.Int64Ptr(4)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+
+				// Check that the iterator returns all events in order
+				for i := 1; i <= 4; i++ {
+					s.True(iter.HasNext(), "should have event %d", i)
+					event, nextErr := iter.Next()
+					s.NoError(nextErr)
+					s.Equal(int64(i), event.GetEventId())
+				}
+
+				// Verify no more events
+				s.False(iter.HasNext(), "should not have more events")
+			},
+		},
+		{
+			name: "RPC failure",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+				IsLongPoll: false,
+				FilterType: shared.HistoryEventFilterTypeAllEvent,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {},
+			rpcError:         &shared.AccessDeniedError{},
+			response:         nil,
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter, "iterator should be returned")
+
+				// Error should be returned when iterator is used
+				s.True(iter.HasNext(), "should have next to trigger error")
+				event, iterErr := iter.Next()
+				s.Equal(&shared.AccessDeniedError{}, iterErr)
+				s.Nil(event)
+			},
+		},
+	}
+
+	for _, tt := range testcases {
+		s.Run(tt.name, func() {
+			s.service.EXPECT().
+				GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *shared.GetWorkflowExecutionHistoryRequest, _ ...interface{}) {
+					tt.requestValidator(req)
+				}).
+				Return(tt.response, tt.rpcError)
+
+			iter := s.client.GetWorkflowHistoryWithOptions(context.Background(), tt.request)
+			tt.responseValidator(iter)
+		})
 	}
 }
 

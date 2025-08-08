@@ -315,6 +315,34 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 	var queryResult string
 	ts.NoError(value.QueryResult.Get(&queryResult))
 	ts.Equal("signal-input", queryResult)
+
+	// Test DescribeWorkflowExecutionWithOptions with QueryConsistencyLevel
+	descResp, err := ts.libClient.DescribeWorkflowExecutionWithOptions(ctx, &client.DescribeWorkflowExecutionWithOptionsRequest{
+		WorkflowID:            "test-consistent-query",
+		RunID:                 run.GetRunID(),
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
+	})
+	ts.Nil(err)
+	ts.NotNil(descResp)
+	ts.NotNil(descResp.WorkflowExecutionInfo)
+	ts.Equal("test-consistent-query", descResp.WorkflowExecutionInfo.GetExecution().GetWorkflowId())
+	ts.Equal(run.GetRunID(), descResp.WorkflowExecutionInfo.GetExecution().GetRunId())
+
+	// Test GetWorkflowHistoryWithOptions with QueryConsistencyLevel
+	histIter := ts.libClient.GetWorkflowHistoryWithOptions(ctx, &client.GetWorkflowHistoryWithOptionsRequest{
+		WorkflowID:            "test-consistent-query",
+		RunID:                 run.GetRunID(),
+		IsLongPoll:            false,
+		FilterType:            shared.HistoryEventFilterTypeAllEvent,
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
+	})
+	ts.Nil(err)
+	ts.NotNil(histIter)
+	ts.True(histIter.HasNext())
+	firstEvent, err := histIter.Next()
+	ts.Nil(err)
+	ts.NotNil(firstEvent)
+	ts.Equal(shared.EventTypeWorkflowExecutionStarted, firstEvent.GetEventType())
 }
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseRejectDuplicate() {
