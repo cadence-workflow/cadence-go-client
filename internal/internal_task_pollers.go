@@ -611,7 +611,9 @@ func (lath *localActivityTaskHandler) executeLocalActivityTask(task *localActivi
 		zap.String(tagLocalActivityType, activityType),
 		zap.String(tagWorkflowType, workflowType),
 		zap.String(tagWorkflowID, task.params.WorkflowInfo.WorkflowExecution.ID),
-		zap.String(tagRunID, task.params.WorkflowInfo.WorkflowExecution.RunID))
+		zap.String(tagRunID, task.params.WorkflowInfo.WorkflowExecution.RunID),
+		zap.Int64(tagAttempt, int64(task.attempt)),
+	)
 
 	metricsScope.Counter(metrics.LocalActivityTotalCounter).Inc(1)
 
