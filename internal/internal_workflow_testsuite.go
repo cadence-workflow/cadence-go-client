@@ -1699,6 +1699,7 @@ func newTestActivityTask(workflowID, runID, activityID, workflowTypeName, domain
 		StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(params.StartToCloseTimeoutSeconds),
 		HeartbeatTimeoutSeconds:         common.Int32Ptr(params.HeartbeatTimeoutSeconds),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &shared.WorkflowType{
 			Name: common.StringPtr(workflowTypeName),
 		},

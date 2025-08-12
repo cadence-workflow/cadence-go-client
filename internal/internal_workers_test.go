@@ -156,6 +156,7 @@ func (s *WorkersTestSuite) TestActivityWorkerStop() {
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &m.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},

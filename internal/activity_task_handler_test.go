@@ -87,6 +87,7 @@ func TestActivityTaskHandler_Execute_deadline(t *testing.T) {
 				ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(d.ScheduleDuration),
 				StartedTimestamp:                common.Int64Ptr(d.StartTS.UnixNano()),
 				StartToCloseTimeoutSeconds:      common.Int32Ptr(d.StartDuration),
+				Attempt:                         common.Int32Ptr(0),
 				WorkflowType: &s.WorkflowType{
 					Name: common.StringPtr("wType"),
 				},
@@ -139,6 +140,7 @@ func TestActivityTaskHandler_Execute_worker_stop(t *testing.T) {
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &s.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},
@@ -193,6 +195,7 @@ func TestActivityTaskHandler_Execute_with_propagators(t *testing.T) {
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &s.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},
@@ -245,6 +248,7 @@ func TestActivityTaskHandler_Execute_with_propagator_failure(t *testing.T) {
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &s.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},
@@ -301,6 +305,7 @@ func TestActivityTaskHandler_Execute_with_auto_heartbeat(t *testing.T) {
 		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
 		HeartbeatTimeoutSeconds:         common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &s.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},

@@ -26,6 +26,7 @@ const (
 	tagDomain                      = "Domain"
 	tagEventID                     = "EventID"
 	tagEventType                   = "EventType"
+	tagAttempt                     = "Attempt"
 	tagRunID                       = "RunID"
 	tagTaskList                    = "TaskList"
 	tagTimerID                     = "TimerID"

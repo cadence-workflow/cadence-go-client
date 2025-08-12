@@ -356,6 +356,7 @@ func WithActivityTask(
 		zapcore.Field{Key: tagWorkflowType, Type: zapcore.StringType, String: *task.WorkflowType.Name},
 		zapcore.Field{Key: tagWorkflowID, Type: zapcore.StringType, String: *task.WorkflowExecution.WorkflowId},
 		zapcore.Field{Key: tagRunID, Type: zapcore.StringType, String: *task.WorkflowExecution.RunId},
+		zapcore.Field{Key: tagAttempt, Type: zapcore.Int64Type, Integer: int64(task.GetAttempt())},
 	)
 
 	return context.WithValue(ctx, activityEnvContextKey, &activityEnvironment{
