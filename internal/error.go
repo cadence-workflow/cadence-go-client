@@ -190,6 +190,10 @@ const (
 	errReasonGeneric  = "cadenceInternal:Generic"
 	errReasonCanceled = "cadenceInternal:Canceled"
 	errReasonTimeout  = "cadenceInternal:Timeout"
+
+	badNilErrMsgFmt = "cadence received an invalid nil `%T`." +
+		" this likely means you have a typed nil which is being" +
+		" converted into an `error` value: https://go.dev/doc/faq#nil_error"
 )
 
 // ErrNoData is returned when trying to extract strong typed data while there is no data available.
