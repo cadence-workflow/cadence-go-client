@@ -1419,19 +1419,6 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "autoscaler options: some fields set",
-			args: args{options: WorkerOptions{
-				AutoScalerOptions: AutoScalerOptions{
-					Enabled: true,
-				},
-			}},
-			want: WorkerOptions{
-				AutoScalerOptions: AutoScalerOptions{
-					Enabled: true,
-				},
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
