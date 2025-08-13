@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -133,6 +134,23 @@ func TestGetErrorDetails_TimeoutError(t *testing.T) {
 	reason, data = getErrorDetails(timeoutErr2, dc)
 	require.Equal(t, fmt.Sprintf("%v %v", errReasonTimeout, s.TimeoutTypeHeartbeat), reason)
 	require.Equal(t, val2, data)
+}
+
+func Test_getErrorDetails_nil(t *testing.T) {
+	// typed nils caused panics, prevent them from coming back
+	check := func(t *testing.T, err error) {
+		reason, data := getErrorDetails(err, getDefaultDataConverter())
+		dataStr := string(data)
+		assert.Equalf(t, errReasonGeneric, reason, "wrong reason for %T", err)
+		assert.Contains(t, dataStr, "typed nil", "wrong data for %T", err)
+	}
+	check(t, (*CanceledError)(nil))
+	check(t, (*CustomError)(nil))
+	check(t, (*PanicError)(nil))
+	check(t, (*TimeoutError)(nil))
+	// other types are probably also good to handle, but e.g. handling
+	// external error types will require panic recovery.
+	// this might be a good idea, but for now this just covers "we can do better with our types".
 }
 
 func TestConstructError_TimeoutError(t *testing.T) {

@@ -63,9 +63,9 @@ const (
 
 	// defaultRPCTimeout is the default tchannel rpc call timeout
 	defaultRPCTimeout = 10 * time.Second
-	//minRPCTimeout is minimum rpc call timeout allowed
+	// minRPCTimeout is minimum rpc call timeout allowed
 	minRPCTimeout = 1 * time.Second
-	//maxRPCTimeout is maximum rpc call timeout allowed
+	// maxRPCTimeout is maximum rpc call timeout allowed
 	maxRPCTimeout = 5 * time.Second
 	// maxQueryRPCTimeout is the maximum rpc call timeout allowed for query
 	maxQueryRPCTimeout = 20 * time.Second
@@ -243,6 +243,9 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *CustomError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
@@ -258,6 +261,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *CanceledError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			// treat this as a failure, not a cancel, as it likely is not a real cancel
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
@@ -271,6 +278,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 		}
 		return errReasonCanceled, data
 	case *PanicError:
+		if err == nil {
+			// treat this as a failure, not a panic, as it likely is not a real panic
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		data, err0 := encodeArgs(dataConverter, []interface{}{err.Error(), err.StackTrace()})
 		if err0 != nil {
 			panic(err0)
@@ -279,6 +290,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *TimeoutError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			// treat this as a failure, not a timeout, as it likely is not a real timeout
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
