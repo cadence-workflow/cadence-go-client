@@ -301,15 +301,13 @@ func TestConcurrencyAutoScaler(t *testing.T) {
 
 			var actualEvents []eventLog
 			for _, event := range obs.FilterMessage(autoScalerEventLogMsg).All() {
-				if event.ContextMap()["event"] != string(autoScalerEventEmitMetrics) {
-					t.Log("event: ", event.ContextMap())
+				t.Log("event: ", event.ContextMap())
 
-					actualEvents = append(actualEvents, eventLog{
-						eventType:   autoScalerEvent(event.ContextMap()["event"].(string)),
-						enabled:     event.ContextMap()["enabled"].(bool),
-						pollerQuota: event.ContextMap()["poller_quota"].(int64),
-					})
-				}
+				actualEvents = append(actualEvents, eventLog{
+					eventType:   autoScalerEvent(event.ContextMap()["event"].(string)),
+					enabled:     event.ContextMap()["enabled"].(bool),
+					pollerQuota: event.ContextMap()["poller_quota"].(int64),
+				})
 			}
 			assert.ElementsMatch(t, tt.expectedEvents, actualEvents)
 		})
