@@ -216,11 +216,13 @@ func (c *ConcurrencyAutoScaler) logEvent(event autoScalerEvent) {
 	}
 	c.scope.Histogram(metricsPollerQuota, metricsPollerQuotaBuckets).RecordValue(float64(c.concurrency.PollerPermit.Quota()))
 	c.scope.Histogram(metricsPollerWaitTime, metricsPollerWaitTimeBuckets).RecordDuration(c.pollerWaitTime.Average())
-	c.log.Debug(autoScalerEventLogMsg,
-		zap.String("event", string(event)),
-		zap.Bool("enabled", c.enabled),
-		zap.Int("poller_quota", c.concurrency.PollerPermit.Quota()),
-	)
+	if event != autoScalerEventEmitMetrics {
+		c.log.Debug(autoScalerEventLogMsg,
+			zap.String("event", string(event)),
+			zap.Bool("enabled", c.enabled),
+			zap.Int("poller_quota", c.concurrency.PollerPermit.Quota()),
+		)
+	}
 }
 
 func (c *ConcurrencyAutoScaler) updatePollerPermit() {
