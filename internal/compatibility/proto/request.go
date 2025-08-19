@@ -242,6 +242,7 @@ func RequestCancelWorkflowExecutionRequest(t *shared.RequestCancelWorkflowExecut
 		Domain:            t.GetDomain(),
 		WorkflowExecution: WorkflowExecution(t.WorkflowExecution),
 		Identity:          t.GetIdentity(),
+		Cause:             t.GetCause(),
 		RequestId:         t.GetRequestId(),
 	}
 }
@@ -553,7 +554,7 @@ func UpdateDomainRequest(t *shared.UpdateDomainRequest) *apiv1.UpdateDomainReque
 			request.WorkflowExecutionRetentionPeriod = daysToDuration(configuration.WorkflowExecutionRetentionPeriodInDays)
 			fields = append(fields, DomainUpdateRetentionPeriodField)
 		}
-		//if t.EmitMetric != nil {} - DEPRECATED
+		// if t.EmitMetric != nil {} - DEPRECATED
 		if configuration.BadBinaries != nil {
 			request.BadBinaries = BadBinaries(configuration.BadBinaries)
 			fields = append(fields, DomainUpdateBadBinariesField)
