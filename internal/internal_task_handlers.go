@@ -144,6 +144,7 @@ type (
 		tracer                         opentracing.Tracer
 		workflowInterceptorFactories   []WorkflowInterceptorFactory
 		disableStrictNonDeterminism    bool
+		featureFlags                   FeatureFlags
 	}
 
 	activityProvider func(name string) activity
@@ -419,6 +420,7 @@ func newWorkflowTaskHandler(
 		tracer:                         params.Tracer,
 		workflowInterceptorFactories:   params.WorkflowInterceptorChainFactories,
 		disableStrictNonDeterminism:    params.WorkerBugPorts.DisableStrictNonDeterminismCheck,
+		featureFlags:                   params.FeatureFlags,
 	}
 
 	traceLog(func() {
@@ -622,6 +624,7 @@ func (w *workflowExecutionContextImpl) createEventHandler() {
 		w.wth.contextPropagators,
 		w.wth.tracer,
 		w.wth.workflowInterceptorFactories,
+		w.wth.featureFlags,
 	)
 	w.eventHandler.Store(eventHandler)
 }

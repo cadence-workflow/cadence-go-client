@@ -327,6 +327,7 @@ func newTestWorkflowEnvironmentImpl(s *WorkflowTestSuite, parentRegistry *regist
 
 	env.service = mockService
 
+	env.workerOptions.FeatureFlags = FeatureFlags{EphemeralTaskListsEnabled: true}
 	if env.workerOptions.Logger == nil {
 		env.workerOptions.Logger = env.logger
 	}
@@ -1634,7 +1635,7 @@ func (env *testWorkflowEnvironmentImpl) newTestActivityTaskHandler(taskList stri
 	wOptions.DataConverter = dataConverter
 	params := workerExecutionParameters{
 		WorkerOptions:     wOptions,
-		TaskList:          taskList,
+		TaskList:          &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		UserContext:       wOptions.BackgroundActivityContext,
 		WorkerStopChannel: env.workerStopChannel,
 	}
@@ -2164,6 +2165,10 @@ func (env *testWorkflowEnvironmentImpl) GetRegistry() *registry {
 
 func (env *testWorkflowEnvironmentImpl) GetWorkflowInterceptors() []WorkflowInterceptorFactory {
 	return env.workflowInterceptors
+}
+
+func (env *testWorkflowEnvironmentImpl) GetFeatureFlags() FeatureFlags {
+	return env.workerOptions.FeatureFlags
 }
 
 func newTestSessionEnvironment(testWorkflowEnvironment *testWorkflowEnvironmentImpl,
