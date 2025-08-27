@@ -1096,7 +1096,7 @@ func (atp *activityTaskPoller) poll(ctx context.Context) (*s.PollForActivityTask
 	}
 	if response == nil || len(response.TaskToken) == 0 {
 		atp.metricsScope.Counter(metrics.ActivityPollNoTaskCounter).Inc(1)
-		return nil, startTime, nil
+		return response, startTime, nil
 	}
 
 	return response, startTime, err
