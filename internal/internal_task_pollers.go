@@ -1130,7 +1130,7 @@ func (atp *activityTaskPoller) pollWithMetrics(ctx context.Context,
 	scheduledToStartLatency := time.Duration(response.GetStartedTimestamp() - response.GetScheduledTimestampOfThisAttempt())
 	metricsScope.Timer(metrics.ActivityScheduledToStartLatency).Record(scheduledToStartLatency)
 
-	return &activityTask{task: response, pollStartTime: startTime}, nil
+	return &activityTask{task: response, pollStartTime: startTime, autoConfigHint: response.GetAutoConfigHint()}, nil
 }
 
 // PollTask polls a new task
