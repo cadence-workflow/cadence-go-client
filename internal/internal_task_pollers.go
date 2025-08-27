@@ -909,6 +909,7 @@ func (wtp *workflowTaskPoller) toWorkflowTask(response *s.PollForDecisionTaskRes
 	task := &workflowTask{
 		task:            response,
 		historyIterator: historyIterator,
+		autoConfigHint:  response.GetAutoConfigHint(),
 	}
 	return task
 }
