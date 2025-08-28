@@ -1065,6 +1065,7 @@ func testWorkflowExecutionEventHandler(t *testing.T, registry *registry) *workfl
 		nil,
 		opentracing.NoopTracer{},
 		nil,
+		FeatureFlags{},
 	).(*workflowExecutionEventHandlerImpl)
 }
 

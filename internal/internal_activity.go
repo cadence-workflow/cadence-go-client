@@ -59,6 +59,7 @@ type (
 	activityOptions struct {
 		ActivityID                    *string // Users can choose IDs but our framework makes it optional to decrease the crust.
 		TaskListName                  string
+		TaskListKind                  shared.TaskListKind
 		ScheduleToCloseTimeoutSeconds int32
 		ScheduleToStartTimeoutSeconds int32
 		StartToCloseTimeoutSeconds    int32
