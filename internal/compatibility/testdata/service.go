@@ -443,8 +443,9 @@ var (
 		Identity:          Identity,
 	}
 	DescribeWorkflowExecutionRequest = apiv1.DescribeWorkflowExecutionRequest{
-		Domain:            DomainName,
-		WorkflowExecution: &WorkflowExecution,
+		Domain:                DomainName,
+		WorkflowExecution:     &WorkflowExecution,
+		QueryConsistencyLevel: QueryConsistencyLevel,
 	}
 	DescribeWorkflowExecutionResponse = apiv1.DescribeWorkflowExecutionResponse{
 		ExecutionConfiguration: &WorkflowExecutionConfiguration,
@@ -504,6 +505,7 @@ var (
 		WaitForNewEvent:        true,
 		HistoryEventFilterType: HistoryEventFilterType,
 		SkipArchival:           true,
+		QueryConsistencyLevel:  QueryConsistencyLevel,
 	}
 	GetWorkflowExecutionHistoryResponse = apiv1.GetWorkflowExecutionHistoryResponse{
 		History:       &History,
