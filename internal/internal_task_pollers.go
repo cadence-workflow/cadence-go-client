@@ -909,6 +909,7 @@ func (wtp *workflowTaskPoller) toWorkflowTask(response *s.PollForDecisionTaskRes
 	task := &workflowTask{
 		task:            response,
 		historyIterator: historyIterator,
+		autoConfigHint:  response.GetAutoConfigHint(),
 	}
 	return task
 }
@@ -1096,7 +1097,7 @@ func (atp *activityTaskPoller) poll(ctx context.Context) (*s.PollForActivityTask
 	}
 	if response == nil || len(response.TaskToken) == 0 {
 		atp.metricsScope.Counter(metrics.ActivityPollNoTaskCounter).Inc(1)
-		return nil, startTime, nil
+		return response, startTime, nil
 	}
 
 	return response, startTime, err
@@ -1129,7 +1130,7 @@ func (atp *activityTaskPoller) pollWithMetrics(ctx context.Context,
 	scheduledToStartLatency := time.Duration(response.GetStartedTimestamp() - response.GetScheduledTimestampOfThisAttempt())
 	metricsScope.Timer(metrics.ActivityScheduledToStartLatency).Record(scheduledToStartLatency)
 
-	return &activityTask{task: response, pollStartTime: startTime}, nil
+	return &activityTask{task: response, pollStartTime: startTime, autoConfigHint: response.GetAutoConfigHint()}, nil
 }
 
 // PollTask polls a new task
