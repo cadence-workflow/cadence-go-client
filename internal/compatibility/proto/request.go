@@ -76,8 +76,9 @@ func DescribeWorkflowExecutionRequest(t *shared.DescribeWorkflowExecutionRequest
 		return nil
 	}
 	return &apiv1.DescribeWorkflowExecutionRequest{
-		Domain:            t.GetDomain(),
-		WorkflowExecution: WorkflowExecution(t.Execution),
+		Domain:                t.GetDomain(),
+		WorkflowExecution:     WorkflowExecution(t.Execution),
+		QueryConsistencyLevel: QueryConsistencyLevel(t.QueryConsistencyLevel),
 	}
 }
 
@@ -104,6 +105,7 @@ func GetWorkflowExecutionHistoryRequest(t *shared.GetWorkflowExecutionHistoryReq
 		WaitForNewEvent:        t.GetWaitForNewEvent(),
 		HistoryEventFilterType: EventFilterType(t.HistoryEventFilterType),
 		SkipArchival:           t.GetSkipArchival(),
+		QueryConsistencyLevel:  QueryConsistencyLevel(t.QueryConsistencyLevel),
 	}
 }
 
