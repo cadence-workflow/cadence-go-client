@@ -505,6 +505,7 @@ var (
 		WaitForNewEvent:        true,
 		HistoryEventFilterType: HistoryEventFilterType,
 		SkipArchival:           true,
+		QueryConsistencyLevel:  QueryConsistencyLevel,
 	}
 	GetWorkflowExecutionHistoryResponse = apiv1.GetWorkflowExecutionHistoryResponse{
 		History:       &History,
