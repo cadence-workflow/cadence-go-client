@@ -41,134 +41,6 @@ import (
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
-type ignoreFieldType struct{}
-
-var ignoreField = ignoreFieldType{}
-
-func assertAllFieldsSet(t *testing.T, obj interface{}, ignoredFields map[string]ignoreFieldType) {
-	if obj == nil {
-		return
-	}
-
-	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return
-		}
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return
-	}
-
-	structType := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldType := structType.Field(i)
-		fieldName := fieldType.Name
-
-		if ignoredFields != nil {
-			if _, ignored := ignoredFields[fieldName]; ignored {
-				continue
-			}
-		}
-
-		if !field.CanInterface() {
-			continue
-		}
-
-		// Ignore protobuf internal fields
-		if strings.HasPrefix(fieldName, "XXX_") {
-			continue
-		}
-
-		if isDefaultValue(field) {
-			t.Errorf("Field %s.%s is set to default value, this may indicate missing mapper implementation", structType.Name(), fieldName)
-		}
-	}
-}
-
-func isDefaultValue(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Bool:
-		return !v.Bool()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int() == 0
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return v.Uint() == 0
-	case reflect.Float32, reflect.Float64:
-		return v.Float() == 0
-	case reflect.String:
-		return v.String() == ""
-	case reflect.Ptr, reflect.Interface:
-		return v.IsNil()
-	case reflect.Slice, reflect.Map:
-		return v.IsNil() || v.Len() == 0
-	case reflect.Array:
-		return v.Len() == 0
-	case reflect.Struct:
-		return reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface())
-	default:
-		return false
-	}
-}
-
-func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) interface{}, protoType interface{}) {
-	fuzzer := testdatagen.NewWithNilChance(t, int64(123), DEFAULT_NIL_CHANCE,
-		// Custom fuzzer for gogo protobuf timestamps to avoid conversion precision issues
-		// Use realistic timestamp range that doesn't lose precision in UnixNano conversion
-		func(ts *gogo.Timestamp, c fuzz.Continue) {
-			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
-			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
-		},
-		// Custom fuzzer for gogo protobuf durations
-		func(d *gogo.Duration, c fuzz.Continue) {
-			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
-			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
-		},
-		// Custom fuzzer for Payload to handle data consistently
-		// Note: empty vs nil data has semantic differences in the mappers
-		// This focuses on non-empty data to test the core mapping logic
-		func(p *apiv1.Payload, c fuzz.Continue) {
-			// Always generate non-empty data to avoid empty/nil semantic differences
-			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
-			p.Data = make([]byte, length)
-			for i := 0; i < length; i++ {
-				p.Data[i] = byte(c.Uint32())
-			}
-		},
-		// Custom fuzzer for DecisionTaskFailedCause to generate valid enum values
-		func(cause *apiv1.DecisionTaskFailedCause, c fuzz.Continue) {
-			validValues := []apiv1.DecisionTaskFailedCause{
-				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_UNHANDLED_DECISION,
-				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_SCHEDULE_ACTIVITY_ATTRIBUTES,
-				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_REQUEST_CANCEL_ACTIVITY_ATTRIBUTES,
-				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_START_TIMER_ATTRIBUTES,
-				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_CANCEL_TIMER_ATTRIBUTES,
-			}
-			*cause = validValues[c.Intn(len(validValues))]
-		},
-	)
-
-	for i := 0; i < DEFAULT_ITERATIONS; i++ {
-		fuzzed := reflect.New(reflect.TypeOf(protoType).Elem()).Interface()
-		fuzzer.Fuzz(fuzzed)
-
-		// Clear protobuf internal fields that shouldn't be part of the round trip test
-		clearProtobufInternalFields(fuzzed)
-
-		// Test proto -> thrift -> proto round trip
-		thriftResult := protoToThrift(fuzzed)
-		protoResult := thriftToProto(thriftResult)
-
-		// Clear internal fields from result as well
-		clearProtobufInternalFields(protoResult)
-
-		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
-	}
-}
-
 // clearFieldsIf recursively traverses an object and clears fields that match the predicate function
 func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
 	if obj == nil {
@@ -350,13 +222,11 @@ func TestActivityLocalDispatchInfo(t *testing.T) {
 	for _, item := range []*apiv1.ActivityLocalDispatchInfo{nil, {}, &testdata.ActivityLocalDispatchInfo} {
 		assert.Equal(t, item, proto.ActivityLocalDispatchInfo(thrift.ActivityLocalDispatchInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityLocalDispatchInfo, nil)
 
-	// Fuzz test V2 (type-safe version)
 	runFuzzTestV2(t,
 		thrift.ActivityLocalDispatchInfo,
 		proto.ActivityLocalDispatchInfo,
-		FuzzOptions{}, // Use defaults
+		FuzzOptions{},
 	)
 }
 func TestActivityTaskCancelRequestedEventAttributes(t *testing.T) {
@@ -364,17 +234,11 @@ func TestActivityTaskCancelRequestedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskCancelRequestedEventAttributes{nil, {}, &testdata.ActivityTaskCancelRequestedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCancelRequestedEventAttributes(thrift.ActivityTaskCancelRequestedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskCancelRequestedEventAttributes, nil)
 
-	// Fuzz test
-	runFuzzTest(t,
-		func(x interface{}) interface{} {
-			return thrift.ActivityTaskCancelRequestedEventAttributes(x.(*apiv1.ActivityTaskCancelRequestedEventAttributes))
-		},
-		func(x interface{}) interface{} {
-			return proto.ActivityTaskCancelRequestedEventAttributes(x.(*shared.ActivityTaskCancelRequestedEventAttributes))
-		},
-		(*apiv1.ActivityTaskCancelRequestedEventAttributes)(nil),
+	runFuzzTestV2(t,
+		thrift.ActivityTaskCancelRequestedEventAttributes,
+		proto.ActivityTaskCancelRequestedEventAttributes,
+		FuzzOptions{},
 	)
 }
 func TestActivityTaskCanceledEventAttributes(t *testing.T) {
@@ -382,17 +246,11 @@ func TestActivityTaskCanceledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskCanceledEventAttributes{nil, {}, &testdata.ActivityTaskCanceledEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCanceledEventAttributes(thrift.ActivityTaskCanceledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskCanceledEventAttributes, nil)
 
-	// Fuzz test
-	runFuzzTest(t,
-		func(x interface{}) interface{} {
-			return thrift.ActivityTaskCanceledEventAttributes(x.(*apiv1.ActivityTaskCanceledEventAttributes))
-		},
-		func(x interface{}) interface{} {
-			return proto.ActivityTaskCanceledEventAttributes(x.(*shared.ActivityTaskCanceledEventAttributes))
-		},
-		(*apiv1.ActivityTaskCanceledEventAttributes)(nil),
+	runFuzzTestV2(t,
+		thrift.ActivityTaskCanceledEventAttributes,
+		proto.ActivityTaskCanceledEventAttributes,
+		FuzzOptions{},
 	)
 }
 func TestActivityTaskCompletedEventAttributes(t *testing.T) {
@@ -400,17 +258,11 @@ func TestActivityTaskCompletedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskCompletedEventAttributes{nil, {}, &testdata.ActivityTaskCompletedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCompletedEventAttributes(thrift.ActivityTaskCompletedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskCompletedEventAttributes, nil)
 
-	// Fuzz test
-	runFuzzTest(t,
-		func(x interface{}) interface{} {
-			return thrift.ActivityTaskCompletedEventAttributes(x.(*apiv1.ActivityTaskCompletedEventAttributes))
-		},
-		func(x interface{}) interface{} {
-			return proto.ActivityTaskCompletedEventAttributes(x.(*shared.ActivityTaskCompletedEventAttributes))
-		},
-		(*apiv1.ActivityTaskCompletedEventAttributes)(nil),
+	runFuzzTestV2(t,
+		thrift.ActivityTaskCompletedEventAttributes,
+		proto.ActivityTaskCompletedEventAttributes,
+		FuzzOptions{},
 	)
 }
 func TestActivityTaskFailedEventAttributes(t *testing.T) {
@@ -418,133 +270,216 @@ func TestActivityTaskFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskFailedEventAttributes{nil, {}, &testdata.ActivityTaskFailedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskFailedEventAttributes(thrift.ActivityTaskFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskFailedEventAttributes, nil)
 
-	// Fuzz test
-	runFuzzTest(t,
-		func(x interface{}) interface{} {
-			return thrift.ActivityTaskFailedEventAttributes(x.(*apiv1.ActivityTaskFailedEventAttributes))
-		},
-		func(x interface{}) interface{} {
-			return proto.ActivityTaskFailedEventAttributes(x.(*shared.ActivityTaskFailedEventAttributes))
-		},
-		(*apiv1.ActivityTaskFailedEventAttributes)(nil),
+	runFuzzTestV2(t,
+		thrift.ActivityTaskFailedEventAttributes,
+		proto.ActivityTaskFailedEventAttributes,
+		FuzzOptions{},
 	)
 }
 func TestActivityTaskScheduledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskScheduledEventAttributes{nil, {}, &testdata.ActivityTaskScheduledEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskScheduledEventAttributes(thrift.ActivityTaskScheduledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskScheduledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ActivityTaskScheduledEventAttributes,
+		proto.ActivityTaskScheduledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestActivityTaskStartedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskStartedEventAttributes{nil, {}, &testdata.ActivityTaskStartedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskStartedEventAttributes(thrift.ActivityTaskStartedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskStartedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ActivityTaskStartedEventAttributes,
+		proto.ActivityTaskStartedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestActivityTaskTimedOutEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskTimedOutEventAttributes{nil, {}, &testdata.ActivityTaskTimedOutEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskTimedOutEventAttributes(thrift.ActivityTaskTimedOutEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityTaskTimedOutEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ActivityTaskTimedOutEventAttributes,
+		proto.ActivityTaskTimedOutEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestActivityType(t *testing.T) {
 	for _, item := range []*apiv1.ActivityType{nil, {}, &testdata.ActivityType} {
 		assert.Equal(t, item, proto.ActivityType(thrift.ActivityType(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ActivityType, nil)
+
+	runFuzzTestV2(t,
+		thrift.ActivityType,
+		proto.ActivityType,
+		FuzzOptions{},
+	)
 }
 func TestBadBinaries(t *testing.T) {
 	for _, item := range []*apiv1.BadBinaries{nil, {}, &testdata.BadBinaries} {
 		assert.Equal(t, item, proto.BadBinaries(thrift.BadBinaries(item)))
 	}
-	assertAllFieldsSet(t, &testdata.BadBinaries, nil)
+
+	runFuzzTestV2(t,
+		thrift.BadBinaries,
+		proto.BadBinaries,
+		FuzzOptions{},
+	)
 }
 func TestBadBinaryInfo(t *testing.T) {
 	for _, item := range []*apiv1.BadBinaryInfo{nil, {}, &testdata.BadBinaryInfo} {
 		assert.Equal(t, item, proto.BadBinaryInfo(thrift.BadBinaryInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.BadBinaryInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.BadBinaryInfo,
+		proto.BadBinaryInfo,
+		FuzzOptions{},
+	)
 }
 func TestCancelTimerFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.CancelTimerFailedEventAttributes{nil, {}, &testdata.CancelTimerFailedEventAttributes} {
 		assert.Equal(t, item, proto.CancelTimerFailedEventAttributes(thrift.CancelTimerFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.CancelTimerFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.CancelTimerFailedEventAttributes,
+		proto.CancelTimerFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionCanceledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionCanceledEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionCanceledEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionCanceledEventAttributes(thrift.ChildWorkflowExecutionCanceledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionCanceledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionCanceledEventAttributes,
+		proto.ChildWorkflowExecutionCanceledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionCompletedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionCompletedEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionCompletedEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionCompletedEventAttributes(thrift.ChildWorkflowExecutionCompletedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionCompletedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionCompletedEventAttributes,
+		proto.ChildWorkflowExecutionCompletedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionFailedEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionFailedEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionFailedEventAttributes(thrift.ChildWorkflowExecutionFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionFailedEventAttributes,
+		proto.ChildWorkflowExecutionFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionStartedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionStartedEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionStartedEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionStartedEventAttributes(thrift.ChildWorkflowExecutionStartedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionStartedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionStartedEventAttributes,
+		proto.ChildWorkflowExecutionStartedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionTerminatedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionTerminatedEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionTerminatedEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionTerminatedEventAttributes(thrift.ChildWorkflowExecutionTerminatedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionTerminatedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionTerminatedEventAttributes,
+		proto.ChildWorkflowExecutionTerminatedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestChildWorkflowExecutionTimedOutEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ChildWorkflowExecutionTimedOutEventAttributes{nil, {}, &testdata.ChildWorkflowExecutionTimedOutEventAttributes} {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionTimedOutEventAttributes(thrift.ChildWorkflowExecutionTimedOutEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ChildWorkflowExecutionTimedOutEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ChildWorkflowExecutionTimedOutEventAttributes,
+		proto.ChildWorkflowExecutionTimedOutEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestClusterReplicationConfiguration(t *testing.T) {
 	for _, item := range []*apiv1.ClusterReplicationConfiguration{nil, {}, &testdata.ClusterReplicationConfiguration} {
 		assert.Equal(t, item, proto.ClusterReplicationConfiguration(thrift.ClusterReplicationConfiguration(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ClusterReplicationConfiguration, nil)
+
+	runFuzzTestV2(t,
+		thrift.ClusterReplicationConfiguration,
+		proto.ClusterReplicationConfiguration,
+		FuzzOptions{},
+	)
 }
 func TestCountWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.CountWorkflowExecutionsRequest{nil, {}, &testdata.CountWorkflowExecutionsRequest} {
 		assert.Equal(t, item, proto.CountWorkflowExecutionsRequest(thrift.CountWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.CountWorkflowExecutionsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.CountWorkflowExecutionsRequest,
+		proto.CountWorkflowExecutionsRequest,
+		FuzzOptions{},
+	)
 }
 func TestCountWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.CountWorkflowExecutionsResponse{nil, {}, &testdata.CountWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.CountWorkflowExecutionsResponse(thrift.CountWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.CountWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.CountWorkflowExecutionsResponse,
+		proto.CountWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestDataBlob(t *testing.T) {
 	for _, item := range []*apiv1.DataBlob{nil, {}, &testdata.DataBlob} {
 		assert.Equal(t, item, proto.DataBlob(thrift.DataBlob(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DataBlob, nil)
+
+	runFuzzTestV2(t,
+		thrift.DataBlob,
+		proto.DataBlob,
+		FuzzOptions{},
+	)
 }
 func TestDecisionTaskCompletedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.DecisionTaskCompletedEventAttributes{nil, {}, &testdata.DecisionTaskCompletedEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskCompletedEventAttributes(thrift.DecisionTaskCompletedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DecisionTaskCompletedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.DecisionTaskCompletedEventAttributes,
+		proto.DecisionTaskCompletedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestDecisionTaskFailedEventAttributes(t *testing.T) {
 	// Test with existing sample data
 	for _, item := range []*apiv1.DecisionTaskFailedEventAttributes{nil, {}, &testdata.DecisionTaskFailedEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskFailedEventAttributes(thrift.DecisionTaskFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DecisionTaskFailedEventAttributes, nil)
 
 	// Fuzz test V2 with custom enum fuzzer and field exclusions
 	runFuzzTestV2(t,
@@ -576,20 +511,29 @@ func TestDecisionTaskScheduledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.DecisionTaskScheduledEventAttributes{nil, {}, &testdata.DecisionTaskScheduledEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskScheduledEventAttributes(thrift.DecisionTaskScheduledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DecisionTaskScheduledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.DecisionTaskScheduledEventAttributes,
+		proto.DecisionTaskScheduledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestDecisionTaskStartedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.DecisionTaskStartedEventAttributes{nil, {}, &testdata.DecisionTaskStartedEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskStartedEventAttributes(thrift.DecisionTaskStartedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DecisionTaskStartedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.DecisionTaskStartedEventAttributes,
+		proto.DecisionTaskStartedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestDecisionTaskTimedOutEventAttributes(t *testing.T) {
 	// Test with existing sample data
 	for _, item := range []*apiv1.DecisionTaskTimedOutEventAttributes{nil, {}, &testdata.DecisionTaskTimedOutEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskTimedOutEventAttributes(thrift.DecisionTaskTimedOutEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DecisionTaskTimedOutEventAttributes, map[string]ignoreFieldType{"RequestId": ignoreField})
 
 	// Fuzz test to find mapper issues
 	runFuzzTestV2(t,
@@ -627,7 +571,12 @@ func TestDeprecateDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.DeprecateDomainRequest{nil, {}, &testdata.DeprecateDomainRequest} {
 		assert.Equal(t, item, proto.DeprecateDomainRequest(thrift.DeprecateDomainRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DeprecateDomainRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.DeprecateDomainRequest,
+		proto.DeprecateDomainRequest,
+		FuzzOptions{},
+	)
 }
 func TestDescribeDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.DescribeDomainRequest{
@@ -640,422 +589,771 @@ func TestDescribeDomainRequest(t *testing.T) {
 	assert.Nil(t, thrift.DescribeDomainRequest(nil))
 	assert.Panics(t, func() { proto.DescribeDomainRequest(&shared.DescribeDomainRequest{}) })
 	assert.Panics(t, func() { thrift.DescribeDomainRequest(&apiv1.DescribeDomainRequest{}) })
-	assertAllFieldsSet(t, &testdata.DescribeDomainRequest_ID, nil)
-	assertAllFieldsSet(t, &testdata.DescribeDomainRequest_Name, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeDomainRequest,
+		proto.DescribeDomainRequest,
+		FuzzOptions{},
+	)
 }
 func TestDescribeDomainResponse_Domain(t *testing.T) {
 	for _, item := range []*apiv1.Domain{nil, &testdata.Domain} {
 		assert.Equal(t, item, proto.DescribeDomainResponseDomain(thrift.DescribeDomainResponseDomain(item)))
 	}
-	assertAllFieldsSet(t, &testdata.Domain, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeDomainResponseDomain,
+		proto.DescribeDomainResponseDomain,
+		FuzzOptions{},
+	)
 }
 func TestDescribeDomainResponse(t *testing.T) {
 	for _, item := range []*apiv1.DescribeDomainResponse{nil, &testdata.DescribeDomainResponse} {
 		assert.Equal(t, item, proto.DescribeDomainResponse(thrift.DescribeDomainResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DescribeDomainResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeDomainResponse,
+		proto.DescribeDomainResponse,
+		FuzzOptions{},
+	)
 }
 func TestDescribeTaskListRequest(t *testing.T) {
 	for _, item := range []*apiv1.DescribeTaskListRequest{nil, {}, &testdata.DescribeTaskListRequest} {
 		assert.Equal(t, item, proto.DescribeTaskListRequest(thrift.DescribeTaskListRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DescribeTaskListRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeTaskListRequest,
+		proto.DescribeTaskListRequest,
+		FuzzOptions{},
+	)
 }
 func TestDescribeTaskListResponse(t *testing.T) {
 	for _, item := range []*apiv1.DescribeTaskListResponse{nil, {}, &testdata.DescribeTaskListResponse} {
 		assert.Equal(t, item, proto.DescribeTaskListResponse(thrift.DescribeTaskListResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DescribeTaskListResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeTaskListResponse,
+		proto.DescribeTaskListResponse,
+		FuzzOptions{},
+	)
 }
 func TestDescribeWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.DescribeWorkflowExecutionRequest{nil, {}, &testdata.DescribeWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionRequest(thrift.DescribeWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DescribeWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeWorkflowExecutionRequest,
+		proto.DescribeWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.DescribeWorkflowExecutionResponse{nil, {}, &testdata.DescribeWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionResponse(thrift.DescribeWorkflowExecutionResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DescribeWorkflowExecutionResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.DescribeWorkflowExecutionResponse,
+		proto.DescribeWorkflowExecutionResponse,
+		FuzzOptions{},
+	)
 }
 func TestDiagnoseWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.DiagnoseWorkflowExecutionRequest{nil, {}, &testdata.DiagnoseWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionRequest(thrift.DiagnoseWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DiagnoseWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.DiagnoseWorkflowExecutionRequest,
+		proto.DiagnoseWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestDiagnoseWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.DiagnoseWorkflowExecutionResponse{nil, {}, &testdata.DiagnoseWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionResponse(thrift.DiagnoseWorkflowExecutionResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.DiagnoseWorkflowExecutionResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.DiagnoseWorkflowExecutionResponse,
+		proto.DiagnoseWorkflowExecutionResponse,
+		FuzzOptions{},
+	)
 }
 func TestExternalWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ExternalWorkflowExecutionCancelRequestedEventAttributes{nil, {}, &testdata.ExternalWorkflowExecutionCancelRequestedEventAttributes} {
 		assert.Equal(t, item, proto.ExternalWorkflowExecutionCancelRequestedEventAttributes(thrift.ExternalWorkflowExecutionCancelRequestedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ExternalWorkflowExecutionCancelRequestedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ExternalWorkflowExecutionCancelRequestedEventAttributes,
+		proto.ExternalWorkflowExecutionCancelRequestedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestExternalWorkflowExecutionSignaledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ExternalWorkflowExecutionSignaledEventAttributes{nil, {}, &testdata.ExternalWorkflowExecutionSignaledEventAttributes} {
 		assert.Equal(t, item, proto.ExternalWorkflowExecutionSignaledEventAttributes(thrift.ExternalWorkflowExecutionSignaledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ExternalWorkflowExecutionSignaledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.ExternalWorkflowExecutionSignaledEventAttributes,
+		proto.ExternalWorkflowExecutionSignaledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestGetClusterInfoResponse(t *testing.T) {
 	for _, item := range []*apiv1.GetClusterInfoResponse{nil, {}, &testdata.GetClusterInfoResponse} {
 		assert.Equal(t, item, proto.GetClusterInfoResponse(thrift.GetClusterInfoResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.GetClusterInfoResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.GetClusterInfoResponse,
+		proto.GetClusterInfoResponse,
+		FuzzOptions{},
+	)
 }
 func TestGetSearchAttributesResponse(t *testing.T) {
 	for _, item := range []*apiv1.GetSearchAttributesResponse{nil, {}, &testdata.GetSearchAttributesResponse} {
 		assert.Equal(t, item, proto.GetSearchAttributesResponse(thrift.GetSearchAttributesResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.GetSearchAttributesResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.GetSearchAttributesResponse,
+		proto.GetSearchAttributesResponse,
+		FuzzOptions{},
+	)
 }
 func TestGetWorkflowExecutionHistoryRequest(t *testing.T) {
 	for _, item := range []*apiv1.GetWorkflowExecutionHistoryRequest{nil, {}, &testdata.GetWorkflowExecutionHistoryRequest} {
 		assert.Equal(t, item, proto.GetWorkflowExecutionHistoryRequest(thrift.GetWorkflowExecutionHistoryRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.GetWorkflowExecutionHistoryRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.GetWorkflowExecutionHistoryRequest,
+		proto.GetWorkflowExecutionHistoryRequest,
+		FuzzOptions{},
+	)
 }
 func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 	for _, item := range []*apiv1.GetWorkflowExecutionHistoryResponse{nil, {}, &testdata.GetWorkflowExecutionHistoryResponse} {
 		assert.Equal(t, item, proto.GetWorkflowExecutionHistoryResponse(thrift.GetWorkflowExecutionHistoryResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.GetWorkflowExecutionHistoryResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.GetWorkflowExecutionHistoryResponse,
+		proto.GetWorkflowExecutionHistoryResponse,
+		FuzzOptions{},
+	)
 }
 func TestHeader(t *testing.T) {
 	for _, item := range []*apiv1.Header{nil, {}, &testdata.Header} {
 		assert.Equal(t, item, proto.Header(thrift.Header(item)))
 	}
-	assertAllFieldsSet(t, &testdata.Header, nil)
+
+	runFuzzTestV2(t,
+		thrift.Header,
+		proto.Header,
+		FuzzOptions{},
+	)
 }
 func TestHistory(t *testing.T) {
 	for _, item := range []*apiv1.History{nil, {}, &testdata.History} {
 		assert.Equal(t, item, proto.History(thrift.History(item)))
 	}
-	assertAllFieldsSet(t, &testdata.History, nil)
+
+	runFuzzTestV2(t,
+		thrift.History,
+		proto.History,
+		FuzzOptions{},
+	)
 }
 func TestListArchivedWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListArchivedWorkflowExecutionsRequest{nil, {}, &testdata.ListArchivedWorkflowExecutionsRequest} {
 		assert.Equal(t, item, proto.ListArchivedWorkflowExecutionsRequest(thrift.ListArchivedWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListArchivedWorkflowExecutionsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListArchivedWorkflowExecutionsRequest,
+		proto.ListArchivedWorkflowExecutionsRequest,
+		FuzzOptions{},
+	)
 }
 func TestListArchivedWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListArchivedWorkflowExecutionsResponse{nil, {}, &testdata.ListArchivedWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.ListArchivedWorkflowExecutionsResponse(thrift.ListArchivedWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListArchivedWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListArchivedWorkflowExecutionsResponse,
+		proto.ListArchivedWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestListClosedWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListClosedWorkflowExecutionsResponse{nil, {}, &testdata.ListClosedWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.ListClosedWorkflowExecutionsResponse(thrift.ListClosedWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListClosedWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListClosedWorkflowExecutionsResponse,
+		proto.ListClosedWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestListDomainsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListDomainsRequest{nil, {}, &testdata.ListDomainsRequest} {
 		assert.Equal(t, item, proto.ListDomainsRequest(thrift.ListDomainsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListDomainsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListDomainsRequest,
+		proto.ListDomainsRequest,
+		FuzzOptions{},
+	)
 }
 func TestListDomainsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListDomainsResponse{nil, {}, &testdata.ListDomainsResponse} {
 		assert.Equal(t, item, proto.ListDomainsResponse(thrift.ListDomainsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListDomainsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListDomainsResponse,
+		proto.ListDomainsResponse,
+		FuzzOptions{},
+	)
 }
 func TestListOpenWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListOpenWorkflowExecutionsResponse{nil, {}, &testdata.ListOpenWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.ListOpenWorkflowExecutionsResponse(thrift.ListOpenWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListOpenWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListOpenWorkflowExecutionsResponse,
+		proto.ListOpenWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestListTaskListPartitionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListTaskListPartitionsRequest{nil, {}, &testdata.ListTaskListPartitionsRequest} {
 		assert.Equal(t, item, proto.ListTaskListPartitionsRequest(thrift.ListTaskListPartitionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListTaskListPartitionsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListTaskListPartitionsRequest,
+		proto.ListTaskListPartitionsRequest,
+		FuzzOptions{},
+	)
 }
 func TestListTaskListPartitionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListTaskListPartitionsResponse{nil, {}, &testdata.ListTaskListPartitionsResponse} {
 		assert.Equal(t, item, proto.ListTaskListPartitionsResponse(thrift.ListTaskListPartitionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListTaskListPartitionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListTaskListPartitionsResponse,
+		proto.ListTaskListPartitionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestListWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListWorkflowExecutionsRequest{nil, {}, &testdata.ListWorkflowExecutionsRequest} {
 		assert.Equal(t, item, proto.ListWorkflowExecutionsRequest(thrift.ListWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListWorkflowExecutionsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListWorkflowExecutionsRequest,
+		proto.ListWorkflowExecutionsRequest,
+		FuzzOptions{},
+	)
 }
 func TestListWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ListWorkflowExecutionsResponse{nil, {}, &testdata.ListWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.ListWorkflowExecutionsResponse(thrift.ListWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ListWorkflowExecutionsResponse,
+		proto.ListWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestMarkerRecordedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.MarkerRecordedEventAttributes{nil, {}, &testdata.MarkerRecordedEventAttributes} {
 		assert.Equal(t, item, proto.MarkerRecordedEventAttributes(thrift.MarkerRecordedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.MarkerRecordedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.MarkerRecordedEventAttributes,
+		proto.MarkerRecordedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestMemo(t *testing.T) {
 	for _, item := range []*apiv1.Memo{nil, {}, &testdata.Memo} {
 		assert.Equal(t, item, proto.Memo(thrift.Memo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.Memo, nil)
+
+	runFuzzTestV2(t,
+		thrift.Memo,
+		proto.Memo,
+		FuzzOptions{},
+	)
 }
 func TestPendingActivityInfo(t *testing.T) {
 	for _, item := range []*apiv1.PendingActivityInfo{nil, {}, &testdata.PendingActivityInfo} {
 		assert.Equal(t, item, proto.PendingActivityInfo(thrift.PendingActivityInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PendingActivityInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.PendingActivityInfo,
+		proto.PendingActivityInfo,
+		FuzzOptions{},
+	)
 }
 func TestPendingChildExecutionInfo(t *testing.T) {
 	for _, item := range []*apiv1.PendingChildExecutionInfo{nil, {}, &testdata.PendingChildExecutionInfo} {
 		assert.Equal(t, item, proto.PendingChildExecutionInfo(thrift.PendingChildExecutionInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PendingChildExecutionInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.PendingChildExecutionInfo,
+		proto.PendingChildExecutionInfo,
+		FuzzOptions{},
+	)
 }
 func TestPendingDecisionInfo(t *testing.T) {
 	for _, item := range []*apiv1.PendingDecisionInfo{nil, {}, &testdata.PendingDecisionInfo} {
 		assert.Equal(t, item, proto.PendingDecisionInfo(thrift.PendingDecisionInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PendingDecisionInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.PendingDecisionInfo,
+		proto.PendingDecisionInfo,
+		FuzzOptions{},
+	)
 }
 func TestPollForActivityTaskRequest(t *testing.T) {
 	for _, item := range []*apiv1.PollForActivityTaskRequest{nil, {}, &testdata.PollForActivityTaskRequest} {
 		assert.Equal(t, item, proto.PollForActivityTaskRequest(thrift.PollForActivityTaskRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PollForActivityTaskRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.PollForActivityTaskRequest,
+		proto.PollForActivityTaskRequest,
+		FuzzOptions{},
+	)
 }
 func TestPollForActivityTaskResponse(t *testing.T) {
 	for _, item := range []*apiv1.PollForActivityTaskResponse{nil, {}, &testdata.PollForActivityTaskResponse} {
 		assert.Equal(t, item, proto.PollForActivityTaskResponse(thrift.PollForActivityTaskResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PollForActivityTaskResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.PollForActivityTaskResponse,
+		proto.PollForActivityTaskResponse,
+		FuzzOptions{},
+	)
 }
 func TestPollForDecisionTaskRequest(t *testing.T) {
 	for _, item := range []*apiv1.PollForDecisionTaskRequest{nil, {}, &testdata.PollForDecisionTaskRequest} {
 		assert.Equal(t, item, proto.PollForDecisionTaskRequest(thrift.PollForDecisionTaskRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PollForDecisionTaskRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.PollForDecisionTaskRequest,
+		proto.PollForDecisionTaskRequest,
+		FuzzOptions{},
+	)
 }
 func TestPollForDecisionTaskResponse(t *testing.T) {
 	for _, item := range []*apiv1.PollForDecisionTaskResponse{nil, {}, &testdata.PollForDecisionTaskResponse} {
 		assert.Equal(t, item, proto.PollForDecisionTaskResponse(thrift.PollForDecisionTaskResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PollForDecisionTaskResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.PollForDecisionTaskResponse,
+		proto.PollForDecisionTaskResponse,
+		FuzzOptions{},
+	)
 }
 func TestPollerInfo(t *testing.T) {
 	for _, item := range []*apiv1.PollerInfo{nil, {}, &testdata.PollerInfo} {
 		assert.Equal(t, item, proto.PollerInfo(thrift.PollerInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.PollerInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.PollerInfo,
+		proto.PollerInfo,
+		FuzzOptions{},
+	)
 }
 func TestQueryRejected(t *testing.T) {
 	for _, item := range []*apiv1.QueryRejected{nil, {}, &testdata.QueryRejected} {
 		assert.Equal(t, item, proto.QueryRejected(thrift.QueryRejected(item)))
 	}
-	assertAllFieldsSet(t, &testdata.QueryRejected, nil)
+
+	runFuzzTestV2(t,
+		thrift.QueryRejected,
+		proto.QueryRejected,
+		FuzzOptions{},
+	)
 }
 func TestQueryWorkflowRequest(t *testing.T) {
 	for _, item := range []*apiv1.QueryWorkflowRequest{nil, {}, &testdata.QueryWorkflowRequest} {
 		assert.Equal(t, item, proto.QueryWorkflowRequest(thrift.QueryWorkflowRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.QueryWorkflowRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.QueryWorkflowRequest,
+		proto.QueryWorkflowRequest,
+		FuzzOptions{},
+	)
 }
 func TestQueryWorkflowResponse(t *testing.T) {
 	for _, item := range []*apiv1.QueryWorkflowResponse{nil, {}, &testdata.QueryWorkflowResponse} {
 		assert.Equal(t, item, proto.QueryWorkflowResponse(thrift.QueryWorkflowResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.QueryWorkflowResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.QueryWorkflowResponse,
+		proto.QueryWorkflowResponse,
+		FuzzOptions{},
+	)
 }
 func TestRecordActivityTaskHeartbeatByIDRequest(t *testing.T) {
 	for _, item := range []*apiv1.RecordActivityTaskHeartbeatByIDRequest{nil, {}, &testdata.RecordActivityTaskHeartbeatByIDRequest} {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatByIDRequest(thrift.RecordActivityTaskHeartbeatByIDRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RecordActivityTaskHeartbeatByIDRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RecordActivityTaskHeartbeatByIDRequest,
+		proto.RecordActivityTaskHeartbeatByIDRequest,
+		FuzzOptions{},
+	)
 }
 func TestRecordActivityTaskHeartbeatByIDResponse(t *testing.T) {
 	for _, item := range []*apiv1.RecordActivityTaskHeartbeatByIDResponse{nil, {}, &testdata.RecordActivityTaskHeartbeatByIDResponse} {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatByIDResponse(thrift.RecordActivityTaskHeartbeatByIDResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RecordActivityTaskHeartbeatByIDResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.RecordActivityTaskHeartbeatByIDResponse,
+		proto.RecordActivityTaskHeartbeatByIDResponse,
+		FuzzOptions{},
+	)
 }
 func TestRecordActivityTaskHeartbeatRequest(t *testing.T) {
 	for _, item := range []*apiv1.RecordActivityTaskHeartbeatRequest{nil, {}, &testdata.RecordActivityTaskHeartbeatRequest} {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatRequest(thrift.RecordActivityTaskHeartbeatRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RecordActivityTaskHeartbeatRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RecordActivityTaskHeartbeatRequest,
+		proto.RecordActivityTaskHeartbeatRequest,
+		FuzzOptions{},
+	)
 }
 func TestRecordActivityTaskHeartbeatResponse(t *testing.T) {
 	for _, item := range []*apiv1.RecordActivityTaskHeartbeatResponse{nil, {}, &testdata.RecordActivityTaskHeartbeatResponse} {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatResponse(thrift.RecordActivityTaskHeartbeatResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RecordActivityTaskHeartbeatResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.RecordActivityTaskHeartbeatResponse,
+		proto.RecordActivityTaskHeartbeatResponse,
+		FuzzOptions{},
+	)
 }
 func TestRegisterDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.RegisterDomainRequest{nil, &testdata.RegisterDomainRequest} {
 		assert.Equal(t, item, proto.RegisterDomainRequest(thrift.RegisterDomainRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RegisterDomainRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RegisterDomainRequest,
+		proto.RegisterDomainRequest,
+		FuzzOptions{},
+	)
 }
 func TestRequestCancelActivityTaskFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.RequestCancelActivityTaskFailedEventAttributes{nil, {}, &testdata.RequestCancelActivityTaskFailedEventAttributes} {
 		assert.Equal(t, item, proto.RequestCancelActivityTaskFailedEventAttributes(thrift.RequestCancelActivityTaskFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RequestCancelActivityTaskFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.RequestCancelActivityTaskFailedEventAttributes,
+		proto.RequestCancelActivityTaskFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestRequestCancelExternalWorkflowExecutionFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.RequestCancelExternalWorkflowExecutionFailedEventAttributes{nil, {}, &testdata.RequestCancelExternalWorkflowExecutionFailedEventAttributes} {
 		assert.Equal(t, item, proto.RequestCancelExternalWorkflowExecutionFailedEventAttributes(thrift.RequestCancelExternalWorkflowExecutionFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RequestCancelExternalWorkflowExecutionFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.RequestCancelExternalWorkflowExecutionFailedEventAttributes,
+		proto.RequestCancelExternalWorkflowExecutionFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestRequestCancelExternalWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes{nil, {}, &testdata.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes} {
 		assert.Equal(t, item, proto.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(thrift.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes,
+		proto.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestRequestCancelWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.RequestCancelWorkflowExecutionRequest{nil, {}, &testdata.RequestCancelWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.RequestCancelWorkflowExecutionRequest(thrift.RequestCancelWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RequestCancelWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RequestCancelWorkflowExecutionRequest,
+		proto.RequestCancelWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestResetPointInfo(t *testing.T) {
 	for _, item := range []*apiv1.ResetPointInfo{nil, {}, &testdata.ResetPointInfo} {
 		assert.Equal(t, item, proto.ResetPointInfo(thrift.ResetPointInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ResetPointInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.ResetPointInfo,
+		proto.ResetPointInfo,
+		FuzzOptions{},
+	)
 }
 func TestResetPoints(t *testing.T) {
 	for _, item := range []*apiv1.ResetPoints{nil, {}, &testdata.ResetPoints} {
 		assert.Equal(t, item, proto.ResetPoints(thrift.ResetPoints(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ResetPoints, nil)
+
+	runFuzzTestV2(t,
+		thrift.ResetPoints,
+		proto.ResetPoints,
+		FuzzOptions{},
+	)
 }
 func TestResetStickyTaskListRequest(t *testing.T) {
 	for _, item := range []*apiv1.ResetStickyTaskListRequest{nil, {}, &testdata.ResetStickyTaskListRequest} {
 		assert.Equal(t, item, proto.ResetStickyTaskListRequest(thrift.ResetStickyTaskListRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ResetStickyTaskListRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ResetStickyTaskListRequest,
+		proto.ResetStickyTaskListRequest,
+		FuzzOptions{},
+	)
 }
 func TestResetWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.ResetWorkflowExecutionRequest{nil, {}, &testdata.ResetWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.ResetWorkflowExecutionRequest(thrift.ResetWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ResetWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ResetWorkflowExecutionRequest,
+		proto.ResetWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestResetWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.ResetWorkflowExecutionResponse{nil, {}, &testdata.ResetWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.ResetWorkflowExecutionResponse(thrift.ResetWorkflowExecutionResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ResetWorkflowExecutionResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ResetWorkflowExecutionResponse,
+		proto.ResetWorkflowExecutionResponse,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskCanceledByIDRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskCanceledByIDRequest{nil, {}, &testdata.RespondActivityTaskCanceledByIDRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskCanceledByIDRequest(thrift.RespondActivityTaskCanceledByIDRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskCanceledByIDRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskCanceledByIDRequest,
+		proto.RespondActivityTaskCanceledByIDRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskCanceledRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskCanceledRequest{nil, {}, &testdata.RespondActivityTaskCanceledRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskCanceledRequest(thrift.RespondActivityTaskCanceledRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskCanceledRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskCanceledRequest,
+		proto.RespondActivityTaskCanceledRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskCompletedByIDRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskCompletedByIDRequest{nil, {}, &testdata.RespondActivityTaskCompletedByIDRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskCompletedByIDRequest(thrift.RespondActivityTaskCompletedByIDRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskCompletedByIDRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskCompletedByIDRequest,
+		proto.RespondActivityTaskCompletedByIDRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskCompletedRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskCompletedRequest{nil, {}, &testdata.RespondActivityTaskCompletedRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskCompletedRequest(thrift.RespondActivityTaskCompletedRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskCompletedRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskCompletedRequest,
+		proto.RespondActivityTaskCompletedRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskFailedByIDRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskFailedByIDRequest{nil, {}, &testdata.RespondActivityTaskFailedByIDRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskFailedByIDRequest(thrift.RespondActivityTaskFailedByIDRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskFailedByIDRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskFailedByIDRequest,
+		proto.RespondActivityTaskFailedByIDRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondActivityTaskFailedRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondActivityTaskFailedRequest{nil, {}, &testdata.RespondActivityTaskFailedRequest} {
 		assert.Equal(t, item, proto.RespondActivityTaskFailedRequest(thrift.RespondActivityTaskFailedRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondActivityTaskFailedRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondActivityTaskFailedRequest,
+		proto.RespondActivityTaskFailedRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondDecisionTaskCompletedRequest{nil, {}, &testdata.RespondDecisionTaskCompletedRequest} {
 		assert.Equal(t, item, proto.RespondDecisionTaskCompletedRequest(thrift.RespondDecisionTaskCompletedRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondDecisionTaskCompletedRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondDecisionTaskCompletedRequest,
+		proto.RespondDecisionTaskCompletedRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondDecisionTaskCompletedResponse(t *testing.T) {
 	for _, item := range []*apiv1.RespondDecisionTaskCompletedResponse{nil, {}, &testdata.RespondDecisionTaskCompletedResponse} {
 		assert.Equal(t, item, proto.RespondDecisionTaskCompletedResponse(thrift.RespondDecisionTaskCompletedResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondDecisionTaskCompletedResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondDecisionTaskCompletedResponse,
+		proto.RespondDecisionTaskCompletedResponse,
+		FuzzOptions{},
+	)
 }
 func TestRespondDecisionTaskFailedRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondDecisionTaskFailedRequest{nil, {}, &testdata.RespondDecisionTaskFailedRequest} {
 		assert.Equal(t, item, proto.RespondDecisionTaskFailedRequest(thrift.RespondDecisionTaskFailedRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondDecisionTaskFailedRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondDecisionTaskFailedRequest,
+		proto.RespondDecisionTaskFailedRequest,
+		FuzzOptions{},
+	)
 }
 func TestRespondQueryTaskCompletedRequest(t *testing.T) {
 	for _, item := range []*apiv1.RespondQueryTaskCompletedRequest{nil, {Result: &apiv1.WorkflowQueryResult{}}, &testdata.RespondQueryTaskCompletedRequest} {
 		assert.Equal(t, item, proto.RespondQueryTaskCompletedRequest(thrift.RespondQueryTaskCompletedRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RespondQueryTaskCompletedRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.RespondQueryTaskCompletedRequest,
+		proto.RespondQueryTaskCompletedRequest,
+		FuzzOptions{},
+	)
 }
 func TestRetryPolicy(t *testing.T) {
 	for _, item := range []*apiv1.RetryPolicy{nil, {}, &testdata.RetryPolicy} {
 		assert.Equal(t, item, proto.RetryPolicy(thrift.RetryPolicy(item)))
 	}
-	assertAllFieldsSet(t, &testdata.RetryPolicy, nil)
+
+	runFuzzTestV2(t,
+		thrift.RetryPolicy,
+		proto.RetryPolicy,
+		FuzzOptions{},
+	)
 }
 func TestScanWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ScanWorkflowExecutionsRequest{nil, {}, &testdata.ScanWorkflowExecutionsRequest} {
 		assert.Equal(t, item, proto.ScanWorkflowExecutionsRequest(thrift.ScanWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ScanWorkflowExecutionsRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.ScanWorkflowExecutionsRequest,
+		proto.ScanWorkflowExecutionsRequest,
+		FuzzOptions{},
+	)
 }
 func TestScanWorkflowExecutionsResponse(t *testing.T) {
 	for _, item := range []*apiv1.ScanWorkflowExecutionsResponse{nil, {}, &testdata.ScanWorkflowExecutionsResponse} {
 		assert.Equal(t, item, proto.ScanWorkflowExecutionsResponse(thrift.ScanWorkflowExecutionsResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ScanWorkflowExecutionsResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.ScanWorkflowExecutionsResponse,
+		proto.ScanWorkflowExecutionsResponse,
+		FuzzOptions{},
+	)
 }
 func TestSearchAttributes(t *testing.T) {
 	for _, item := range []*apiv1.SearchAttributes{nil, {}, &testdata.SearchAttributes} {
 		assert.Equal(t, item, proto.SearchAttributes(thrift.SearchAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SearchAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.SearchAttributes,
+		proto.SearchAttributes,
+		FuzzOptions{},
+	)
 }
 func TestSignalExternalWorkflowExecutionFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.SignalExternalWorkflowExecutionFailedEventAttributes{nil, {}, &testdata.SignalExternalWorkflowExecutionFailedEventAttributes} {
 		assert.Equal(t, item, proto.SignalExternalWorkflowExecutionFailedEventAttributes(thrift.SignalExternalWorkflowExecutionFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SignalExternalWorkflowExecutionFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.SignalExternalWorkflowExecutionFailedEventAttributes,
+		proto.SignalExternalWorkflowExecutionFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestSignalExternalWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.SignalExternalWorkflowExecutionInitiatedEventAttributes{nil, {}, &testdata.SignalExternalWorkflowExecutionInitiatedEventAttributes} {
 		assert.Equal(t, item, proto.SignalExternalWorkflowExecutionInitiatedEventAttributes(thrift.SignalExternalWorkflowExecutionInitiatedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SignalExternalWorkflowExecutionInitiatedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.SignalExternalWorkflowExecutionInitiatedEventAttributes,
+		proto.SignalExternalWorkflowExecutionInitiatedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 	tests := []*apiv1.SignalWithStartWorkflowExecutionRequest{
@@ -1070,39 +1368,67 @@ func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 			assert.Equal(t, item, proto.SignalWithStartWorkflowExecutionRequest(thrift.SignalWithStartWorkflowExecutionRequest(item)))
 		})
 	}
-	assertAllFieldsSet(t, &testdata.SignalWithStartWorkflowExecutionRequest, nil)
-	assertAllFieldsSet(t, &testdata.SignalWithStartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy1, nil)
-	assertAllFieldsSet(t, &testdata.SignalWithStartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2, nil)
+
+	runFuzzTestV2(t,
+		thrift.SignalWithStartWorkflowExecutionRequest,
+		proto.SignalWithStartWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestSignalWithStartWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.SignalWithStartWorkflowExecutionResponse{nil, {}, &testdata.SignalWithStartWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.SignalWithStartWorkflowExecutionResponse(thrift.SignalWithStartWorkflowExecutionResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SignalWithStartWorkflowExecutionResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.SignalWithStartWorkflowExecutionResponse,
+		proto.SignalWithStartWorkflowExecutionResponse,
+		FuzzOptions{},
+	)
 }
 func TestSignalWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.SignalWorkflowExecutionRequest{nil, {}, &testdata.SignalWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.SignalWorkflowExecutionRequest(thrift.SignalWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SignalWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.SignalWorkflowExecutionRequest,
+		proto.SignalWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestStartChildWorkflowExecutionFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.StartChildWorkflowExecutionFailedEventAttributes{nil, {}, &testdata.StartChildWorkflowExecutionFailedEventAttributes} {
 		assert.Equal(t, item, proto.StartChildWorkflowExecutionFailedEventAttributes(thrift.StartChildWorkflowExecutionFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StartChildWorkflowExecutionFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.StartChildWorkflowExecutionFailedEventAttributes,
+		proto.StartChildWorkflowExecutionFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestStartChildWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.StartChildWorkflowExecutionInitiatedEventAttributes{nil, {}, &testdata.StartChildWorkflowExecutionInitiatedEventAttributes} {
 		assert.Equal(t, item, proto.StartChildWorkflowExecutionInitiatedEventAttributes(thrift.StartChildWorkflowExecutionInitiatedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StartChildWorkflowExecutionInitiatedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.StartChildWorkflowExecutionInitiatedEventAttributes,
+		proto.StartChildWorkflowExecutionInitiatedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestStartTimeFilter(t *testing.T) {
 	for _, item := range []*apiv1.StartTimeFilter{nil, {}, &testdata.StartTimeFilter} {
 		assert.Equal(t, item, proto.StartTimeFilter(thrift.StartTimeFilter(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StartTimeFilter, nil)
+
+	runFuzzTestV2(t,
+		thrift.StartTimeFilter,
+		proto.StartTimeFilter,
+		FuzzOptions{},
+	)
 }
 func TestStartWorkflowExecutionRequest(t *testing.T) {
 	tests := []*apiv1.StartWorkflowExecutionRequest{
@@ -1117,111 +1443,199 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 			assert.Equal(t, item, proto.StartWorkflowExecutionRequest(thrift.StartWorkflowExecutionRequest(item)))
 		})
 	}
-	assertAllFieldsSet(t, &testdata.StartWorkflowExecutionRequest, nil)
-	assertAllFieldsSet(t, &testdata.StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy1, nil)
-	assertAllFieldsSet(t, &testdata.StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2, nil)
+
+	runFuzzTestV2(t,
+		thrift.StartWorkflowExecutionRequest,
+		proto.StartWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestStartWorkflowExecutionResponse(t *testing.T) {
 	for _, item := range []*apiv1.StartWorkflowExecutionResponse{nil, {}, &testdata.StartWorkflowExecutionResponse} {
 		assert.Equal(t, item, proto.StartWorkflowExecutionResponse(thrift.StartWorkflowExecutionResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StartWorkflowExecutionResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.StartWorkflowExecutionResponse,
+		proto.StartWorkflowExecutionResponse,
+		FuzzOptions{},
+	)
 }
 func TestStatusFilter(t *testing.T) {
 	for _, item := range []*apiv1.StatusFilter{nil, &testdata.StatusFilter} {
 		assert.Equal(t, item, proto.StatusFilter(thrift.StatusFilter(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StatusFilter, nil)
+
+	runFuzzTestV2(t,
+		thrift.StatusFilter,
+		proto.StatusFilter,
+		FuzzOptions{},
+	)
 }
 func TestStickyExecutionAttributes(t *testing.T) {
 	for _, item := range []*apiv1.StickyExecutionAttributes{nil, {}, &testdata.StickyExecutionAttributes} {
 		assert.Equal(t, item, proto.StickyExecutionAttributes(thrift.StickyExecutionAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.StickyExecutionAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.StickyExecutionAttributes,
+		proto.StickyExecutionAttributes,
+		FuzzOptions{},
+	)
 }
 func TestSupportedClientVersions(t *testing.T) {
 	for _, item := range []*apiv1.SupportedClientVersions{nil, {}, &testdata.SupportedClientVersions} {
 		assert.Equal(t, item, proto.SupportedClientVersions(thrift.SupportedClientVersions(item)))
 	}
-	assertAllFieldsSet(t, &testdata.SupportedClientVersions, nil)
+
+	runFuzzTestV2(t,
+		thrift.SupportedClientVersions,
+		proto.SupportedClientVersions,
+		FuzzOptions{},
+	)
 }
 func TestTaskIDBlock(t *testing.T) {
 	for _, item := range []*apiv1.TaskIDBlock{nil, {}, &testdata.TaskIDBlock} {
 		assert.Equal(t, item, proto.TaskIDBlock(thrift.TaskIDBlock(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TaskIDBlock, nil)
+
+	runFuzzTestV2(t,
+		thrift.TaskIDBlock,
+		proto.TaskIDBlock,
+		FuzzOptions{},
+	)
 }
 func TestTaskList(t *testing.T) {
 	for _, item := range []*apiv1.TaskList{nil, {}, &testdata.TaskList} {
 		assert.Equal(t, item, proto.TaskList(thrift.TaskList(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TaskList, nil)
+
+	runFuzzTestV2(t,
+		thrift.TaskList,
+		proto.TaskList,
+		FuzzOptions{},
+	)
 }
 func TestTaskListMetadata(t *testing.T) {
 	for _, item := range []*apiv1.TaskListMetadata{nil, {}, &testdata.TaskListMetadata} {
 		assert.Equal(t, item, proto.TaskListMetadata(thrift.TaskListMetadata(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TaskListMetadata, nil)
+
+	runFuzzTestV2(t,
+		thrift.TaskListMetadata,
+		proto.TaskListMetadata,
+		FuzzOptions{},
+	)
 }
 func TestTaskListPartitionMetadata(t *testing.T) {
 	for _, item := range []*apiv1.TaskListPartitionMetadata{nil, {}, &testdata.TaskListPartitionMetadata} {
 		assert.Equal(t, item, proto.TaskListPartitionMetadata(thrift.TaskListPartitionMetadata(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TaskListPartitionMetadata, nil)
+
+	runFuzzTestV2(t,
+		thrift.TaskListPartitionMetadata,
+		proto.TaskListPartitionMetadata,
+		FuzzOptions{},
+	)
 }
 func TestTaskListStatus(t *testing.T) {
 	for _, item := range []*apiv1.TaskListStatus{nil, {}, &testdata.TaskListStatus} {
 		assert.Equal(t, item, proto.TaskListStatus(thrift.TaskListStatus(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TaskListStatus, nil)
+
+	runFuzzTestV2(t,
+		thrift.TaskListStatus,
+		proto.TaskListStatus,
+		FuzzOptions{},
+	)
 }
 func TestTerminateWorkflowExecutionRequest(t *testing.T) {
 	for _, item := range []*apiv1.TerminateWorkflowExecutionRequest{nil, {}, &testdata.TerminateWorkflowExecutionRequest} {
 		assert.Equal(t, item, proto.TerminateWorkflowExecutionRequest(thrift.TerminateWorkflowExecutionRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TerminateWorkflowExecutionRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.TerminateWorkflowExecutionRequest,
+		proto.TerminateWorkflowExecutionRequest,
+		FuzzOptions{},
+	)
 }
 func TestTimerCanceledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.TimerCanceledEventAttributes{nil, {}, &testdata.TimerCanceledEventAttributes} {
 		assert.Equal(t, item, proto.TimerCanceledEventAttributes(thrift.TimerCanceledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TimerCanceledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.TimerCanceledEventAttributes,
+		proto.TimerCanceledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestTimerFiredEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.TimerFiredEventAttributes{nil, {}, &testdata.TimerFiredEventAttributes} {
 		assert.Equal(t, item, proto.TimerFiredEventAttributes(thrift.TimerFiredEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TimerFiredEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.TimerFiredEventAttributes,
+		proto.TimerFiredEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestTimerStartedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.TimerStartedEventAttributes{nil, {}, &testdata.TimerStartedEventAttributes} {
 		assert.Equal(t, item, proto.TimerStartedEventAttributes(thrift.TimerStartedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.TimerStartedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.TimerStartedEventAttributes,
+		proto.TimerStartedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestUpdateDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.UpdateDomainRequest{nil, {UpdateMask: &gogo.FieldMask{}}, &testdata.UpdateDomainRequest} {
 		assert.Equal(t, item, proto.UpdateDomainRequest(thrift.UpdateDomainRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.UpdateDomainRequest, nil)
+
+	runFuzzTestV2(t,
+		thrift.UpdateDomainRequest,
+		proto.UpdateDomainRequest,
+		FuzzOptions{},
+	)
 }
 func TestUpdateDomainResponse(t *testing.T) {
 	for _, item := range []*apiv1.UpdateDomainResponse{nil, &testdata.UpdateDomainResponse} {
 		assert.Equal(t, item, proto.UpdateDomainResponse(thrift.UpdateDomainResponse(item)))
 	}
-	assertAllFieldsSet(t, &testdata.UpdateDomainResponse, nil)
+
+	runFuzzTestV2(t,
+		thrift.UpdateDomainResponse,
+		proto.UpdateDomainResponse,
+		FuzzOptions{},
+	)
 }
 func TestUpsertWorkflowSearchAttributesEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.UpsertWorkflowSearchAttributesEventAttributes{nil, {}, &testdata.UpsertWorkflowSearchAttributesEventAttributes} {
 		assert.Equal(t, item, proto.UpsertWorkflowSearchAttributesEventAttributes(thrift.UpsertWorkflowSearchAttributesEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.UpsertWorkflowSearchAttributesEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.UpsertWorkflowSearchAttributesEventAttributes,
+		proto.UpsertWorkflowSearchAttributesEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkerVersionInfo(t *testing.T) {
 	for _, item := range []*apiv1.WorkerVersionInfo{nil, {}, &testdata.WorkerVersionInfo} {
 		assert.Equal(t, item, proto.WorkerVersionInfo(thrift.WorkerVersionInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkerVersionInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkerVersionInfo,
+		proto.WorkerVersionInfo,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecution(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecution{nil, {}, &testdata.WorkflowExecution} {
@@ -1229,7 +1643,12 @@ func TestWorkflowExecution(t *testing.T) {
 	}
 	assert.Empty(t, thrift.WorkflowID(nil))
 	assert.Empty(t, thrift.RunID(nil))
-	assertAllFieldsSet(t, &testdata.WorkflowExecution, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecution,
+		proto.WorkflowExecution,
+		FuzzOptions{},
+	)
 }
 func TestExternalExecutionInfo(t *testing.T) {
 	assert.Nil(t, proto.ExternalExecutionInfo(nil, nil))
@@ -1245,43 +1664,78 @@ func TestWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionCancelRequestedEventAttributes{nil, {}, &testdata.WorkflowExecutionCancelRequestedEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionCancelRequestedEventAttributes(thrift.WorkflowExecutionCancelRequestedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionCancelRequestedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionCancelRequestedEventAttributes,
+		proto.WorkflowExecutionCancelRequestedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionCanceledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionCanceledEventAttributes{nil, {}, &testdata.WorkflowExecutionCanceledEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionCanceledEventAttributes(thrift.WorkflowExecutionCanceledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionCanceledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionCanceledEventAttributes,
+		proto.WorkflowExecutionCanceledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionCompletedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionCompletedEventAttributes{nil, {}, &testdata.WorkflowExecutionCompletedEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionCompletedEventAttributes(thrift.WorkflowExecutionCompletedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionCompletedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionCompletedEventAttributes,
+		proto.WorkflowExecutionCompletedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionConfiguration(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionConfiguration{nil, {}, &testdata.WorkflowExecutionConfiguration} {
 		assert.Equal(t, item, proto.WorkflowExecutionConfiguration(thrift.WorkflowExecutionConfiguration(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionConfiguration, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionConfiguration,
+		proto.WorkflowExecutionConfiguration,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionContinuedAsNewEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionContinuedAsNewEventAttributes{nil, {}, &testdata.WorkflowExecutionContinuedAsNewEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionContinuedAsNewEventAttributes(thrift.WorkflowExecutionContinuedAsNewEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionContinuedAsNewEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionContinuedAsNewEventAttributes,
+		proto.WorkflowExecutionContinuedAsNewEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionFailedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionFailedEventAttributes{nil, {}, &testdata.WorkflowExecutionFailedEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionFailedEventAttributes(thrift.WorkflowExecutionFailedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionFailedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionFailedEventAttributes,
+		proto.WorkflowExecutionFailedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionFilter(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionFilter{nil, {}, &testdata.WorkflowExecutionFilter} {
 		assert.Equal(t, item, proto.WorkflowExecutionFilter(thrift.WorkflowExecutionFilter(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionFilter, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionFilter,
+		proto.WorkflowExecutionFilter,
+		FuzzOptions{},
+	)
 }
 func TestParentExecutionInfo(t *testing.T) {
 	assert.Nil(t, proto.ParentExecutionInfo(nil, nil, nil, nil))
@@ -1300,210 +1754,179 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionInfo{nil, {}, &testdata.WorkflowExecutionInfo} {
 		assert.Equal(t, item, proto.WorkflowExecutionInfo(thrift.WorkflowExecutionInfo(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionInfo, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionInfo,
+		proto.WorkflowExecutionInfo,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionSignaledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionSignaledEventAttributes{nil, {}, &testdata.WorkflowExecutionSignaledEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionSignaledEventAttributes(thrift.WorkflowExecutionSignaledEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionSignaledEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionSignaledEventAttributes,
+		proto.WorkflowExecutionSignaledEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionStartedEventAttributes{nil, {}, &testdata.WorkflowExecutionStartedEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionStartedEventAttributes(thrift.WorkflowExecutionStartedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionStartedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionStartedEventAttributes,
+		proto.WorkflowExecutionStartedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionTerminatedEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionTerminatedEventAttributes{nil, {}, &testdata.WorkflowExecutionTerminatedEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionTerminatedEventAttributes(thrift.WorkflowExecutionTerminatedEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionTerminatedEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionTerminatedEventAttributes,
+		proto.WorkflowExecutionTerminatedEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowExecutionTimedOutEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowExecutionTimedOutEventAttributes{nil, {}, &testdata.WorkflowExecutionTimedOutEventAttributes} {
 		assert.Equal(t, item, proto.WorkflowExecutionTimedOutEventAttributes(thrift.WorkflowExecutionTimedOutEventAttributes(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowExecutionTimedOutEventAttributes, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowExecutionTimedOutEventAttributes,
+		proto.WorkflowExecutionTimedOutEventAttributes,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowQuery(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowQuery{nil, {}, &testdata.WorkflowQuery} {
 		assert.Equal(t, item, proto.WorkflowQuery(thrift.WorkflowQuery(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowQuery, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowQuery,
+		proto.WorkflowQuery,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowQueryResult(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowQueryResult{nil, {}, &testdata.WorkflowQueryResult} {
 		assert.Equal(t, item, proto.WorkflowQueryResult(thrift.WorkflowQueryResult(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowQueryResult, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowQueryResult,
+		proto.WorkflowQueryResult,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowType(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowType{nil, {}, &testdata.WorkflowType} {
 		assert.Equal(t, item, proto.WorkflowType(thrift.WorkflowType(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowType, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowType,
+		proto.WorkflowType,
+		FuzzOptions{},
+	)
 }
 func TestWorkflowTypeFilter(t *testing.T) {
 	for _, item := range []*apiv1.WorkflowTypeFilter{nil, {}, &testdata.WorkflowTypeFilter} {
 		assert.Equal(t, item, proto.WorkflowTypeFilter(thrift.WorkflowTypeFilter(item)))
 	}
-	assertAllFieldsSet(t, &testdata.WorkflowTypeFilter, nil)
+
+	runFuzzTestV2(t,
+		thrift.WorkflowTypeFilter,
+		proto.WorkflowTypeFilter,
+		FuzzOptions{},
+	)
 }
 func TestDataBlobArray(t *testing.T) {
 	for _, item := range [][]*apiv1.DataBlob{nil, {}, testdata.DataBlobArray} {
 		assert.Equal(t, item, proto.DataBlobArray(thrift.DataBlobArray(item)))
-	}
-	for _, testObj := range testdata.DataBlobArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestHistoryEventArray(t *testing.T) {
 	for _, item := range [][]*apiv1.HistoryEvent{nil, {}, testdata.HistoryEventArray} {
 		assert.Equal(t, item, proto.HistoryEventArray(thrift.HistoryEventArray(item)))
 	}
-	for _, testObj := range testdata.HistoryEventArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestTaskListPartitionMetadataArray(t *testing.T) {
 	for _, item := range [][]*apiv1.TaskListPartitionMetadata{nil, {}, testdata.TaskListPartitionMetadataArray} {
 		assert.Equal(t, item, proto.TaskListPartitionMetadataArray(thrift.TaskListPartitionMetadataArray(item)))
-	}
-	for _, testObj := range testdata.TaskListPartitionMetadataArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestDecisionArray(t *testing.T) {
 	for _, item := range [][]*apiv1.Decision{nil, {}, testdata.DecisionArray} {
 		assert.Equal(t, item, proto.DecisionArray(thrift.DecisionArray(item)))
 	}
-	for _, testObj := range testdata.DecisionArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestPollerInfoArray(t *testing.T) {
 	for _, item := range [][]*apiv1.PollerInfo{nil, {}, testdata.PollerInfoArray} {
 		assert.Equal(t, item, proto.PollerInfoArray(thrift.PollerInfoArray(item)))
-	}
-	for _, testObj := range testdata.PollerInfoArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestPendingChildExecutionInfoArray(t *testing.T) {
 	for _, item := range [][]*apiv1.PendingChildExecutionInfo{nil, {}, testdata.PendingChildExecutionInfoArray} {
 		assert.Equal(t, item, proto.PendingChildExecutionInfoArray(thrift.PendingChildExecutionInfoArray(item)))
 	}
-	for _, testObj := range testdata.PendingChildExecutionInfoArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestWorkflowExecutionInfoArray(t *testing.T) {
 	for _, item := range [][]*apiv1.WorkflowExecutionInfo{nil, {}, testdata.WorkflowExecutionInfoArray} {
 		assert.Equal(t, item, proto.WorkflowExecutionInfoArray(thrift.WorkflowExecutionInfoArray(item)))
-	}
-	for _, testObj := range testdata.WorkflowExecutionInfoArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestDescribeDomainResponseArray(t *testing.T) {
 	for _, item := range [][]*apiv1.Domain{nil, {}, testdata.DomainArray} {
 		assert.Equal(t, item, proto.DescribeDomainResponseArray(thrift.DescribeDomainResponseArray(item)))
 	}
-	for _, testObj := range testdata.DomainArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestResetPointInfoArray(t *testing.T) {
 	for _, item := range [][]*apiv1.ResetPointInfo{nil, {}, testdata.ResetPointInfoArray} {
 		assert.Equal(t, item, proto.ResetPointInfoArray(thrift.ResetPointInfoArray(item)))
-	}
-	for _, testObj := range testdata.ResetPointInfoArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestPendingActivityInfoArray(t *testing.T) {
 	for _, item := range [][]*apiv1.PendingActivityInfo{nil, {}, testdata.PendingActivityInfoArray} {
 		assert.Equal(t, item, proto.PendingActivityInfoArray(thrift.PendingActivityInfoArray(item)))
 	}
-	for _, testObj := range testdata.PendingActivityInfoArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestClusterReplicationConfigurationArray(t *testing.T) {
 	for _, item := range [][]*apiv1.ClusterReplicationConfiguration{nil, {}, testdata.ClusterReplicationConfigurationArray} {
 		assert.Equal(t, item, proto.ClusterReplicationConfigurationArray(thrift.ClusterReplicationConfigurationArray(item)))
-	}
-	for _, testObj := range testdata.ClusterReplicationConfigurationArray {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestActivityLocalDispatchInfoMap(t *testing.T) {
 	for _, item := range []map[string]*apiv1.ActivityLocalDispatchInfo{nil, {}, testdata.ActivityLocalDispatchInfoMap} {
 		assert.Equal(t, item, proto.ActivityLocalDispatchInfoMap(thrift.ActivityLocalDispatchInfoMap(item)))
 	}
-	for _, testObj := range testdata.ActivityLocalDispatchInfoMap {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestBadBinaryInfoMap(t *testing.T) {
 	for _, item := range []map[string]*apiv1.BadBinaryInfo{nil, {}, testdata.BadBinaryInfoMap} {
 		assert.Equal(t, item, proto.BadBinaryInfoMap(thrift.BadBinaryInfoMap(item)))
-	}
-	for _, testObj := range testdata.BadBinaryInfoMap {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestIndexedValueTypeMap(t *testing.T) {
 	for _, item := range []map[string]apiv1.IndexedValueType{nil, {}, testdata.IndexedValueTypeMap} {
 		assert.Equal(t, item, proto.IndexedValueTypeMap(thrift.IndexedValueTypeMap(item)))
 	}
-	// Note: IndexedValueType is an enum, not a struct, so no assertAllFieldsSet needed
 }
 func TestWorkflowQueryMap(t *testing.T) {
 	for _, item := range []map[string]*apiv1.WorkflowQuery{nil, {}, testdata.WorkflowQueryMap} {
 		assert.Equal(t, item, proto.WorkflowQueryMap(thrift.WorkflowQueryMap(item)))
 	}
-	for _, testObj := range testdata.WorkflowQueryMap {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestWorkflowQueryResultMap(t *testing.T) {
 	for _, item := range []map[string]*apiv1.WorkflowQueryResult{nil, {}, testdata.WorkflowQueryResultMap} {
 		assert.Equal(t, item, proto.WorkflowQueryResultMap(thrift.WorkflowQueryResultMap(item)))
-	}
-	for _, testObj := range testdata.WorkflowQueryResultMap {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
 	}
 }
 func TestPayload(t *testing.T) {
@@ -1512,7 +1935,12 @@ func TestPayload(t *testing.T) {
 	}
 
 	assert.Equal(t, &apiv1.Payload{Data: []byte{}}, proto.Payload(thrift.Payload(&apiv1.Payload{})))
-	assertAllFieldsSet(t, &testdata.Payload1, nil)
+
+	runFuzzTestV2(t,
+		thrift.Payload,
+		proto.Payload,
+		FuzzOptions{},
+	)
 }
 func TestPayloadMap(t *testing.T) {
 	for _, item := range []map[string]*apiv1.Payload{nil, {}, testdata.PayloadMap} {
@@ -1520,7 +1948,6 @@ func TestPayloadMap(t *testing.T) {
 	}
 	for _, testObj := range testdata.PayloadMap {
 		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
 		}
 	}
 }
@@ -1583,13 +2010,6 @@ func TestHistoryEvent(t *testing.T) {
 	}
 	assert.Panics(t, func() { proto.HistoryEvent(&shared.HistoryEvent{EventType: shared.EventType(UnknownValue).Ptr()}) })
 	assert.Panics(t, func() { thrift.HistoryEvent(&apiv1.HistoryEvent{}) })
-
-	// Assert all fields are set for non-nil history events
-	for _, testObj := range historyEvents {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestDecision(t *testing.T) {
 	decisions := []*apiv1.Decision{
@@ -1613,13 +2033,6 @@ func TestDecision(t *testing.T) {
 	}
 	assert.Panics(t, func() { proto.Decision(&shared.Decision{DecisionType: shared.DecisionType(UnknownValue).Ptr()}) })
 	assert.Panics(t, func() { thrift.Decision(&apiv1.Decision{}) })
-
-	// Assert all fields are set for non-nil decisions
-	for _, testObj := range decisions {
-		if testObj != nil {
-			assertAllFieldsSet(t, testObj, nil)
-		}
-	}
 }
 func TestListClosedWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListClosedWorkflowExecutionsRequest{
@@ -1631,9 +2044,6 @@ func TestListClosedWorkflowExecutionsRequest(t *testing.T) {
 	} {
 		assert.Equal(t, item, proto.ListClosedWorkflowExecutionsRequest(thrift.ListClosedWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListClosedWorkflowExecutionsRequest_ExecutionFilter, nil)
-	assertAllFieldsSet(t, &testdata.ListClosedWorkflowExecutionsRequest_StatusFilter, nil)
-	assertAllFieldsSet(t, &testdata.ListClosedWorkflowExecutionsRequest_TypeFilter, nil)
 }
 func TestListOpenWorkflowExecutionsRequest(t *testing.T) {
 	for _, item := range []*apiv1.ListOpenWorkflowExecutionsRequest{
@@ -1644,6 +2054,4 @@ func TestListOpenWorkflowExecutionsRequest(t *testing.T) {
 	} {
 		assert.Equal(t, item, proto.ListOpenWorkflowExecutionsRequest(thrift.ListOpenWorkflowExecutionsRequest(item)))
 	}
-	assertAllFieldsSet(t, &testdata.ListOpenWorkflowExecutionsRequest_ExecutionFilter, nil)
-	assertAllFieldsSet(t, &testdata.ListOpenWorkflowExecutionsRequest_TypeFilter, nil)
 }
