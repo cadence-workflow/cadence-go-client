@@ -115,25 +115,24 @@ func isDefaultValue(v reflect.Value) bool {
 }
 
 func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) interface{}, protoType interface{}) {
-	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25,
+	fuzzer := testdatagen.NewWithNilChance(t, int64(123), DEFAULT_NIL_CHANCE,
 		// Custom fuzzer for gogo protobuf timestamps to avoid conversion precision issues
 		// Use realistic timestamp range that doesn't lose precision in UnixNano conversion
 		func(ts *gogo.Timestamp, c fuzz.Continue) {
-			// Range from 1970 to 2262 (max safe UnixNano range)
-			ts.Seconds = c.Int63n(9223372036) // Max seconds that fit in int64 nanoseconds
-			ts.Nanos = c.Int31n(1000000000)   // Valid nanoseconds range
+			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
+			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
 		},
 		// Custom fuzzer for gogo protobuf durations
 		func(d *gogo.Duration, c fuzz.Continue) {
-			d.Seconds = c.Int63n(315576000000) // ~10000 years
-			d.Nanos = c.Int31n(1000000000)     // Valid nanoseconds range
+			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
+			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
 		},
 		// Custom fuzzer for Payload to handle data consistently
 		// Note: empty vs nil data has semantic differences in the mappers
 		// This focuses on non-empty data to test the core mapping logic
 		func(p *apiv1.Payload, c fuzz.Continue) {
 			// Always generate non-empty data to avoid empty/nil semantic differences
-			length := c.Intn(10) + 1 // 1-10 bytes
+			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
 			p.Data = make([]byte, length)
 			for i := 0; i < length; i++ {
 				p.Data[i] = byte(c.Uint32())
@@ -152,7 +151,7 @@ func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) in
 		},
 	)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < DEFAULT_ITERATIONS; i++ {
 		fuzzed := reflect.New(reflect.TypeOf(protoType).Elem()).Interface()
 		fuzzer.Fuzz(fuzzed)
 
@@ -170,7 +169,8 @@ func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) in
 	}
 }
 
-func clearProtobufInternalFields(obj interface{}) {
+// clearFieldsIf recursively traverses an object and clears fields that match the predicate function
+func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
 	if obj == nil {
 		return
 	}
@@ -191,24 +191,24 @@ func clearProtobufInternalFields(obj interface{}) {
 		field := v.Field(i)
 		fieldName := v.Type().Field(i).Name
 
-		if strings.HasPrefix(fieldName, "XXX_") && field.CanSet() {
+		if shouldClear(fieldName) && field.CanSet() {
 			field.Set(reflect.Zero(field.Type()))
 		}
 
-		// Recursively clear internal fields in nested structs and slices
+		// Recursively clear fields in nested structs and slices
 		if field.CanInterface() {
 			switch field.Kind() {
 			case reflect.Ptr:
 				if !field.IsNil() {
-					clearProtobufInternalFields(field.Interface())
+					clearFieldsIf(field.Interface(), shouldClear)
 				}
 			case reflect.Struct:
-				clearProtobufInternalFields(field.Addr().Interface())
+				clearFieldsIf(field.Addr().Interface(), shouldClear)
 			case reflect.Slice:
 				for j := 0; j < field.Len(); j++ {
 					elem := field.Index(j)
 					if elem.CanInterface() {
-						clearProtobufInternalFields(elem.Interface())
+						clearFieldsIf(elem.Interface(), shouldClear)
 					}
 				}
 			}
@@ -216,15 +216,53 @@ func clearProtobufInternalFields(obj interface{}) {
 	}
 }
 
+// clearProtobufInternalFields clears protobuf internal fields (XXX_ prefixed)
+func clearProtobufInternalFields(obj interface{}) {
+	clearFieldsIf(obj, func(fieldName string) bool {
+		return strings.HasPrefix(fieldName, "XXX_")
+	})
+}
+
+// clearProtobufAndExcludedFields combines protobuf clearing and field exclusion in a single pass
+func clearProtobufAndExcludedFields(obj interface{}, excludedFields []string) {
+	// Create a map for O(1) lookup of excluded fields
+	excludedMap := make(map[string]bool)
+	for _, field := range excludedFields {
+		excludedMap[field] = true
+	}
+
+	clearFieldsIf(obj, func(fieldName string) bool {
+		// Clear if it's a protobuf internal field OR if it's in the excluded list
+		return strings.HasPrefix(fieldName, "XXX_") || excludedMap[fieldName]
+	})
+}
+
+// Fuzzing configuration constants
+const (
+	// DEFAULT_NIL_CHANCE is the default probability of setting pointer/slice fields to nil
+	DEFAULT_NIL_CHANCE = 0.25
+	// DEFAULT_ITERATIONS is the default number of fuzzing iterations to run
+	DEFAULT_ITERATIONS = 100
+	// MAX_SAFE_TIMESTAMP_SECONDS is the maximum seconds value that fits safely in int64 nanoseconds
+	// This avoids overflow when converting to UnixNano (max safe range from 1970 to ~2262)
+	MAX_SAFE_TIMESTAMP_SECONDS = 9223372036
+	// MAX_DURATION_SECONDS is the maximum duration in seconds (~10000 years)
+	MAX_DURATION_SECONDS = 315576000000
+	// NANOSECONDS_PER_SECOND is the number of nanoseconds in a second
+	NANOSECONDS_PER_SECOND = 1000000000
+	// MAX_PAYLOAD_BYTES is the maximum payload size for fuzzing
+	MAX_PAYLOAD_BYTES = 10
+)
+
 // FuzzOptions provides configuration for runFuzzTestV2
 type FuzzOptions struct {
 	// CustomFuncs are custom fuzzer functions to apply for specific types
 	CustomFuncs []interface{}
 	// ExcludedFields are field names to exclude from fuzzing (set to zero value)
 	ExcludedFields []string
-	// NilChance is the probability of setting pointer/slice fields to nil (default 0.25)
+	// NilChance is the probability of setting pointer/slice fields to nil (default DEFAULT_NIL_CHANCE)
 	NilChance float64
-	// Iterations is the number of fuzzing iterations to run (default 100)
+	// Iterations is the number of fuzzing iterations to run (default DEFAULT_ITERATIONS)
 	Iterations int
 }
 
@@ -237,27 +275,27 @@ func runFuzzTestV2[TProto protobuf.Message, TThrift any](
 ) {
 	// Apply defaults for zero values
 	if options.NilChance == 0 {
-		options.NilChance = 0.25
+		options.NilChance = DEFAULT_NIL_CHANCE
 	}
 	if options.Iterations == 0 {
-		options.Iterations = 100
+		options.Iterations = DEFAULT_ITERATIONS
 	}
 
 	// Build fuzzer functions - start with defaults and add custom ones
 	fuzzerFuncs := []interface{}{
 		// Default: Custom fuzzer for gogo protobuf timestamps
 		func(ts *gogo.Timestamp, c fuzz.Continue) {
-			ts.Seconds = c.Int63n(9223372036) // Max safe range
-			ts.Nanos = c.Int31n(1000000000)   // Valid nanoseconds range
+			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
+			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
 		},
 		// Default: Custom fuzzer for gogo protobuf durations
 		func(d *gogo.Duration, c fuzz.Continue) {
-			d.Seconds = c.Int63n(315576000000) // ~10000 years
-			d.Nanos = c.Int31n(1000000000)     // Valid nanoseconds range
+			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
+			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
 		},
 		// Default: Custom fuzzer for Payload to handle data consistently
 		func(p *apiv1.Payload, c fuzz.Continue) {
-			length := c.Intn(10) + 1 // 1-10 bytes
+			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
 			p.Data = make([]byte, length)
 			for i := 0; i < length; i++ {
 				p.Data[i] = byte(c.Uint32())
@@ -276,18 +314,15 @@ func runFuzzTestV2[TProto protobuf.Message, TThrift any](
 		fuzzed := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(TProto)
 		fuzzer.Fuzz(fuzzed)
 
-		// Apply field exclusions
-		excludeFields(fuzzed, options.ExcludedFields)
-
-		// Clear protobuf internal fields that shouldn't be part of the round trip test
-		clearProtobufInternalFields(fuzzed)
+		// Clear protobuf internal fields and apply field exclusions in a single pass
+		clearProtobufAndExcludedFields(fuzzed, options.ExcludedFields)
 
 		// Test proto -> thrift -> proto round trip
 		thriftResult := protoToThrift(fuzzed)
 		protoResult := thriftToProto(thriftResult)
 
-		// Clear internal fields from result as well
-		clearProtobufInternalFields(protoResult)
+		// Clear internal fields and excluded fields from result as well
+		clearProtobufAndExcludedFields(protoResult, options.ExcludedFields)
 
 		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
 	}
@@ -299,33 +334,15 @@ func excludeFields(obj interface{}, excludedFields []string) {
 		return
 	}
 
-	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return
-		}
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return
-	}
-
 	// Create a map for O(1) lookup
 	excludedMap := make(map[string]bool)
 	for _, field := range excludedFields {
 		excludedMap[field] = true
 	}
 
-	structType := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldName := structType.Field(i).Name
-
-		if excludedMap[fieldName] && field.CanSet() {
-			field.Set(reflect.Zero(field.Type()))
-		}
-	}
+	clearFieldsIf(obj, func(fieldName string) bool {
+		return excludedMap[fieldName]
+	})
 }
 
 func TestActivityLocalDispatchInfo(t *testing.T) {
