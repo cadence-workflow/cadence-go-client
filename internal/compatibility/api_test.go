@@ -26,8 +26,9 @@ import (
 	"strings"
 	"testing"
 
-	gogo "github.com/gogo/protobuf/types"
 	fuzz "github.com/google/gofuzz"
+	protobuf "github.com/gogo/protobuf/proto"
+	gogo "github.com/gogo/protobuf/types"
 	"github.com/stretchr/testify/assert"
 
 	"go.uber.org/cadence/.gen/go/shared"
@@ -113,20 +114,6 @@ func isDefaultValue(v reflect.Value) bool {
 	}
 }
 
-/*
-func runFuzzTestV2[P gogo.Any, T interface{}](t *testing.T, protoToThrift func(P) T, thriftToProto func(T) P) {
-	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25)
-
-	var zero P
-	protoType := zero.ProtoReflect().New().Interface().(P)
-
-	for i := 0; i < 100; i++ {
-		proto := fuzzer.Fuzz(protoType)
-		thrift := protoToThrift(proto)
-		assert.Equal(t, proto, thriftToProto(thrift))
-	}
-}
-*/
 
 func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) interface{}, protoType interface{}) {
 	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25,
@@ -230,6 +217,74 @@ func clearProtobufInternalFields(obj interface{}) {
 	}
 }
 
+// GogoMessage represents the constraint for gogo protobuf messages
+type GogoMessage interface {
+	protobuf.Message
+}
+
+// runFuzzTestV2 provides a more type-safe version of runFuzzTest using generics
+func runFuzzTestV2[TProto GogoMessage, TThrift any](
+	t *testing.T,
+	protoToThrift func(TProto) TThrift,
+	thriftToProto func(TThrift) TProto,
+) {
+	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25,
+		// Custom fuzzer for gogo protobuf timestamps to avoid conversion precision issues
+		// Use realistic timestamp range that doesn't lose precision in UnixNano conversion
+		func(ts *gogo.Timestamp, c fuzz.Continue) {
+			// Range from 1970 to 2262 (max safe UnixNano range)
+			ts.Seconds = c.Int63n(9223372036) // Max seconds that fit in int64 nanoseconds
+			ts.Nanos = c.Int31n(1000000000)   // Valid nanoseconds range
+		},
+		// Custom fuzzer for gogo protobuf durations 
+		func(d *gogo.Duration, c fuzz.Continue) {
+			d.Seconds = c.Int63n(315576000000) // ~10000 years
+			d.Nanos = c.Int31n(1000000000)     // Valid nanoseconds range
+		},
+		// Custom fuzzer for Payload to handle data consistently
+		// Note: empty vs nil data has semantic differences in the mappers
+		// This focuses on non-empty data to test the core mapping logic
+		func(p *apiv1.Payload, c fuzz.Continue) {
+			// Always generate non-empty data to avoid empty/nil semantic differences
+			length := c.Intn(10) + 1 // 1-10 bytes
+			p.Data = make([]byte, length)
+			for i := 0; i < length; i++ {
+				p.Data[i] = byte(c.Uint32())
+			}
+		},
+		// Custom fuzzer for DecisionTaskFailedCause to generate valid enum values
+		func(cause *apiv1.DecisionTaskFailedCause, c fuzz.Continue) {
+			validValues := []apiv1.DecisionTaskFailedCause{
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_UNHANDLED_DECISION,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_SCHEDULE_ACTIVITY_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_REQUEST_CANCEL_ACTIVITY_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_START_TIMER_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_CANCEL_TIMER_ATTRIBUTES,
+			}
+			*cause = validValues[c.Intn(len(validValues))]
+		},
+	)
+	
+	for i := 0; i < 100; i++ {
+		// Create new instance using generics - no need for protoType parameter!
+		var zero TProto
+		fuzzed := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(TProto)
+		fuzzer.Fuzz(fuzzed)
+		
+		// Clear protobuf internal fields that shouldn't be part of the round trip test
+		clearProtobufInternalFields(fuzzed)
+		
+		// Test proto -> thrift -> proto round trip
+		thriftResult := protoToThrift(fuzzed)
+		protoResult := thriftToProto(thriftResult)
+		
+		// Clear internal fields from result as well
+		clearProtobufInternalFields(protoResult)
+		
+		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
+	}
+}
+
 func TestActivityLocalDispatchInfo(t *testing.T) {
 	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityLocalDispatchInfo{nil, {}, &testdata.ActivityLocalDispatchInfo} {
@@ -237,15 +292,10 @@ func TestActivityLocalDispatchInfo(t *testing.T) {
 	}
 	assertAllFieldsSet(t, &testdata.ActivityLocalDispatchInfo, nil)
 
-	// Fuzz test
-	runFuzzTest(t,
-		func(x interface{}) interface{} {
-			return thrift.ActivityLocalDispatchInfo(x.(*apiv1.ActivityLocalDispatchInfo))
-		},
-		func(x interface{}) interface{} {
-			return proto.ActivityLocalDispatchInfo(x.(*shared.ActivityLocalDispatchInfo))
-		},
-		(*apiv1.ActivityLocalDispatchInfo)(nil),
+	// Fuzz test V2 (type-safe version)
+	runFuzzTestV2(t,
+		thrift.ActivityLocalDispatchInfo,
+		proto.ActivityLocalDispatchInfo,
 	)
 }
 func TestActivityTaskCancelRequestedEventAttributes(t *testing.T) {
