@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	gogo "github.com/gogo/protobuf/types"
+	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 
 	"go.uber.org/cadence/.gen/go/shared"
@@ -34,6 +35,7 @@ import (
 	"go.uber.org/cadence/internal/compatibility/proto"
 	"go.uber.org/cadence/internal/compatibility/testdata"
 	"go.uber.org/cadence/internal/compatibility/thrift"
+	"go.uber.org/cadence/test/testdatagen"
 
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
@@ -111,35 +113,212 @@ func isDefaultValue(v reflect.Value) bool {
 	}
 }
 
+/*
+func runFuzzTestV2[P gogo.Any, T interface{}](t *testing.T, protoToThrift func(P) T, thriftToProto func(T) P) {
+	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25)
+
+	var zero P
+	protoType := zero.ProtoReflect().New().Interface().(P)
+
+	for i := 0; i < 100; i++ {
+		proto := fuzzer.Fuzz(protoType)
+		thrift := protoToThrift(proto)
+		assert.Equal(t, proto, thriftToProto(thrift))
+	}
+}
+*/
+
+func runFuzzTest(t *testing.T, protoToThrift, thriftToProto func(interface{}) interface{}, protoType interface{}) {
+	fuzzer := testdatagen.NewWithNilChance(t, int64(123), 0.25,
+		// Custom fuzzer for gogo protobuf timestamps to avoid conversion precision issues
+		// Use realistic timestamp range that doesn't lose precision in UnixNano conversion
+		func(ts *gogo.Timestamp, c fuzz.Continue) {
+			// Range from 1970 to 2262 (max safe UnixNano range)
+			ts.Seconds = c.Int63n(9223372036) // Max seconds that fit in int64 nanoseconds
+			ts.Nanos = c.Int31n(1000000000)   // Valid nanoseconds range
+		},
+		// Custom fuzzer for gogo protobuf durations
+		func(d *gogo.Duration, c fuzz.Continue) {
+			d.Seconds = c.Int63n(315576000000) // ~10000 years
+			d.Nanos = c.Int31n(1000000000)     // Valid nanoseconds range
+		},
+		// Custom fuzzer for Payload to handle data consistently
+		// Note: empty vs nil data has semantic differences in the mappers
+		// This focuses on non-empty data to test the core mapping logic
+		func(p *apiv1.Payload, c fuzz.Continue) {
+			// Always generate non-empty data to avoid empty/nil semantic differences
+			length := c.Intn(10) + 1 // 1-10 bytes
+			p.Data = make([]byte, length)
+			for i := 0; i < length; i++ {
+				p.Data[i] = byte(c.Uint32())
+			}
+		},
+		// Custom fuzzer for DecisionTaskFailedCause to generate valid enum values
+		func(cause *apiv1.DecisionTaskFailedCause, c fuzz.Continue) {
+			validValues := []apiv1.DecisionTaskFailedCause{
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_UNHANDLED_DECISION,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_SCHEDULE_ACTIVITY_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_REQUEST_CANCEL_ACTIVITY_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_START_TIMER_ATTRIBUTES,
+				apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_CANCEL_TIMER_ATTRIBUTES,
+			}
+			*cause = validValues[c.Intn(len(validValues))]
+		},
+	)
+
+	for i := 0; i < 100; i++ {
+		fuzzed := reflect.New(reflect.TypeOf(protoType).Elem()).Interface()
+		fuzzer.Fuzz(fuzzed)
+
+		// Clear protobuf internal fields that shouldn't be part of the round trip test
+		clearProtobufInternalFields(fuzzed)
+
+		// Test proto -> thrift -> proto round trip
+		thriftResult := protoToThrift(fuzzed)
+		protoResult := thriftToProto(thriftResult)
+
+		// Clear internal fields from result as well
+		clearProtobufInternalFields(protoResult)
+
+		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
+	}
+}
+
+func clearProtobufInternalFields(obj interface{}) {
+	if obj == nil {
+		return
+	}
+
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return
+	}
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldName := v.Type().Field(i).Name
+
+		if strings.HasPrefix(fieldName, "XXX_") && field.CanSet() {
+			field.Set(reflect.Zero(field.Type()))
+		}
+
+		// Recursively clear internal fields in nested structs and slices
+		if field.CanInterface() {
+			switch field.Kind() {
+			case reflect.Ptr:
+				if !field.IsNil() {
+					clearProtobufInternalFields(field.Interface())
+				}
+			case reflect.Struct:
+				clearProtobufInternalFields(field.Addr().Interface())
+			case reflect.Slice:
+				for j := 0; j < field.Len(); j++ {
+					elem := field.Index(j)
+					if elem.CanInterface() {
+						clearProtobufInternalFields(elem.Interface())
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestActivityLocalDispatchInfo(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityLocalDispatchInfo{nil, {}, &testdata.ActivityLocalDispatchInfo} {
 		assert.Equal(t, item, proto.ActivityLocalDispatchInfo(thrift.ActivityLocalDispatchInfo(item)))
 	}
 	assertAllFieldsSet(t, &testdata.ActivityLocalDispatchInfo, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.ActivityLocalDispatchInfo(x.(*apiv1.ActivityLocalDispatchInfo))
+		},
+		func(x interface{}) interface{} {
+			return proto.ActivityLocalDispatchInfo(x.(*shared.ActivityLocalDispatchInfo))
+		},
+		(*apiv1.ActivityLocalDispatchInfo)(nil),
+	)
 }
 func TestActivityTaskCancelRequestedEventAttributes(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityTaskCancelRequestedEventAttributes{nil, {}, &testdata.ActivityTaskCancelRequestedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCancelRequestedEventAttributes(thrift.ActivityTaskCancelRequestedEventAttributes(item)))
 	}
 	assertAllFieldsSet(t, &testdata.ActivityTaskCancelRequestedEventAttributes, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.ActivityTaskCancelRequestedEventAttributes(x.(*apiv1.ActivityTaskCancelRequestedEventAttributes))
+		},
+		func(x interface{}) interface{} {
+			return proto.ActivityTaskCancelRequestedEventAttributes(x.(*shared.ActivityTaskCancelRequestedEventAttributes))
+		},
+		(*apiv1.ActivityTaskCancelRequestedEventAttributes)(nil),
+	)
 }
 func TestActivityTaskCanceledEventAttributes(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityTaskCanceledEventAttributes{nil, {}, &testdata.ActivityTaskCanceledEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCanceledEventAttributes(thrift.ActivityTaskCanceledEventAttributes(item)))
 	}
 	assertAllFieldsSet(t, &testdata.ActivityTaskCanceledEventAttributes, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.ActivityTaskCanceledEventAttributes(x.(*apiv1.ActivityTaskCanceledEventAttributes))
+		},
+		func(x interface{}) interface{} {
+			return proto.ActivityTaskCanceledEventAttributes(x.(*shared.ActivityTaskCanceledEventAttributes))
+		},
+		(*apiv1.ActivityTaskCanceledEventAttributes)(nil),
+	)
 }
 func TestActivityTaskCompletedEventAttributes(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityTaskCompletedEventAttributes{nil, {}, &testdata.ActivityTaskCompletedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskCompletedEventAttributes(thrift.ActivityTaskCompletedEventAttributes(item)))
 	}
 	assertAllFieldsSet(t, &testdata.ActivityTaskCompletedEventAttributes, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.ActivityTaskCompletedEventAttributes(x.(*apiv1.ActivityTaskCompletedEventAttributes))
+		},
+		func(x interface{}) interface{} {
+			return proto.ActivityTaskCompletedEventAttributes(x.(*shared.ActivityTaskCompletedEventAttributes))
+		},
+		(*apiv1.ActivityTaskCompletedEventAttributes)(nil),
+	)
 }
 func TestActivityTaskFailedEventAttributes(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityTaskFailedEventAttributes{nil, {}, &testdata.ActivityTaskFailedEventAttributes} {
 		assert.Equal(t, item, proto.ActivityTaskFailedEventAttributes(thrift.ActivityTaskFailedEventAttributes(item)))
 	}
 	assertAllFieldsSet(t, &testdata.ActivityTaskFailedEventAttributes, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.ActivityTaskFailedEventAttributes(x.(*apiv1.ActivityTaskFailedEventAttributes))
+		},
+		func(x interface{}) interface{} {
+			return proto.ActivityTaskFailedEventAttributes(x.(*shared.ActivityTaskFailedEventAttributes))
+		},
+		(*apiv1.ActivityTaskFailedEventAttributes)(nil),
+	)
 }
 func TestActivityTaskScheduledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.ActivityTaskScheduledEventAttributes{nil, {}, &testdata.ActivityTaskScheduledEventAttributes} {
@@ -250,10 +429,22 @@ func TestDecisionTaskCompletedEventAttributes(t *testing.T) {
 	assertAllFieldsSet(t, &testdata.DecisionTaskCompletedEventAttributes, nil)
 }
 func TestDecisionTaskFailedEventAttributes(t *testing.T) {
+	// Test with existing sample data
 	for _, item := range []*apiv1.DecisionTaskFailedEventAttributes{nil, {}, &testdata.DecisionTaskFailedEventAttributes} {
 		assert.Equal(t, item, proto.DecisionTaskFailedEventAttributes(thrift.DecisionTaskFailedEventAttributes(item)))
 	}
 	assertAllFieldsSet(t, &testdata.DecisionTaskFailedEventAttributes, nil)
+
+	// Fuzz test
+	runFuzzTest(t,
+		func(x interface{}) interface{} {
+			return thrift.DecisionTaskFailedEventAttributes(x.(*apiv1.DecisionTaskFailedEventAttributes))
+		},
+		func(x interface{}) interface{} {
+			return proto.DecisionTaskFailedEventAttributes(x.(*shared.DecisionTaskFailedEventAttributes))
+		},
+		(*apiv1.DecisionTaskFailedEventAttributes)(nil),
+	)
 }
 func TestDecisionTaskScheduledEventAttributes(t *testing.T) {
 	for _, item := range []*apiv1.DecisionTaskScheduledEventAttributes{nil, {}, &testdata.DecisionTaskScheduledEventAttributes} {
