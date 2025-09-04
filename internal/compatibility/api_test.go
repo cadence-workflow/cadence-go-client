@@ -50,8 +50,10 @@ const (
 	// MAX_SAFE_TIMESTAMP_SECONDS is the maximum seconds value that fits safely in int64 nanoseconds
 	// This avoids overflow when converting to UnixNano (max safe range from 1970 to ~2262)
 	MAX_SAFE_TIMESTAMP_SECONDS = 9223372036
-	// MAX_DURATION_SECONDS is the maximum duration in seconds (~10000 years)
-	MAX_DURATION_SECONDS = 315576000000
+	// MAX_DURATION_SECONDS is the maximum duration in seconds that fits in int32
+	// This prevents overflow in mapper conversion (durationToSeconds -> int32)
+	// int32 max value is 2147483647, so use that as the safe limit
+	MAX_DURATION_SECONDS = 2147483647
 	// NANOSECONDS_PER_SECOND is the number of nanoseconds in a second
 	NANOSECONDS_PER_SECOND = 1000000000
 	// MAX_PAYLOAD_BYTES is the maximum payload size for fuzzing
@@ -413,9 +415,6 @@ func TestDecisionTaskScheduledEventAttributes(t *testing.T) {
 		thrift.DecisionTaskScheduledEventAttributes,
 		proto.DecisionTaskScheduledEventAttributes,
 		FuzzOptions{
-			ExcludedFields: []string{
-				"StartToCloseTimeout",
-			},
 			CustomFuncs: []interface{}{
 				func(e *apiv1.TaskListKind, c fuzz.Continue) {
 					validValues := []apiv1.TaskListKind{
@@ -541,16 +540,25 @@ func TestDescribeDomainResponse_Domain(t *testing.T) {
 					}
 					*status = validValues[c.Intn(len(validValues))]
 				},
+				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+				// because thrift mapping uses durationToDays (truncates to day boundaries)
+				func(domain *apiv1.Domain, c fuzz.Continue) {
+					if domain.WorkflowExecutionRetentionPeriod != nil {
+						// Generate days within int32 range: max ~5.8 million days (~16000 years)
+						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						domain.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						domain.WorkflowExecutionRetentionPeriod.Nanos = 0
+					}
+				},
 			},
 			ExcludedFields: []string{
 				// TODO: Fix these issues
-				"WorkflowExecutionRetentionPeriod", // Duration overflow in mapper conversion
-				"ActiveClusters",                   // Nil pointer dereference in mapper conversion
-				"Clusters",                         // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"FailoverInfo",                     // Protobuf metadata issues in nested structures
-				"IsolationGroups",                  // Protobuf metadata issues in nested structures
-				"AsyncWorkflowConfig",              // Protobuf metadata issues in nested structures
-				"BadBinaries",                      // Protobuf metadata issues in nested structures
+				"ActiveClusters",        // Nil pointer dereference in mapper conversion
+				"Clusters",              // Protobuf metadata issues in nested ClusterReplicationConfiguration
+				"FailoverInfo",          // Protobuf metadata issues in nested structures
+				"IsolationGroups",       // Protobuf metadata issues in nested structures
+				"AsyncWorkflowConfig",   // Protobuf metadata issues in nested structures
+				"BadBinaries",           // Protobuf metadata issues in nested structures
 			},
 		},
 	)
@@ -579,13 +587,12 @@ func TestDescribeDomainResponse(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// Exclude nested fields that have complex issues
-				"Domain.WorkflowExecutionRetentionPeriod", // Duration overflow in mapper conversion
-				"Domain.ActiveClusters",                   // Nil pointer dereference in mapper conversion
-				"Domain.Clusters",                         // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"Domain.FailoverInfo",                     // Protobuf metadata issues in nested structures
-				"Domain.IsolationGroups",                  // Protobuf metadata issues in nested structures
-				"Domain.AsyncWorkflowConfig",              // Protobuf metadata issues in nested structures
-				"Domain.BadBinaries",                      // Protobuf metadata issues in nested structures
+				"Domain.ActiveClusters",      // Nil pointer dereference in mapper conversion
+				"Domain.Clusters",            // Protobuf metadata issues in nested ClusterReplicationConfiguration
+				"Domain.FailoverInfo",        // Protobuf metadata issues in nested structures
+				"Domain.IsolationGroups",     // Protobuf metadata issues in nested structures
+				"Domain.AsyncWorkflowConfig", // Protobuf metadata issues in nested structures
+				"Domain.BadBinaries",         // Protobuf metadata issues in nested structures
 			},
 		},
 	)
@@ -1159,10 +1166,6 @@ func TestPendingActivityInfo(t *testing.T) {
 			ExcludedFields: []string{
 				"StartedWorkerIdentity", // Field mapping issue - not being preserved in mapper
 				"ScheduleId",            // Field mapping issue - not being preserved correctly in mapper
-				"ScheduledTime",         // Duration overflow in mapper conversion
-				"StartedTime",           // Duration overflow in mapper conversion
-				"HeartbeatTime",         // Duration overflow in mapper conversion
-				"ExpirationTime",        // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -1476,9 +1479,18 @@ func TestRegisterDomainRequest(t *testing.T) {
 					}
 					*status = validValues[c.Intn(len(validValues))]
 				},
+				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+				// because thrift mapping uses durationToDays (truncates to day boundaries)
+				func(req *apiv1.RegisterDomainRequest, c fuzz.Continue) {
+					if req.WorkflowExecutionRetentionPeriod != nil {
+						// Generate days within int32 range: max ~5.8 million days (~16000 years)
+						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						req.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						req.WorkflowExecutionRetentionPeriod.Nanos = 0
+					}
+				},
 			},
 			ExcludedFields: []string{
-				"WorkflowExecutionRetentionPeriod", // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -1790,9 +1802,6 @@ func TestRetryPolicy(t *testing.T) {
 		proto.RetryPolicy,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"InitialInterval",    // Duration overflow in mapper conversion
-				"MaximumInterval",    // Duration overflow in mapper conversion
-				"ExpirationInterval", // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -2131,7 +2140,6 @@ func TestStickyExecutionAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"ScheduleToStartTimeout", // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -2265,7 +2273,6 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 		proto.TimerStartedEventAttributes,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"StartToFireTimeout", // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -2279,12 +2286,22 @@ func TestUpdateDomainRequest(t *testing.T) {
 		thrift.UpdateDomainRequest,
 		proto.UpdateDomainRequest,
 		FuzzOptions{
+			CustomFuncs: []interface{}{
+				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+				func(req *apiv1.UpdateDomainRequest, c fuzz.Continue) {
+					if req.WorkflowExecutionRetentionPeriod != nil {
+						// Generate days within int32 range
+						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						req.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						req.WorkflowExecutionRetentionPeriod.Nanos = 0
+					}
+				},
+			},
 			ExcludedFields: []string{
 				"UpdateMask",                       // Complex nested structure with protobuf metadata issues
 				"Description",                      // Field mapping issue - not being preserved correctly in mapper
 				"OwnerEmail",                       // Field mapping issue - not being preserved correctly in mapper
 				"Data",                             // Field mapping issue - not being preserved correctly in mapper
-				"WorkflowExecutionRetentionPeriod", // Duration overflow in mapper conversion
 				"BadBinaries",                      // Complex nested structure that causes issues
 				"HistoryArchivalStatus",            // Field mapping issue - not being preserved correctly in mapper
 				"HistoryArchivalUri",               // Field mapping issue - not being preserved correctly in mapper
@@ -2293,7 +2310,6 @@ func TestUpdateDomainRequest(t *testing.T) {
 				"ActiveClusterName",                // Field mapping issue - not being preserved correctly in mapper
 				"Clusters",                         // Complex nested structure that causes issues
 				"DeleteBadBinary",                  // Field mapping issue - not being preserved correctly in mapper
-				"FailoverTimeout",                  // Duration overflow in mapper conversion
 				"ActiveClusters",                   // Complex nested structure that causes issues
 			},
 		},
@@ -2319,12 +2335,19 @@ func TestUpdateDomainResponse(t *testing.T) {
 						HistoryArchivalStatus:    apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
 						VisibilityArchivalStatus: apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
 					}
+					// Set WorkflowExecutionRetentionPeriod with day-precision to avoid truncation
+					if c.RandBool() {
+						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						resp.Domain.WorkflowExecutionRetentionPeriod = &gogo.Duration{
+							Seconds: days * 24 * 3600,
+							Nanos:   0,
+						}
+					}
 				},
 			},
 			ExcludedFields: []string{
 				// Exclude nested fields that have complex issues like in DescribeDomainResponse
-				"Domain.WorkflowExecutionRetentionPeriod", // Duration overflow in mapper conversion
-				"Domain.ActiveClusters",                   // Nil pointer dereference in mapper conversion
+				"Domain.ActiveClusters", // Nil pointer dereference in mapper conversion
 				"Domain.Clusters",                         // Protobuf metadata issues in nested ClusterReplicationConfiguration
 				"Domain.FailoverInfo",                     // Protobuf metadata issues in nested structures
 				"Domain.IsolationGroups",                  // Protobuf metadata issues in nested structures
@@ -2457,8 +2480,6 @@ func TestWorkflowExecutionConfiguration(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"ExecutionStartToCloseTimeout", // Duration overflow in mapper conversion
-				"TaskStartToCloseTimeout",      // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -2494,9 +2515,6 @@ func TestWorkflowExecutionContinuedAsNewEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"ExecutionStartToCloseTimeout", // Duration overflow in mapper conversion
-				"TaskStartToCloseTimeout",      // Duration overflow in mapper conversion
-				"BackoffStartInterval",         // Duration overflow in mapper conversion
 			},
 		},
 	)
@@ -2632,8 +2650,6 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 			ExcludedFields: []string{
 				// Skip all complex nested structures that cause gofuzz issues
 				"Input",                        // Complex Payload structure that causes gofuzz issues
-				"ExecutionStartToCloseTimeout", // Duration overflow in mapper conversion
-				"TaskStartToCloseTimeout",      // Duration overflow in mapper conversion
 				"ParentWorkflowDomain",         // Complex nested structure
 				"ParentWorkflowExecution",      // Complex nested structure
 				"ParentInitiatedEventId",       // Complex nested structure
@@ -2966,9 +2982,11 @@ func runFuzzTest[TProto protobuf.Message, TThrift any](
 			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
 		},
 		// Default: Custom fuzzer for gogo protobuf durations
+		// Note: Thrift protocol only supports second-level precision for durations,
+		// so we only generate whole seconds to ensure round-trip compatibility
 		func(d *gogo.Duration, c fuzz.Continue) {
 			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
-			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
+			d.Nanos = 0 // Thrift mapping truncates nanoseconds, so set to 0 for consistency
 		},
 		// Default: Custom fuzzer for Payload to handle data consistently
 		func(p *apiv1.Payload, c fuzz.Continue) {
