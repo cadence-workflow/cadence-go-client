@@ -41,74 +41,6 @@ import (
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
-// clearFieldsIf recursively traverses an object and clears fields that match the predicate function
-func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
-	if obj == nil {
-		return
-	}
-
-	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return
-		}
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return
-	}
-
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldName := v.Type().Field(i).Name
-
-		if shouldClear(fieldName) && field.CanSet() {
-			field.Set(reflect.Zero(field.Type()))
-		}
-
-		// Recursively clear fields in nested structs and slices
-		if field.CanInterface() {
-			switch field.Kind() {
-			case reflect.Ptr:
-				if !field.IsNil() {
-					clearFieldsIf(field.Interface(), shouldClear)
-				}
-			case reflect.Struct:
-				clearFieldsIf(field.Addr().Interface(), shouldClear)
-			case reflect.Slice:
-				for j := 0; j < field.Len(); j++ {
-					elem := field.Index(j)
-					if elem.CanInterface() {
-						clearFieldsIf(elem.Interface(), shouldClear)
-					}
-				}
-			}
-		}
-	}
-}
-
-// clearProtobufInternalFields clears protobuf internal fields (XXX_ prefixed)
-func clearProtobufInternalFields(obj interface{}) {
-	clearFieldsIf(obj, func(fieldName string) bool {
-		return strings.HasPrefix(fieldName, "XXX_")
-	})
-}
-
-// clearProtobufAndExcludedFields combines protobuf clearing and field exclusion in a single pass
-func clearProtobufAndExcludedFields(obj interface{}, excludedFields []string) {
-	// Create a map for O(1) lookup of excluded fields
-	excludedMap := make(map[string]bool)
-	for _, field := range excludedFields {
-		excludedMap[field] = true
-	}
-
-	clearFieldsIf(obj, func(fieldName string) bool {
-		// Clear if it's a protobuf internal field OR if it's in the excluded list
-		return strings.HasPrefix(fieldName, "XXX_") || excludedMap[fieldName]
-	})
-}
-
 // Fuzzing configuration constants
 const (
 	// DEFAULT_NIL_CHANCE is the default probability of setting pointer/slice fields to nil
@@ -126,7 +58,7 @@ const (
 	MAX_PAYLOAD_BYTES = 10
 )
 
-// FuzzOptions provides configuration for runFuzzTestV2
+// FuzzOptions provides configuration for runFuzzTest
 type FuzzOptions struct {
 	// CustomFuncs are custom fuzzer functions to apply for specific types
 	CustomFuncs []interface{}
@@ -138,92 +70,13 @@ type FuzzOptions struct {
 	Iterations int
 }
 
-// runFuzzTestV2 provides a more type-safe version of runFuzzTest using generics
-func runFuzzTestV2[TProto protobuf.Message, TThrift any](
-	t *testing.T,
-	protoToThrift func(TProto) TThrift,
-	thriftToProto func(TThrift) TProto,
-	options FuzzOptions,
-) {
-	// Apply defaults for zero values
-	if options.NilChance == 0 {
-		options.NilChance = DEFAULT_NIL_CHANCE
-	}
-	if options.Iterations == 0 {
-		options.Iterations = DEFAULT_ITERATIONS
-	}
-
-	// Build fuzzer functions - start with defaults and add custom ones
-	fuzzerFuncs := []interface{}{
-		// Default: Custom fuzzer for gogo protobuf timestamps
-		func(ts *gogo.Timestamp, c fuzz.Continue) {
-			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
-			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
-		},
-		// Default: Custom fuzzer for gogo protobuf durations
-		func(d *gogo.Duration, c fuzz.Continue) {
-			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
-			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
-		},
-		// Default: Custom fuzzer for Payload to handle data consistently
-		func(p *apiv1.Payload, c fuzz.Continue) {
-			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
-			p.Data = make([]byte, length)
-			for i := 0; i < length; i++ {
-				p.Data[i] = byte(c.Uint32())
-			}
-		},
-	}
-
-	// Add custom fuzzer functions
-	fuzzerFuncs = append(fuzzerFuncs, options.CustomFuncs...)
-
-	fuzzer := testdatagen.NewWithNilChance(t, int64(123), float32(options.NilChance), fuzzerFuncs...)
-
-	for i := 0; i < options.Iterations; i++ {
-		// Create new instance using generics
-		var zero TProto
-		fuzzed := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(TProto)
-		fuzzer.Fuzz(fuzzed)
-
-		// Clear protobuf internal fields and apply field exclusions in a single pass
-		clearProtobufAndExcludedFields(fuzzed, options.ExcludedFields)
-
-		// Test proto -> thrift -> proto round trip
-		thriftResult := protoToThrift(fuzzed)
-		protoResult := thriftToProto(thriftResult)
-
-		// Clear internal fields and excluded fields from result as well
-		clearProtobufAndExcludedFields(protoResult, options.ExcludedFields)
-
-		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
-	}
-}
-
-// excludeFields sets specified field names to their zero values
-func excludeFields(obj interface{}, excludedFields []string) {
-	if obj == nil || len(excludedFields) == 0 {
-		return
-	}
-
-	// Create a map for O(1) lookup
-	excludedMap := make(map[string]bool)
-	for _, field := range excludedFields {
-		excludedMap[field] = true
-	}
-
-	clearFieldsIf(obj, func(fieldName string) bool {
-		return excludedMap[fieldName]
-	})
-}
-
 func TestActivityLocalDispatchInfo(t *testing.T) {
 	// Test with existing sample data
 	for _, item := range []*apiv1.ActivityLocalDispatchInfo{nil, {}, &testdata.ActivityLocalDispatchInfo} {
 		assert.Equal(t, item, proto.ActivityLocalDispatchInfo(thrift.ActivityLocalDispatchInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityLocalDispatchInfo,
 		proto.ActivityLocalDispatchInfo,
 		FuzzOptions{},
@@ -235,7 +88,7 @@ func TestActivityTaskCancelRequestedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskCancelRequestedEventAttributes(thrift.ActivityTaskCancelRequestedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskCancelRequestedEventAttributes,
 		proto.ActivityTaskCancelRequestedEventAttributes,
 		FuzzOptions{},
@@ -247,7 +100,7 @@ func TestActivityTaskCanceledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskCanceledEventAttributes(thrift.ActivityTaskCanceledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskCanceledEventAttributes,
 		proto.ActivityTaskCanceledEventAttributes,
 		FuzzOptions{},
@@ -259,7 +112,7 @@ func TestActivityTaskCompletedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskCompletedEventAttributes(thrift.ActivityTaskCompletedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskCompletedEventAttributes,
 		proto.ActivityTaskCompletedEventAttributes,
 		FuzzOptions{},
@@ -271,7 +124,7 @@ func TestActivityTaskFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskFailedEventAttributes(thrift.ActivityTaskFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskFailedEventAttributes,
 		proto.ActivityTaskFailedEventAttributes,
 		FuzzOptions{},
@@ -282,7 +135,7 @@ func TestActivityTaskScheduledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskScheduledEventAttributes(thrift.ActivityTaskScheduledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskScheduledEventAttributes,
 		proto.ActivityTaskScheduledEventAttributes,
 		FuzzOptions{},
@@ -293,7 +146,7 @@ func TestActivityTaskStartedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskStartedEventAttributes(thrift.ActivityTaskStartedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskStartedEventAttributes,
 		proto.ActivityTaskStartedEventAttributes,
 		FuzzOptions{},
@@ -304,7 +157,7 @@ func TestActivityTaskTimedOutEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityTaskTimedOutEventAttributes(thrift.ActivityTaskTimedOutEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityTaskTimedOutEventAttributes,
 		proto.ActivityTaskTimedOutEventAttributes,
 		FuzzOptions{},
@@ -315,7 +168,7 @@ func TestActivityType(t *testing.T) {
 		assert.Equal(t, item, proto.ActivityType(thrift.ActivityType(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ActivityType,
 		proto.ActivityType,
 		FuzzOptions{},
@@ -326,7 +179,7 @@ func TestBadBinaries(t *testing.T) {
 		assert.Equal(t, item, proto.BadBinaries(thrift.BadBinaries(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.BadBinaries,
 		proto.BadBinaries,
 		FuzzOptions{},
@@ -337,7 +190,7 @@ func TestBadBinaryInfo(t *testing.T) {
 		assert.Equal(t, item, proto.BadBinaryInfo(thrift.BadBinaryInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.BadBinaryInfo,
 		proto.BadBinaryInfo,
 		FuzzOptions{},
@@ -348,7 +201,7 @@ func TestCancelTimerFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.CancelTimerFailedEventAttributes(thrift.CancelTimerFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.CancelTimerFailedEventAttributes,
 		proto.CancelTimerFailedEventAttributes,
 		FuzzOptions{},
@@ -359,7 +212,7 @@ func TestChildWorkflowExecutionCanceledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionCanceledEventAttributes(thrift.ChildWorkflowExecutionCanceledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionCanceledEventAttributes,
 		proto.ChildWorkflowExecutionCanceledEventAttributes,
 		FuzzOptions{},
@@ -370,7 +223,7 @@ func TestChildWorkflowExecutionCompletedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionCompletedEventAttributes(thrift.ChildWorkflowExecutionCompletedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionCompletedEventAttributes,
 		proto.ChildWorkflowExecutionCompletedEventAttributes,
 		FuzzOptions{},
@@ -381,7 +234,7 @@ func TestChildWorkflowExecutionFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionFailedEventAttributes(thrift.ChildWorkflowExecutionFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionFailedEventAttributes,
 		proto.ChildWorkflowExecutionFailedEventAttributes,
 		FuzzOptions{},
@@ -392,7 +245,7 @@ func TestChildWorkflowExecutionStartedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionStartedEventAttributes(thrift.ChildWorkflowExecutionStartedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionStartedEventAttributes,
 		proto.ChildWorkflowExecutionStartedEventAttributes,
 		FuzzOptions{},
@@ -403,7 +256,7 @@ func TestChildWorkflowExecutionTerminatedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionTerminatedEventAttributes(thrift.ChildWorkflowExecutionTerminatedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionTerminatedEventAttributes,
 		proto.ChildWorkflowExecutionTerminatedEventAttributes,
 		FuzzOptions{},
@@ -414,7 +267,7 @@ func TestChildWorkflowExecutionTimedOutEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ChildWorkflowExecutionTimedOutEventAttributes(thrift.ChildWorkflowExecutionTimedOutEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ChildWorkflowExecutionTimedOutEventAttributes,
 		proto.ChildWorkflowExecutionTimedOutEventAttributes,
 		FuzzOptions{},
@@ -425,7 +278,7 @@ func TestClusterReplicationConfiguration(t *testing.T) {
 		assert.Equal(t, item, proto.ClusterReplicationConfiguration(thrift.ClusterReplicationConfiguration(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ClusterReplicationConfiguration,
 		proto.ClusterReplicationConfiguration,
 		FuzzOptions{},
@@ -436,7 +289,7 @@ func TestCountWorkflowExecutionsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.CountWorkflowExecutionsRequest(thrift.CountWorkflowExecutionsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.CountWorkflowExecutionsRequest,
 		proto.CountWorkflowExecutionsRequest,
 		FuzzOptions{},
@@ -447,7 +300,7 @@ func TestCountWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.CountWorkflowExecutionsResponse(thrift.CountWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.CountWorkflowExecutionsResponse,
 		proto.CountWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -458,7 +311,7 @@ func TestDataBlob(t *testing.T) {
 		assert.Equal(t, item, proto.DataBlob(thrift.DataBlob(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DataBlob,
 		proto.DataBlob,
 		FuzzOptions{},
@@ -469,7 +322,7 @@ func TestDecisionTaskCompletedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.DecisionTaskCompletedEventAttributes(thrift.DecisionTaskCompletedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DecisionTaskCompletedEventAttributes,
 		proto.DecisionTaskCompletedEventAttributes,
 		FuzzOptions{},
@@ -482,7 +335,7 @@ func TestDecisionTaskFailedEventAttributes(t *testing.T) {
 	}
 
 	// Fuzz test V2 with custom enum fuzzer and field exclusions
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DecisionTaskFailedEventAttributes,
 		proto.DecisionTaskFailedEventAttributes,
 		FuzzOptions{
@@ -512,7 +365,7 @@ func TestDecisionTaskScheduledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.DecisionTaskScheduledEventAttributes(thrift.DecisionTaskScheduledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DecisionTaskScheduledEventAttributes,
 		proto.DecisionTaskScheduledEventAttributes,
 		FuzzOptions{},
@@ -523,7 +376,7 @@ func TestDecisionTaskStartedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.DecisionTaskStartedEventAttributes(thrift.DecisionTaskStartedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DecisionTaskStartedEventAttributes,
 		proto.DecisionTaskStartedEventAttributes,
 		FuzzOptions{},
@@ -536,7 +389,7 @@ func TestDecisionTaskTimedOutEventAttributes(t *testing.T) {
 	}
 
 	// Fuzz test to find mapper issues
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DecisionTaskTimedOutEventAttributes,
 		proto.DecisionTaskTimedOutEventAttributes,
 		FuzzOptions{
@@ -572,7 +425,7 @@ func TestDeprecateDomainRequest(t *testing.T) {
 		assert.Equal(t, item, proto.DeprecateDomainRequest(thrift.DeprecateDomainRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DeprecateDomainRequest,
 		proto.DeprecateDomainRequest,
 		FuzzOptions{},
@@ -590,7 +443,7 @@ func TestDescribeDomainRequest(t *testing.T) {
 	assert.Panics(t, func() { proto.DescribeDomainRequest(&shared.DescribeDomainRequest{}) })
 	assert.Panics(t, func() { thrift.DescribeDomainRequest(&apiv1.DescribeDomainRequest{}) })
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeDomainRequest,
 		proto.DescribeDomainRequest,
 		FuzzOptions{},
@@ -601,7 +454,7 @@ func TestDescribeDomainResponse_Domain(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeDomainResponseDomain(thrift.DescribeDomainResponseDomain(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeDomainResponseDomain,
 		proto.DescribeDomainResponseDomain,
 		FuzzOptions{},
@@ -612,7 +465,7 @@ func TestDescribeDomainResponse(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeDomainResponse(thrift.DescribeDomainResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeDomainResponse,
 		proto.DescribeDomainResponse,
 		FuzzOptions{},
@@ -623,7 +476,7 @@ func TestDescribeTaskListRequest(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeTaskListRequest(thrift.DescribeTaskListRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeTaskListRequest,
 		proto.DescribeTaskListRequest,
 		FuzzOptions{},
@@ -634,7 +487,7 @@ func TestDescribeTaskListResponse(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeTaskListResponse(thrift.DescribeTaskListResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeTaskListResponse,
 		proto.DescribeTaskListResponse,
 		FuzzOptions{},
@@ -645,7 +498,7 @@ func TestDescribeWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionRequest(thrift.DescribeWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeWorkflowExecutionRequest,
 		proto.DescribeWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -656,7 +509,7 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.DescribeWorkflowExecutionResponse(thrift.DescribeWorkflowExecutionResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DescribeWorkflowExecutionResponse,
 		proto.DescribeWorkflowExecutionResponse,
 		FuzzOptions{},
@@ -667,7 +520,7 @@ func TestDiagnoseWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionRequest(thrift.DiagnoseWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DiagnoseWorkflowExecutionRequest,
 		proto.DiagnoseWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -678,7 +531,7 @@ func TestDiagnoseWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.DiagnoseWorkflowExecutionResponse(thrift.DiagnoseWorkflowExecutionResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.DiagnoseWorkflowExecutionResponse,
 		proto.DiagnoseWorkflowExecutionResponse,
 		FuzzOptions{},
@@ -689,7 +542,7 @@ func TestExternalWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ExternalWorkflowExecutionCancelRequestedEventAttributes(thrift.ExternalWorkflowExecutionCancelRequestedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ExternalWorkflowExecutionCancelRequestedEventAttributes,
 		proto.ExternalWorkflowExecutionCancelRequestedEventAttributes,
 		FuzzOptions{},
@@ -700,7 +553,7 @@ func TestExternalWorkflowExecutionSignaledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.ExternalWorkflowExecutionSignaledEventAttributes(thrift.ExternalWorkflowExecutionSignaledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ExternalWorkflowExecutionSignaledEventAttributes,
 		proto.ExternalWorkflowExecutionSignaledEventAttributes,
 		FuzzOptions{},
@@ -711,7 +564,7 @@ func TestGetClusterInfoResponse(t *testing.T) {
 		assert.Equal(t, item, proto.GetClusterInfoResponse(thrift.GetClusterInfoResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.GetClusterInfoResponse,
 		proto.GetClusterInfoResponse,
 		FuzzOptions{},
@@ -722,7 +575,7 @@ func TestGetSearchAttributesResponse(t *testing.T) {
 		assert.Equal(t, item, proto.GetSearchAttributesResponse(thrift.GetSearchAttributesResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.GetSearchAttributesResponse,
 		proto.GetSearchAttributesResponse,
 		FuzzOptions{},
@@ -733,7 +586,7 @@ func TestGetWorkflowExecutionHistoryRequest(t *testing.T) {
 		assert.Equal(t, item, proto.GetWorkflowExecutionHistoryRequest(thrift.GetWorkflowExecutionHistoryRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.GetWorkflowExecutionHistoryRequest,
 		proto.GetWorkflowExecutionHistoryRequest,
 		FuzzOptions{},
@@ -744,7 +597,7 @@ func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 		assert.Equal(t, item, proto.GetWorkflowExecutionHistoryResponse(thrift.GetWorkflowExecutionHistoryResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.GetWorkflowExecutionHistoryResponse,
 		proto.GetWorkflowExecutionHistoryResponse,
 		FuzzOptions{},
@@ -755,7 +608,7 @@ func TestHeader(t *testing.T) {
 		assert.Equal(t, item, proto.Header(thrift.Header(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.Header,
 		proto.Header,
 		FuzzOptions{},
@@ -766,7 +619,7 @@ func TestHistory(t *testing.T) {
 		assert.Equal(t, item, proto.History(thrift.History(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.History,
 		proto.History,
 		FuzzOptions{},
@@ -777,7 +630,7 @@ func TestListArchivedWorkflowExecutionsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ListArchivedWorkflowExecutionsRequest(thrift.ListArchivedWorkflowExecutionsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListArchivedWorkflowExecutionsRequest,
 		proto.ListArchivedWorkflowExecutionsRequest,
 		FuzzOptions{},
@@ -788,7 +641,7 @@ func TestListArchivedWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListArchivedWorkflowExecutionsResponse(thrift.ListArchivedWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListArchivedWorkflowExecutionsResponse,
 		proto.ListArchivedWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -799,7 +652,7 @@ func TestListClosedWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListClosedWorkflowExecutionsResponse(thrift.ListClosedWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListClosedWorkflowExecutionsResponse,
 		proto.ListClosedWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -810,7 +663,7 @@ func TestListDomainsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ListDomainsRequest(thrift.ListDomainsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListDomainsRequest,
 		proto.ListDomainsRequest,
 		FuzzOptions{},
@@ -821,7 +674,7 @@ func TestListDomainsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListDomainsResponse(thrift.ListDomainsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListDomainsResponse,
 		proto.ListDomainsResponse,
 		FuzzOptions{},
@@ -832,7 +685,7 @@ func TestListOpenWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListOpenWorkflowExecutionsResponse(thrift.ListOpenWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListOpenWorkflowExecutionsResponse,
 		proto.ListOpenWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -843,7 +696,7 @@ func TestListTaskListPartitionsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ListTaskListPartitionsRequest(thrift.ListTaskListPartitionsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListTaskListPartitionsRequest,
 		proto.ListTaskListPartitionsRequest,
 		FuzzOptions{},
@@ -854,7 +707,7 @@ func TestListTaskListPartitionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListTaskListPartitionsResponse(thrift.ListTaskListPartitionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListTaskListPartitionsResponse,
 		proto.ListTaskListPartitionsResponse,
 		FuzzOptions{},
@@ -865,7 +718,7 @@ func TestListWorkflowExecutionsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ListWorkflowExecutionsRequest(thrift.ListWorkflowExecutionsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListWorkflowExecutionsRequest,
 		proto.ListWorkflowExecutionsRequest,
 		FuzzOptions{},
@@ -876,7 +729,7 @@ func TestListWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ListWorkflowExecutionsResponse(thrift.ListWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ListWorkflowExecutionsResponse,
 		proto.ListWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -887,7 +740,7 @@ func TestMarkerRecordedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.MarkerRecordedEventAttributes(thrift.MarkerRecordedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.MarkerRecordedEventAttributes,
 		proto.MarkerRecordedEventAttributes,
 		FuzzOptions{},
@@ -898,7 +751,7 @@ func TestMemo(t *testing.T) {
 		assert.Equal(t, item, proto.Memo(thrift.Memo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.Memo,
 		proto.Memo,
 		FuzzOptions{},
@@ -909,7 +762,7 @@ func TestPendingActivityInfo(t *testing.T) {
 		assert.Equal(t, item, proto.PendingActivityInfo(thrift.PendingActivityInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PendingActivityInfo,
 		proto.PendingActivityInfo,
 		FuzzOptions{},
@@ -920,7 +773,7 @@ func TestPendingChildExecutionInfo(t *testing.T) {
 		assert.Equal(t, item, proto.PendingChildExecutionInfo(thrift.PendingChildExecutionInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PendingChildExecutionInfo,
 		proto.PendingChildExecutionInfo,
 		FuzzOptions{},
@@ -931,7 +784,7 @@ func TestPendingDecisionInfo(t *testing.T) {
 		assert.Equal(t, item, proto.PendingDecisionInfo(thrift.PendingDecisionInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PendingDecisionInfo,
 		proto.PendingDecisionInfo,
 		FuzzOptions{},
@@ -942,7 +795,7 @@ func TestPollForActivityTaskRequest(t *testing.T) {
 		assert.Equal(t, item, proto.PollForActivityTaskRequest(thrift.PollForActivityTaskRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PollForActivityTaskRequest,
 		proto.PollForActivityTaskRequest,
 		FuzzOptions{},
@@ -953,7 +806,7 @@ func TestPollForActivityTaskResponse(t *testing.T) {
 		assert.Equal(t, item, proto.PollForActivityTaskResponse(thrift.PollForActivityTaskResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PollForActivityTaskResponse,
 		proto.PollForActivityTaskResponse,
 		FuzzOptions{},
@@ -964,7 +817,7 @@ func TestPollForDecisionTaskRequest(t *testing.T) {
 		assert.Equal(t, item, proto.PollForDecisionTaskRequest(thrift.PollForDecisionTaskRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PollForDecisionTaskRequest,
 		proto.PollForDecisionTaskRequest,
 		FuzzOptions{},
@@ -975,7 +828,7 @@ func TestPollForDecisionTaskResponse(t *testing.T) {
 		assert.Equal(t, item, proto.PollForDecisionTaskResponse(thrift.PollForDecisionTaskResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PollForDecisionTaskResponse,
 		proto.PollForDecisionTaskResponse,
 		FuzzOptions{},
@@ -986,7 +839,7 @@ func TestPollerInfo(t *testing.T) {
 		assert.Equal(t, item, proto.PollerInfo(thrift.PollerInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.PollerInfo,
 		proto.PollerInfo,
 		FuzzOptions{},
@@ -997,7 +850,7 @@ func TestQueryRejected(t *testing.T) {
 		assert.Equal(t, item, proto.QueryRejected(thrift.QueryRejected(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.QueryRejected,
 		proto.QueryRejected,
 		FuzzOptions{},
@@ -1008,7 +861,7 @@ func TestQueryWorkflowRequest(t *testing.T) {
 		assert.Equal(t, item, proto.QueryWorkflowRequest(thrift.QueryWorkflowRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.QueryWorkflowRequest,
 		proto.QueryWorkflowRequest,
 		FuzzOptions{},
@@ -1019,7 +872,7 @@ func TestQueryWorkflowResponse(t *testing.T) {
 		assert.Equal(t, item, proto.QueryWorkflowResponse(thrift.QueryWorkflowResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.QueryWorkflowResponse,
 		proto.QueryWorkflowResponse,
 		FuzzOptions{},
@@ -1030,7 +883,7 @@ func TestRecordActivityTaskHeartbeatByIDRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatByIDRequest(thrift.RecordActivityTaskHeartbeatByIDRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RecordActivityTaskHeartbeatByIDRequest,
 		proto.RecordActivityTaskHeartbeatByIDRequest,
 		FuzzOptions{},
@@ -1041,7 +894,7 @@ func TestRecordActivityTaskHeartbeatByIDResponse(t *testing.T) {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatByIDResponse(thrift.RecordActivityTaskHeartbeatByIDResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RecordActivityTaskHeartbeatByIDResponse,
 		proto.RecordActivityTaskHeartbeatByIDResponse,
 		FuzzOptions{},
@@ -1052,7 +905,7 @@ func TestRecordActivityTaskHeartbeatRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatRequest(thrift.RecordActivityTaskHeartbeatRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RecordActivityTaskHeartbeatRequest,
 		proto.RecordActivityTaskHeartbeatRequest,
 		FuzzOptions{},
@@ -1063,7 +916,7 @@ func TestRecordActivityTaskHeartbeatResponse(t *testing.T) {
 		assert.Equal(t, item, proto.RecordActivityTaskHeartbeatResponse(thrift.RecordActivityTaskHeartbeatResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RecordActivityTaskHeartbeatResponse,
 		proto.RecordActivityTaskHeartbeatResponse,
 		FuzzOptions{},
@@ -1074,7 +927,7 @@ func TestRegisterDomainRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RegisterDomainRequest(thrift.RegisterDomainRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RegisterDomainRequest,
 		proto.RegisterDomainRequest,
 		FuzzOptions{},
@@ -1085,7 +938,7 @@ func TestRequestCancelActivityTaskFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.RequestCancelActivityTaskFailedEventAttributes(thrift.RequestCancelActivityTaskFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RequestCancelActivityTaskFailedEventAttributes,
 		proto.RequestCancelActivityTaskFailedEventAttributes,
 		FuzzOptions{},
@@ -1096,7 +949,7 @@ func TestRequestCancelExternalWorkflowExecutionFailedEventAttributes(t *testing.
 		assert.Equal(t, item, proto.RequestCancelExternalWorkflowExecutionFailedEventAttributes(thrift.RequestCancelExternalWorkflowExecutionFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RequestCancelExternalWorkflowExecutionFailedEventAttributes,
 		proto.RequestCancelExternalWorkflowExecutionFailedEventAttributes,
 		FuzzOptions{},
@@ -1107,7 +960,7 @@ func TestRequestCancelExternalWorkflowExecutionInitiatedEventAttributes(t *testi
 		assert.Equal(t, item, proto.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(thrift.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes,
 		proto.RequestCancelExternalWorkflowExecutionInitiatedEventAttributes,
 		FuzzOptions{},
@@ -1118,7 +971,7 @@ func TestRequestCancelWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RequestCancelWorkflowExecutionRequest(thrift.RequestCancelWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RequestCancelWorkflowExecutionRequest,
 		proto.RequestCancelWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1129,7 +982,7 @@ func TestResetPointInfo(t *testing.T) {
 		assert.Equal(t, item, proto.ResetPointInfo(thrift.ResetPointInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ResetPointInfo,
 		proto.ResetPointInfo,
 		FuzzOptions{},
@@ -1140,7 +993,7 @@ func TestResetPoints(t *testing.T) {
 		assert.Equal(t, item, proto.ResetPoints(thrift.ResetPoints(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ResetPoints,
 		proto.ResetPoints,
 		FuzzOptions{},
@@ -1151,7 +1004,7 @@ func TestResetStickyTaskListRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ResetStickyTaskListRequest(thrift.ResetStickyTaskListRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ResetStickyTaskListRequest,
 		proto.ResetStickyTaskListRequest,
 		FuzzOptions{},
@@ -1162,7 +1015,7 @@ func TestResetWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ResetWorkflowExecutionRequest(thrift.ResetWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ResetWorkflowExecutionRequest,
 		proto.ResetWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1173,7 +1026,7 @@ func TestResetWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ResetWorkflowExecutionResponse(thrift.ResetWorkflowExecutionResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ResetWorkflowExecutionResponse,
 		proto.ResetWorkflowExecutionResponse,
 		FuzzOptions{},
@@ -1184,7 +1037,7 @@ func TestRespondActivityTaskCanceledByIDRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskCanceledByIDRequest(thrift.RespondActivityTaskCanceledByIDRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskCanceledByIDRequest,
 		proto.RespondActivityTaskCanceledByIDRequest,
 		FuzzOptions{},
@@ -1195,7 +1048,7 @@ func TestRespondActivityTaskCanceledRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskCanceledRequest(thrift.RespondActivityTaskCanceledRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskCanceledRequest,
 		proto.RespondActivityTaskCanceledRequest,
 		FuzzOptions{},
@@ -1206,7 +1059,7 @@ func TestRespondActivityTaskCompletedByIDRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskCompletedByIDRequest(thrift.RespondActivityTaskCompletedByIDRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskCompletedByIDRequest,
 		proto.RespondActivityTaskCompletedByIDRequest,
 		FuzzOptions{},
@@ -1217,7 +1070,7 @@ func TestRespondActivityTaskCompletedRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskCompletedRequest(thrift.RespondActivityTaskCompletedRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskCompletedRequest,
 		proto.RespondActivityTaskCompletedRequest,
 		FuzzOptions{},
@@ -1228,7 +1081,7 @@ func TestRespondActivityTaskFailedByIDRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskFailedByIDRequest(thrift.RespondActivityTaskFailedByIDRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskFailedByIDRequest,
 		proto.RespondActivityTaskFailedByIDRequest,
 		FuzzOptions{},
@@ -1239,7 +1092,7 @@ func TestRespondActivityTaskFailedRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondActivityTaskFailedRequest(thrift.RespondActivityTaskFailedRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondActivityTaskFailedRequest,
 		proto.RespondActivityTaskFailedRequest,
 		FuzzOptions{},
@@ -1250,7 +1103,7 @@ func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondDecisionTaskCompletedRequest(thrift.RespondDecisionTaskCompletedRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondDecisionTaskCompletedRequest,
 		proto.RespondDecisionTaskCompletedRequest,
 		FuzzOptions{},
@@ -1261,7 +1114,7 @@ func TestRespondDecisionTaskCompletedResponse(t *testing.T) {
 		assert.Equal(t, item, proto.RespondDecisionTaskCompletedResponse(thrift.RespondDecisionTaskCompletedResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondDecisionTaskCompletedResponse,
 		proto.RespondDecisionTaskCompletedResponse,
 		FuzzOptions{},
@@ -1272,7 +1125,7 @@ func TestRespondDecisionTaskFailedRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondDecisionTaskFailedRequest(thrift.RespondDecisionTaskFailedRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondDecisionTaskFailedRequest,
 		proto.RespondDecisionTaskFailedRequest,
 		FuzzOptions{},
@@ -1283,7 +1136,7 @@ func TestRespondQueryTaskCompletedRequest(t *testing.T) {
 		assert.Equal(t, item, proto.RespondQueryTaskCompletedRequest(thrift.RespondQueryTaskCompletedRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RespondQueryTaskCompletedRequest,
 		proto.RespondQueryTaskCompletedRequest,
 		FuzzOptions{},
@@ -1294,7 +1147,7 @@ func TestRetryPolicy(t *testing.T) {
 		assert.Equal(t, item, proto.RetryPolicy(thrift.RetryPolicy(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.RetryPolicy,
 		proto.RetryPolicy,
 		FuzzOptions{},
@@ -1305,7 +1158,7 @@ func TestScanWorkflowExecutionsRequest(t *testing.T) {
 		assert.Equal(t, item, proto.ScanWorkflowExecutionsRequest(thrift.ScanWorkflowExecutionsRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ScanWorkflowExecutionsRequest,
 		proto.ScanWorkflowExecutionsRequest,
 		FuzzOptions{},
@@ -1316,7 +1169,7 @@ func TestScanWorkflowExecutionsResponse(t *testing.T) {
 		assert.Equal(t, item, proto.ScanWorkflowExecutionsResponse(thrift.ScanWorkflowExecutionsResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.ScanWorkflowExecutionsResponse,
 		proto.ScanWorkflowExecutionsResponse,
 		FuzzOptions{},
@@ -1327,7 +1180,7 @@ func TestSearchAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.SearchAttributes(thrift.SearchAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SearchAttributes,
 		proto.SearchAttributes,
 		FuzzOptions{},
@@ -1338,7 +1191,7 @@ func TestSignalExternalWorkflowExecutionFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.SignalExternalWorkflowExecutionFailedEventAttributes(thrift.SignalExternalWorkflowExecutionFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SignalExternalWorkflowExecutionFailedEventAttributes,
 		proto.SignalExternalWorkflowExecutionFailedEventAttributes,
 		FuzzOptions{},
@@ -1349,7 +1202,7 @@ func TestSignalExternalWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.SignalExternalWorkflowExecutionInitiatedEventAttributes(thrift.SignalExternalWorkflowExecutionInitiatedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SignalExternalWorkflowExecutionInitiatedEventAttributes,
 		proto.SignalExternalWorkflowExecutionInitiatedEventAttributes,
 		FuzzOptions{},
@@ -1369,7 +1222,7 @@ func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 		})
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SignalWithStartWorkflowExecutionRequest,
 		proto.SignalWithStartWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1380,7 +1233,7 @@ func TestSignalWithStartWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.SignalWithStartWorkflowExecutionResponse(thrift.SignalWithStartWorkflowExecutionResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SignalWithStartWorkflowExecutionResponse,
 		proto.SignalWithStartWorkflowExecutionResponse,
 		FuzzOptions{},
@@ -1391,7 +1244,7 @@ func TestSignalWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.SignalWorkflowExecutionRequest(thrift.SignalWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SignalWorkflowExecutionRequest,
 		proto.SignalWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1402,7 +1255,7 @@ func TestStartChildWorkflowExecutionFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.StartChildWorkflowExecutionFailedEventAttributes(thrift.StartChildWorkflowExecutionFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StartChildWorkflowExecutionFailedEventAttributes,
 		proto.StartChildWorkflowExecutionFailedEventAttributes,
 		FuzzOptions{},
@@ -1413,7 +1266,7 @@ func TestStartChildWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.StartChildWorkflowExecutionInitiatedEventAttributes(thrift.StartChildWorkflowExecutionInitiatedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StartChildWorkflowExecutionInitiatedEventAttributes,
 		proto.StartChildWorkflowExecutionInitiatedEventAttributes,
 		FuzzOptions{},
@@ -1424,7 +1277,7 @@ func TestStartTimeFilter(t *testing.T) {
 		assert.Equal(t, item, proto.StartTimeFilter(thrift.StartTimeFilter(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StartTimeFilter,
 		proto.StartTimeFilter,
 		FuzzOptions{},
@@ -1444,7 +1297,7 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 		})
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StartWorkflowExecutionRequest,
 		proto.StartWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1455,7 +1308,7 @@ func TestStartWorkflowExecutionResponse(t *testing.T) {
 		assert.Equal(t, item, proto.StartWorkflowExecutionResponse(thrift.StartWorkflowExecutionResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StartWorkflowExecutionResponse,
 		proto.StartWorkflowExecutionResponse,
 		FuzzOptions{},
@@ -1466,7 +1319,7 @@ func TestStatusFilter(t *testing.T) {
 		assert.Equal(t, item, proto.StatusFilter(thrift.StatusFilter(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StatusFilter,
 		proto.StatusFilter,
 		FuzzOptions{},
@@ -1477,7 +1330,7 @@ func TestStickyExecutionAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.StickyExecutionAttributes(thrift.StickyExecutionAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.StickyExecutionAttributes,
 		proto.StickyExecutionAttributes,
 		FuzzOptions{},
@@ -1488,7 +1341,7 @@ func TestSupportedClientVersions(t *testing.T) {
 		assert.Equal(t, item, proto.SupportedClientVersions(thrift.SupportedClientVersions(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.SupportedClientVersions,
 		proto.SupportedClientVersions,
 		FuzzOptions{},
@@ -1499,7 +1352,7 @@ func TestTaskIDBlock(t *testing.T) {
 		assert.Equal(t, item, proto.TaskIDBlock(thrift.TaskIDBlock(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TaskIDBlock,
 		proto.TaskIDBlock,
 		FuzzOptions{},
@@ -1510,7 +1363,7 @@ func TestTaskList(t *testing.T) {
 		assert.Equal(t, item, proto.TaskList(thrift.TaskList(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TaskList,
 		proto.TaskList,
 		FuzzOptions{},
@@ -1521,7 +1374,7 @@ func TestTaskListMetadata(t *testing.T) {
 		assert.Equal(t, item, proto.TaskListMetadata(thrift.TaskListMetadata(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TaskListMetadata,
 		proto.TaskListMetadata,
 		FuzzOptions{},
@@ -1532,7 +1385,7 @@ func TestTaskListPartitionMetadata(t *testing.T) {
 		assert.Equal(t, item, proto.TaskListPartitionMetadata(thrift.TaskListPartitionMetadata(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TaskListPartitionMetadata,
 		proto.TaskListPartitionMetadata,
 		FuzzOptions{},
@@ -1543,7 +1396,7 @@ func TestTaskListStatus(t *testing.T) {
 		assert.Equal(t, item, proto.TaskListStatus(thrift.TaskListStatus(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TaskListStatus,
 		proto.TaskListStatus,
 		FuzzOptions{},
@@ -1554,7 +1407,7 @@ func TestTerminateWorkflowExecutionRequest(t *testing.T) {
 		assert.Equal(t, item, proto.TerminateWorkflowExecutionRequest(thrift.TerminateWorkflowExecutionRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TerminateWorkflowExecutionRequest,
 		proto.TerminateWorkflowExecutionRequest,
 		FuzzOptions{},
@@ -1565,7 +1418,7 @@ func TestTimerCanceledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.TimerCanceledEventAttributes(thrift.TimerCanceledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TimerCanceledEventAttributes,
 		proto.TimerCanceledEventAttributes,
 		FuzzOptions{},
@@ -1576,7 +1429,7 @@ func TestTimerFiredEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.TimerFiredEventAttributes(thrift.TimerFiredEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TimerFiredEventAttributes,
 		proto.TimerFiredEventAttributes,
 		FuzzOptions{},
@@ -1587,7 +1440,7 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.TimerStartedEventAttributes(thrift.TimerStartedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.TimerStartedEventAttributes,
 		proto.TimerStartedEventAttributes,
 		FuzzOptions{},
@@ -1598,7 +1451,7 @@ func TestUpdateDomainRequest(t *testing.T) {
 		assert.Equal(t, item, proto.UpdateDomainRequest(thrift.UpdateDomainRequest(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.UpdateDomainRequest,
 		proto.UpdateDomainRequest,
 		FuzzOptions{},
@@ -1609,7 +1462,7 @@ func TestUpdateDomainResponse(t *testing.T) {
 		assert.Equal(t, item, proto.UpdateDomainResponse(thrift.UpdateDomainResponse(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.UpdateDomainResponse,
 		proto.UpdateDomainResponse,
 		FuzzOptions{},
@@ -1620,7 +1473,7 @@ func TestUpsertWorkflowSearchAttributesEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.UpsertWorkflowSearchAttributesEventAttributes(thrift.UpsertWorkflowSearchAttributesEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.UpsertWorkflowSearchAttributesEventAttributes,
 		proto.UpsertWorkflowSearchAttributesEventAttributes,
 		FuzzOptions{},
@@ -1631,7 +1484,7 @@ func TestWorkerVersionInfo(t *testing.T) {
 		assert.Equal(t, item, proto.WorkerVersionInfo(thrift.WorkerVersionInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkerVersionInfo,
 		proto.WorkerVersionInfo,
 		FuzzOptions{},
@@ -1644,7 +1497,7 @@ func TestWorkflowExecution(t *testing.T) {
 	assert.Empty(t, thrift.WorkflowID(nil))
 	assert.Empty(t, thrift.RunID(nil))
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecution,
 		proto.WorkflowExecution,
 		FuzzOptions{},
@@ -1665,7 +1518,7 @@ func TestWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionCancelRequestedEventAttributes(thrift.WorkflowExecutionCancelRequestedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionCancelRequestedEventAttributes,
 		proto.WorkflowExecutionCancelRequestedEventAttributes,
 		FuzzOptions{},
@@ -1676,7 +1529,7 @@ func TestWorkflowExecutionCanceledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionCanceledEventAttributes(thrift.WorkflowExecutionCanceledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionCanceledEventAttributes,
 		proto.WorkflowExecutionCanceledEventAttributes,
 		FuzzOptions{},
@@ -1687,7 +1540,7 @@ func TestWorkflowExecutionCompletedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionCompletedEventAttributes(thrift.WorkflowExecutionCompletedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionCompletedEventAttributes,
 		proto.WorkflowExecutionCompletedEventAttributes,
 		FuzzOptions{},
@@ -1698,7 +1551,7 @@ func TestWorkflowExecutionConfiguration(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionConfiguration(thrift.WorkflowExecutionConfiguration(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionConfiguration,
 		proto.WorkflowExecutionConfiguration,
 		FuzzOptions{},
@@ -1709,7 +1562,7 @@ func TestWorkflowExecutionContinuedAsNewEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionContinuedAsNewEventAttributes(thrift.WorkflowExecutionContinuedAsNewEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionContinuedAsNewEventAttributes,
 		proto.WorkflowExecutionContinuedAsNewEventAttributes,
 		FuzzOptions{},
@@ -1720,7 +1573,7 @@ func TestWorkflowExecutionFailedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionFailedEventAttributes(thrift.WorkflowExecutionFailedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionFailedEventAttributes,
 		proto.WorkflowExecutionFailedEventAttributes,
 		FuzzOptions{},
@@ -1731,7 +1584,7 @@ func TestWorkflowExecutionFilter(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionFilter(thrift.WorkflowExecutionFilter(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionFilter,
 		proto.WorkflowExecutionFilter,
 		FuzzOptions{},
@@ -1755,7 +1608,7 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionInfo(thrift.WorkflowExecutionInfo(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionInfo,
 		proto.WorkflowExecutionInfo,
 		FuzzOptions{},
@@ -1766,7 +1619,7 @@ func TestWorkflowExecutionSignaledEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionSignaledEventAttributes(thrift.WorkflowExecutionSignaledEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionSignaledEventAttributes,
 		proto.WorkflowExecutionSignaledEventAttributes,
 		FuzzOptions{},
@@ -1777,7 +1630,7 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionStartedEventAttributes(thrift.WorkflowExecutionStartedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionStartedEventAttributes,
 		proto.WorkflowExecutionStartedEventAttributes,
 		FuzzOptions{},
@@ -1788,7 +1641,7 @@ func TestWorkflowExecutionTerminatedEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionTerminatedEventAttributes(thrift.WorkflowExecutionTerminatedEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionTerminatedEventAttributes,
 		proto.WorkflowExecutionTerminatedEventAttributes,
 		FuzzOptions{},
@@ -1799,7 +1652,7 @@ func TestWorkflowExecutionTimedOutEventAttributes(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowExecutionTimedOutEventAttributes(thrift.WorkflowExecutionTimedOutEventAttributes(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowExecutionTimedOutEventAttributes,
 		proto.WorkflowExecutionTimedOutEventAttributes,
 		FuzzOptions{},
@@ -1810,7 +1663,7 @@ func TestWorkflowQuery(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowQuery(thrift.WorkflowQuery(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowQuery,
 		proto.WorkflowQuery,
 		FuzzOptions{},
@@ -1821,7 +1674,7 @@ func TestWorkflowQueryResult(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowQueryResult(thrift.WorkflowQueryResult(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowQueryResult,
 		proto.WorkflowQueryResult,
 		FuzzOptions{},
@@ -1832,7 +1685,7 @@ func TestWorkflowType(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowType(thrift.WorkflowType(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowType,
 		proto.WorkflowType,
 		FuzzOptions{},
@@ -1843,7 +1696,7 @@ func TestWorkflowTypeFilter(t *testing.T) {
 		assert.Equal(t, item, proto.WorkflowTypeFilter(thrift.WorkflowTypeFilter(item)))
 	}
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.WorkflowTypeFilter,
 		proto.WorkflowTypeFilter,
 		FuzzOptions{},
@@ -1936,7 +1789,7 @@ func TestPayload(t *testing.T) {
 
 	assert.Equal(t, &apiv1.Payload{Data: []byte{}}, proto.Payload(thrift.Payload(&apiv1.Payload{})))
 
-	runFuzzTestV2(t,
+	runFuzzTest(t,
 		thrift.Payload,
 		proto.Payload,
 		FuzzOptions{},
@@ -2054,4 +1907,127 @@ func TestListOpenWorkflowExecutionsRequest(t *testing.T) {
 	} {
 		assert.Equal(t, item, proto.ListOpenWorkflowExecutionsRequest(thrift.ListOpenWorkflowExecutionsRequest(item)))
 	}
+}
+
+// runFuzzTest provides a more type-safe version of runFuzzTest using generics
+func runFuzzTest[TProto protobuf.Message, TThrift any](
+	t *testing.T,
+	protoToThrift func(TProto) TThrift,
+	thriftToProto func(TThrift) TProto,
+	options FuzzOptions,
+) {
+	// Apply defaults for zero values
+	if options.NilChance == 0 {
+		options.NilChance = DEFAULT_NIL_CHANCE
+	}
+	if options.Iterations == 0 {
+		options.Iterations = DEFAULT_ITERATIONS
+	}
+
+	// Build fuzzer functions - start with defaults and add custom ones
+	fuzzerFuncs := []interface{}{
+		// Default: Custom fuzzer for gogo protobuf timestamps
+		func(ts *gogo.Timestamp, c fuzz.Continue) {
+			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
+			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
+		},
+		// Default: Custom fuzzer for gogo protobuf durations
+		func(d *gogo.Duration, c fuzz.Continue) {
+			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
+			d.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
+		},
+		// Default: Custom fuzzer for Payload to handle data consistently
+		func(p *apiv1.Payload, c fuzz.Continue) {
+			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
+			p.Data = make([]byte, length)
+			for i := 0; i < length; i++ {
+				p.Data[i] = byte(c.Uint32())
+			}
+		},
+	}
+
+	// Add custom fuzzer functions
+	fuzzerFuncs = append(fuzzerFuncs, options.CustomFuncs...)
+
+	fuzzer := testdatagen.NewWithNilChance(t, int64(123), float32(options.NilChance), fuzzerFuncs...)
+
+	for i := 0; i < options.Iterations; i++ {
+		// Create new instance using generics
+		var zero TProto
+		fuzzed := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(TProto)
+		fuzzer.Fuzz(fuzzed)
+
+		// Clear protobuf internal fields and apply field exclusions in a single pass
+		clearProtobufAndExcludedFields(fuzzed, options.ExcludedFields)
+
+		// Test proto -> thrift -> proto round trip
+		thriftResult := protoToThrift(fuzzed)
+		protoResult := thriftToProto(thriftResult)
+
+		// Clear internal fields and excluded fields from result as well
+		clearProtobufAndExcludedFields(protoResult, options.ExcludedFields)
+
+		assert.Equal(t, fuzzed, protoResult, "Round trip failed for fuzzed data at iteration %d", i)
+	}
+}
+
+// clearFieldsIf recursively traverses an object and clears fields that match the predicate function
+func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
+	if obj == nil {
+		return
+	}
+
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return
+	}
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldName := v.Type().Field(i).Name
+
+		if shouldClear(fieldName) && field.CanSet() {
+			field.Set(reflect.Zero(field.Type()))
+		}
+
+		// Recursively clear fields in nested structs and slices
+		if field.CanInterface() {
+			switch field.Kind() {
+			case reflect.Ptr:
+				if !field.IsNil() {
+					clearFieldsIf(field.Interface(), shouldClear)
+				}
+			case reflect.Struct:
+				clearFieldsIf(field.Addr().Interface(), shouldClear)
+			case reflect.Slice:
+				for j := 0; j < field.Len(); j++ {
+					elem := field.Index(j)
+					if elem.CanInterface() {
+						clearFieldsIf(elem.Interface(), shouldClear)
+					}
+				}
+			}
+		}
+	}
+}
+
+// clearProtobufAndExcludedFields combines protobuf clearing and field exclusion in a single pass
+func clearProtobufAndExcludedFields(obj interface{}, excludedFields []string) {
+	// Create a map for O(1) lookup of excluded fields
+	excludedMap := make(map[string]bool)
+	for _, field := range excludedFields {
+		excludedMap[field] = true
+	}
+
+	clearFieldsIf(obj, func(fieldName string) bool {
+		// Clear if it's a protobuf internal field OR if it's in the excluded list
+		return strings.HasPrefix(fieldName, "XXX_") || excludedMap[fieldName]
+	})
 }
