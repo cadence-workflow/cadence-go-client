@@ -880,22 +880,13 @@ func TestListArchivedWorkflowExecutionsResponse(t *testing.T) {
 		thrift.ListArchivedWorkflowExecutionsResponse,
 		proto.ListArchivedWorkflowExecutionsResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
-			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
-				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.ListArchivedWorkflowExecutionsResponse, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					resp.NextPageToken = make([]byte, c.Intn(10))
-					for i := range resp.NextPageToken {
-						resp.NextPageToken[i] = byte(c.Uint32())
-					}
-					// Skip complex Executions field
+					c.Fuzz(&resp.NextPageToken)
 				},
 			},
 			ExcludedFields: []string{
-				"Executions", // Array of complex WorkflowExecutionInfo structures that cause gofuzz issues
+				"Executions", // [TOO HARD] Array of complex WorkflowExecutionInfo structures - tested in TestWorkflowExecutionInfo
 			},
 		},
 	)
