@@ -1627,29 +1627,22 @@ func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
 		thrift.RespondDecisionTaskCompletedRequest,
 		proto.RespondDecisionTaskCompletedRequest,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
+			NilChance: DefaultNilChance,
 			CustomFuncs: []interface{}{
-				// TODO: Fix this test as we're doing the entire struct
-				// Custom fuzzer to avoid gofuzz panic with complex types
+				// [TOO HARD] Custom fuzzer to avoid gofuzz panic with complex types
 				func(req *apiv1.RespondDecisionTaskCompletedRequest, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					req.TaskToken = make([]byte, c.Intn(10))
-					for i := range req.TaskToken {
-						req.TaskToken[i] = byte(c.Uint32())
-					}
-					req.Identity = c.RandString()
-					req.ForceCreateNewDecisionTask = c.RandBool()
-					req.BinaryChecksum = c.RandString()
-					// Skip complex Decisions field and other complex types
+					c.Fuzz(&req.TaskToken)
+					c.Fuzz(&req.ExecutionContext)
+					c.Fuzz(&req.Identity)
+					c.Fuzz(&req.ReturnNewDecisionTask)
+					c.Fuzz(&req.ForceCreateNewDecisionTask)
+					c.Fuzz(&req.BinaryChecksum)
 				},
 			},
 			ExcludedFields: []string{
-				"Decisions",             // Array of complex Decision structures that cause gofuzz issues
-				"ExecutionContext",      // Complex type that may cause fuzzing issues
-				"StickyAttributes",      // Complex type that may cause fuzzing issues
-				"ReturnNewDecisionTask", // Complex type that may cause fuzzing issues
-				"QueryResults",          // Map of complex types that may cause fuzzing issues
+				"Decisions",        // [TOO HARD] Array of complex Decision structures - tested in TestDecisionArray
+				"StickyAttributes", // [TOO HARD] Complex nested StickyExecutionAttributes structure - tested in TestStickyExecutionAttributes
+				"QueryResults",     // [TOO HARD] Map of complex WorkflowQueryResult structures - tested in TestWorkflowQueryResultMap
 			},
 		},
 	)
