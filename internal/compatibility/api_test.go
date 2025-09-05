@@ -1046,19 +1046,7 @@ func TestListWorkflowExecutionsRequest(t *testing.T) {
 	runFuzzTest(t,
 		thrift.ListWorkflowExecutionsRequest,
 		proto.ListWorkflowExecutionsRequest,
-		FuzzOptions{
-			CustomFuncs: []interface{}{
-				// TODO: Fix this test as we're doing the entire struct
-				func(req *apiv1.ListWorkflowExecutionsRequest, c fuzz.Continue) {
-					req.PageSize = c.Int31n(100)
-					req.NextPageToken = make([]byte, c.Intn(10))
-					for i := range req.NextPageToken {
-						req.NextPageToken[i] = byte(c.Uint32())
-					}
-					req.Query = c.RandString()
-				},
-			},
-		},
+		FuzzOptions{},
 	)
 }
 func TestListWorkflowExecutionsResponse(t *testing.T) {
