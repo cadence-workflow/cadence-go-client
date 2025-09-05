@@ -909,19 +909,13 @@ func TestListClosedWorkflowExecutionsResponse(t *testing.T) {
 		thrift.ListClosedWorkflowExecutionsResponse,
 		proto.ListClosedWorkflowExecutionsResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
-			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				func(resp *apiv1.ListClosedWorkflowExecutionsResponse, c fuzz.Continue) {
-					resp.NextPageToken = make([]byte, c.Intn(10))
-					for i := range resp.NextPageToken {
-						resp.NextPageToken[i] = byte(c.Uint32())
-					}
+					c.Fuzz(&resp.NextPageToken)
 				},
 			},
 			ExcludedFields: []string{
-				"Executions", // Array of complex WorkflowExecutionInfo structures that cause gofuzz issues
+				"Executions", // [TOO HARD] Array of complex WorkflowExecutionInfo structures - tested in TestWorkflowExecutionInfo
 			},
 		},
 	)
