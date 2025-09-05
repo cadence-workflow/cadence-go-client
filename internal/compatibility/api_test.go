@@ -1663,27 +1663,16 @@ func TestRespondDecisionTaskCompletedResponse(t *testing.T) {
 		thrift.RespondDecisionTaskCompletedResponse,
 		proto.RespondDecisionTaskCompletedResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// TODO: Fix this test as we're doing the entire struct
-				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.RespondDecisionTaskCompletedResponse, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					resp.DecisionTask = &apiv1.PollForDecisionTaskResponse{
-						TaskToken: make([]byte, c.Intn(10)),
-					}
-					for i := range resp.DecisionTask.TaskToken {
-						resp.DecisionTask.TaskToken[i] = byte(c.Uint32())
-					}
-					// Skip complex nested structures
+					resp.DecisionTask = &apiv1.PollForDecisionTaskResponse{}
+					c.Fuzz(&resp.DecisionTask.TaskToken)
+					c.Fuzz(&resp.DecisionTask.StartedEventId)
+					c.Fuzz(&resp.DecisionTask.Attempt)
 				},
 			},
 			ExcludedFields: []string{
-				"DecisionTask.History",        // Complex nested structure that causes gofuzz issues
-				"DecisionTask.Query",          // Complex nested structure that causes gofuzz issues
-				"DecisionTask.Queries",        // Map of complex types that causes gofuzz issues
-				"ActivitiesToDispatchLocally", // Map of complex types that causes gofuzz issues
+				"ActivitiesToDispatchLocally", // [TOO HARD] Map of complex types that causes protobuf field issues
 			},
 		},
 	)
