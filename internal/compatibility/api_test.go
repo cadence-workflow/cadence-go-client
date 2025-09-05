@@ -943,19 +943,36 @@ func TestListDomainsResponse(t *testing.T) {
 		thrift.ListDomainsResponse,
 		proto.ListDomainsResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
-			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
-				func(resp *apiv1.ListDomainsResponse, c fuzz.Continue) {
-					resp.NextPageToken = make([]byte, c.Intn(10))
-					for i := range resp.NextPageToken {
-						resp.NextPageToken[i] = byte(c.Uint32())
+				// [INVALID DATA] DomainStatus enum values - gofuzz generates invalid enum values that cause "unexpected enum value" panics
+				func(status *apiv1.DomainStatus, c fuzz.Continue) {
+					validValues := []apiv1.DomainStatus{
+						apiv1.DomainStatus_DOMAIN_STATUS_INVALID,
+						apiv1.DomainStatus_DOMAIN_STATUS_REGISTERED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DEPRECATED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DELETED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				// [INVALID DATA] ArchivalStatus enum values - gofuzz generates invalid enum values that cause "unexpected enum value" panics
+				func(status *apiv1.ArchivalStatus, c fuzz.Continue) {
+					validValues := []apiv1.ArchivalStatus{
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_INVALID,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_ENABLED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				// [FLAWED MAPPING] WorkflowExecutionRetentionPeriod - must be day-precision
+				// because thrift mapping uses durationToDays (truncates to day boundaries)
+				func(domain *apiv1.Domain, c fuzz.Continue) {
+					if domain.WorkflowExecutionRetentionPeriod != nil {
+						// Generate days within int32 range: max ~5.8 million days (~16000 years)
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
+						domain.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						domain.WorkflowExecutionRetentionPeriod.Nanos = 0
 					}
 				},
-			},
-			ExcludedFields: []string{
-				// "Domains", // Array of complex Domain structures that cause gofuzz issues
 			},
 		},
 	)
