@@ -1070,19 +1070,13 @@ func TestListWorkflowExecutionsResponse(t *testing.T) {
 		thrift.ListWorkflowExecutionsResponse,
 		proto.ListWorkflowExecutionsResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// TODO: Fix this test as we're doing the entire struct
 				func(resp *apiv1.ListWorkflowExecutionsResponse, c fuzz.Continue) {
-					resp.NextPageToken = make([]byte, c.Intn(10))
-					for i := range resp.NextPageToken {
-						resp.NextPageToken[i] = byte(c.Uint32())
-					}
+					c.Fuzz(&resp.NextPageToken)
 				},
 			},
 			ExcludedFields: []string{
-				"Executions", // Array of complex WorkflowExecutionInfo structures that cause gofuzz issues
+				"Executions", // [TOO HARD] Array of complex WorkflowExecutionInfo structures - tested in TestWorkflowExecutionInfo
 			},
 		},
 	)
