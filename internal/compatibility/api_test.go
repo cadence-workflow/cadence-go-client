@@ -1161,7 +1161,8 @@ func TestPendingChildExecutionInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"Domain", // TODO: Domain is not mapped
+				// [UNKNOWN] It is not clear why Domain is not mapped
+				"Domain",
 			},
 		},
 	)
@@ -1189,8 +1190,7 @@ func TestPendingDecisionInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// ScheduleId is unmapped by either mapper function - it is not clear if this is intentional
-				// [UNKNOWN] TODO: Map the field
+				// [UNKNOWN] ScheduleId is unmapped by either mapper function - it is not clear if this is intentional
 				"ScheduleId",
 			},
 		},
