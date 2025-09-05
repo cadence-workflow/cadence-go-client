@@ -1175,19 +1175,23 @@ func TestPendingDecisionInfo(t *testing.T) {
 		thrift.PendingDecisionInfo,
 		proto.PendingDecisionInfo,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// TODO: Fix this test as we're doing the entire struct
-				func(info *apiv1.PendingDecisionInfo, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					info.State = apiv1.PendingDecisionState_PENDING_DECISION_STATE_SCHEDULED
-					info.Attempt = int32(c.Int63n(1000))
-					info.OriginalScheduledTime = &gogo.Timestamp{
-						Seconds: c.Int63n(MaxSafeTimestampSeconds),
-						Nanos:   c.Int31n(NanosecondsPerSecond),
+				// PendingDecisionState has inconsistent behaviour between the proto and thrift mappers
+				// proto will panic when INVALID is specified, but return INVALID when receiving nil
+				// thrift returns nil when receiving INVALID, but panics for all other values
+				// [BUG] TODO: Make the mappers consistent
+				func(state *apiv1.PendingDecisionState, c fuzz.Continue) {
+					validValues := []apiv1.PendingDecisionState{
+						apiv1.PendingDecisionState_PENDING_DECISION_STATE_SCHEDULED,
+						apiv1.PendingDecisionState_PENDING_DECISION_STATE_STARTED,
 					}
+					*state = validValues[c.Intn(len(validValues))]
 				},
+			},
+			ExcludedFields: []string{
+				// ScheduleId is unmapped by either mapper function - it is not clear if this is intentional
+				// [UNKNOWN] TODO: Map the field
+				"ScheduleId",
 			},
 		},
 	)
