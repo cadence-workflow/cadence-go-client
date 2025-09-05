@@ -43,21 +43,21 @@ import (
 
 // Fuzzing configuration constants
 const (
-	// DEFAULT_NIL_CHANCE is the default probability of setting pointer/slice fields to nil
-	DEFAULT_NIL_CHANCE = 0.25
-	// DEFAULT_ITERATIONS is the default number of fuzzing iterations to run
-	DEFAULT_ITERATIONS = 100
-	// MAX_SAFE_TIMESTAMP_SECONDS is the maximum seconds value that fits safely in int64 nanoseconds
+	// DefaultNilChance is the default probability of setting pointer/slice fields to nil
+	DefaultNilChance = 0.25
+	// DefaultIterations is the default number of fuzzing iterations to run
+	DefaultIterations = 100
+	// MaxSafeTimestampSeconds is the maximum seconds value that fits safely in int64 nanoseconds
 	// This avoids overflow when converting to UnixNano (max safe range from 1970 to ~2262)
-	MAX_SAFE_TIMESTAMP_SECONDS = 9223372036
-	// MAX_DURATION_SECONDS is the maximum duration in seconds that fits in int32
+	MaxSafeTimestampSeconds = 9223372036
+	// MaxDurationSeconds is the maximum duration in seconds that fits in int32
 	// This prevents overflow in mapper conversion (durationToSeconds -> int32)
 	// int32 max value is 2147483647, so use that as the safe limit
-	MAX_DURATION_SECONDS = 2147483647
-	// NANOSECONDS_PER_SECOND is the number of nanoseconds in a second
-	NANOSECONDS_PER_SECOND = 1000000000
-	// MAX_PAYLOAD_BYTES is the maximum payload size for fuzzing
-	MAX_PAYLOAD_BYTES = 10
+	MaxDurationSeconds = 2147483647
+	// NanosecondsPerSecond is the number of nanoseconds in a second
+	NanosecondsPerSecond = 1000000000
+	// MaxPayloadBytes is the maximum payload size for fuzzing
+	MaxPayloadBytes = 10
 )
 
 // FuzzOptions provides configuration for runFuzzTest
@@ -66,9 +66,9 @@ type FuzzOptions struct {
 	CustomFuncs []interface{}
 	// ExcludedFields are field names to exclude from fuzzing (set to zero value)
 	ExcludedFields []string
-	// NilChance is the probability of setting pointer/slice fields to nil (default DEFAULT_NIL_CHANCE)
+	// NilChance is the probability of setting pointer/slice fields to nil (default DefaultNilChance)
 	NilChance float64
-	// Iterations is the number of fuzzing iterations to run (default DEFAULT_ITERATIONS)
+	// Iterations is the number of fuzzing iterations to run (default DefaultIterations)
 	Iterations int
 }
 
@@ -545,7 +545,7 @@ func TestDescribeDomainResponse_Domain(t *testing.T) {
 				func(domain *apiv1.Domain, c fuzz.Continue) {
 					if domain.WorkflowExecutionRetentionPeriod != nil {
 						// Generate days within int32 range: max ~5.8 million days (~16000 years)
-						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
 						domain.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
 						domain.WorkflowExecutionRetentionPeriod.Nanos = 0
 					}
@@ -553,12 +553,12 @@ func TestDescribeDomainResponse_Domain(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// TODO: Fix these issues
-				"ActiveClusters",        // Nil pointer dereference in mapper conversion
-				"Clusters",              // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"FailoverInfo",          // Protobuf metadata issues in nested structures
-				"IsolationGroups",       // Protobuf metadata issues in nested structures
-				"AsyncWorkflowConfig",   // Protobuf metadata issues in nested structures
-				"BadBinaries",           // Protobuf metadata issues in nested structures
+				"ActiveClusters",      // Nil pointer dereference in mapper conversion
+				"Clusters",            // Protobuf metadata issues in nested ClusterReplicationConfiguration
+				"FailoverInfo",        // Protobuf metadata issues in nested structures
+				"IsolationGroups",     // Protobuf metadata issues in nested structures
+				"AsyncWorkflowConfig", // Protobuf metadata issues in nested structures
+				"BadBinaries",         // Protobuf metadata issues in nested structures
 			},
 		},
 	)
@@ -1213,8 +1213,8 @@ func TestPendingDecisionInfo(t *testing.T) {
 					info.State = apiv1.PendingDecisionState_PENDING_DECISION_STATE_SCHEDULED
 					info.Attempt = int32(c.Int63n(1000))
 					info.OriginalScheduledTime = &gogo.Timestamp{
-						Seconds: c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS),
-						Nanos:   c.Int31n(NANOSECONDS_PER_SECOND),
+						Seconds: c.Int63n(MaxSafeTimestampSeconds),
+						Nanos:   c.Int31n(NanosecondsPerSecond),
 					}
 				},
 			},
@@ -1304,8 +1304,8 @@ func TestPollForDecisionTaskResponse(t *testing.T) {
 					}
 					p.StartedEventId = c.Int63()
 					if c.RandBool() {
-						prevId := &gogo.Int64Value{Value: c.Int63()}
-						p.PreviousStartedEventId = prevId
+						prevID := &gogo.Int64Value{Value: c.Int63()}
+						p.PreviousStartedEventId = prevID
 					}
 					p.Attempt = c.Int63()
 					p.BacklogCountHint = c.Int63()
@@ -1484,14 +1484,13 @@ func TestRegisterDomainRequest(t *testing.T) {
 				func(req *apiv1.RegisterDomainRequest, c fuzz.Continue) {
 					if req.WorkflowExecutionRetentionPeriod != nil {
 						// Generate days within int32 range: max ~5.8 million days (~16000 years)
-						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
 						req.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
 						req.WorkflowExecutionRetentionPeriod.Nanos = 0
 					}
 				},
 			},
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -1801,8 +1800,7 @@ func TestRetryPolicy(t *testing.T) {
 		thrift.RetryPolicy,
 		proto.RetryPolicy,
 		FuzzOptions{
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2139,8 +2137,7 @@ func TestStickyExecutionAttributes(t *testing.T) {
 					*e = validValues[c.Intn(len(validValues))]
 				},
 			},
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2272,8 +2269,7 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 		thrift.TimerStartedEventAttributes,
 		proto.TimerStartedEventAttributes,
 		FuzzOptions{
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2291,26 +2287,26 @@ func TestUpdateDomainRequest(t *testing.T) {
 				func(req *apiv1.UpdateDomainRequest, c fuzz.Continue) {
 					if req.WorkflowExecutionRetentionPeriod != nil {
 						// Generate days within int32 range
-						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
 						req.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
 						req.WorkflowExecutionRetentionPeriod.Nanos = 0
 					}
 				},
 			},
 			ExcludedFields: []string{
-				"UpdateMask",                       // Complex nested structure with protobuf metadata issues
-				"Description",                      // Field mapping issue - not being preserved correctly in mapper
-				"OwnerEmail",                       // Field mapping issue - not being preserved correctly in mapper
-				"Data",                             // Field mapping issue - not being preserved correctly in mapper
-				"BadBinaries",                      // Complex nested structure that causes issues
-				"HistoryArchivalStatus",            // Field mapping issue - not being preserved correctly in mapper
-				"HistoryArchivalUri",               // Field mapping issue - not being preserved correctly in mapper
-				"VisibilityArchivalStatus",         // Field mapping issue - not being preserved correctly in mapper
-				"VisibilityArchivalUri",            // Field mapping issue - not being preserved correctly in mapper
-				"ActiveClusterName",                // Field mapping issue - not being preserved correctly in mapper
-				"Clusters",                         // Complex nested structure that causes issues
-				"DeleteBadBinary",                  // Field mapping issue - not being preserved correctly in mapper
-				"ActiveClusters",                   // Complex nested structure that causes issues
+				"UpdateMask",               // Complex nested structure with protobuf metadata issues
+				"Description",              // Field mapping issue - not being preserved correctly in mapper
+				"OwnerEmail",               // Field mapping issue - not being preserved correctly in mapper
+				"Data",                     // Field mapping issue - not being preserved correctly in mapper
+				"BadBinaries",              // Complex nested structure that causes issues
+				"HistoryArchivalStatus",    // Field mapping issue - not being preserved correctly in mapper
+				"HistoryArchivalUri",       // Field mapping issue - not being preserved correctly in mapper
+				"VisibilityArchivalStatus", // Field mapping issue - not being preserved correctly in mapper
+				"VisibilityArchivalUri",    // Field mapping issue - not being preserved correctly in mapper
+				"ActiveClusterName",        // Field mapping issue - not being preserved correctly in mapper
+				"Clusters",                 // Complex nested structure that causes issues
+				"DeleteBadBinary",          // Field mapping issue - not being preserved correctly in mapper
+				"ActiveClusters",           // Complex nested structure that causes issues
 			},
 		},
 	)
@@ -2337,7 +2333,7 @@ func TestUpdateDomainResponse(t *testing.T) {
 					}
 					// Set WorkflowExecutionRetentionPeriod with day-precision to avoid truncation
 					if c.RandBool() {
-						days := c.Int63n(MAX_DURATION_SECONDS / (24 * 3600))
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
 						resp.Domain.WorkflowExecutionRetentionPeriod = &gogo.Duration{
 							Seconds: days * 24 * 3600,
 							Nanos:   0,
@@ -2347,12 +2343,12 @@ func TestUpdateDomainResponse(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// Exclude nested fields that have complex issues like in DescribeDomainResponse
-				"Domain.ActiveClusters", // Nil pointer dereference in mapper conversion
-				"Domain.Clusters",                         // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"Domain.FailoverInfo",                     // Protobuf metadata issues in nested structures
-				"Domain.IsolationGroups",                  // Protobuf metadata issues in nested structures
-				"Domain.AsyncWorkflowConfig",              // Protobuf metadata issues in nested structures
-				"Domain.BadBinaries",                      // Protobuf metadata issues in nested structures
+				"Domain.ActiveClusters",      // Nil pointer dereference in mapper conversion
+				"Domain.Clusters",            // Protobuf metadata issues in nested ClusterReplicationConfiguration
+				"Domain.FailoverInfo",        // Protobuf metadata issues in nested structures
+				"Domain.IsolationGroups",     // Protobuf metadata issues in nested structures
+				"Domain.AsyncWorkflowConfig", // Protobuf metadata issues in nested structures
+				"Domain.BadBinaries",         // Protobuf metadata issues in nested structures
 			},
 		},
 	)
@@ -2479,8 +2475,7 @@ func TestWorkflowExecutionConfiguration(t *testing.T) {
 					*e = validValues[c.Intn(len(validValues))]
 				},
 			},
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2514,8 +2509,7 @@ func TestWorkflowExecutionContinuedAsNewEventAttributes(t *testing.T) {
 					*e = validValues[c.Intn(len(validValues))]
 				},
 			},
-			ExcludedFields: []string{
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2575,8 +2569,8 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 					}
 					info.Type = &apiv1.WorkflowType{Name: c.RandString()}
 					info.StartTime = &gogo.Timestamp{
-						Seconds: c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS),
-						Nanos:   c.Int31n(NANOSECONDS_PER_SECOND),
+						Seconds: c.Int63n(MaxSafeTimestampSeconds),
+						Nanos:   c.Int31n(NanosecondsPerSecond),
 					}
 					// Use valid WorkflowExecutionCloseStatus values
 					validStatuses := []apiv1.WorkflowExecutionCloseStatus{
@@ -2649,15 +2643,15 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// Skip all complex nested structures that cause gofuzz issues
-				"Input",                        // Complex Payload structure that causes gofuzz issues
-				"ParentWorkflowDomain",         // Complex nested structure
-				"ParentWorkflowExecution",      // Complex nested structure
-				"ParentInitiatedEventId",       // Complex nested structure
-				"RetryPolicy",                  // Complex nested structure that causes gofuzz issues
-				"Header",                       // Complex nested structure that causes gofuzz issues
-				"Memo",                         // Complex nested structure that causes gofuzz issues
-				"SearchAttributes",             // Complex nested structure that causes gofuzz issues
-				"LastCompletionResult",         // Complex Payload structure that causes gofuzz issues
+				"Input",                   // Complex Payload structure that causes gofuzz issues
+				"ParentWorkflowDomain",    // Complex nested structure
+				"ParentWorkflowExecution", // Complex nested structure
+				"ParentInitiatedEventId",  // Complex nested structure
+				"RetryPolicy",             // Complex nested structure that causes gofuzz issues
+				"Header",                  // Complex nested structure that causes gofuzz issues
+				"Memo",                    // Complex nested structure that causes gofuzz issues
+				"SearchAttributes",        // Complex nested structure that causes gofuzz issues
+				"LastCompletionResult",    // Complex Payload structure that causes gofuzz issues
 			},
 		},
 	)
@@ -2968,29 +2962,29 @@ func runFuzzTest[TProto protobuf.Message, TThrift any](
 ) {
 	// Apply defaults for zero values
 	if options.NilChance == 0 {
-		options.NilChance = DEFAULT_NIL_CHANCE
+		options.NilChance = DefaultNilChance
 	}
 	if options.Iterations == 0 {
-		options.Iterations = DEFAULT_ITERATIONS
+		options.Iterations = DefaultIterations
 	}
 
 	// Build fuzzer functions - start with defaults and add custom ones
 	fuzzerFuncs := []interface{}{
 		// Default: Custom fuzzer for gogo protobuf timestamps
 		func(ts *gogo.Timestamp, c fuzz.Continue) {
-			ts.Seconds = c.Int63n(MAX_SAFE_TIMESTAMP_SECONDS)
-			ts.Nanos = c.Int31n(NANOSECONDS_PER_SECOND)
+			ts.Seconds = c.Int63n(MaxSafeTimestampSeconds)
+			ts.Nanos = c.Int31n(NanosecondsPerSecond)
 		},
 		// Default: Custom fuzzer for gogo protobuf durations
 		// Note: Thrift protocol only supports second-level precision for durations,
 		// so we only generate whole seconds to ensure round-trip compatibility
 		func(d *gogo.Duration, c fuzz.Continue) {
-			d.Seconds = c.Int63n(MAX_DURATION_SECONDS)
+			d.Seconds = c.Int63n(MaxDurationSeconds)
 			d.Nanos = 0 // Thrift mapping truncates nanoseconds, so set to 0 for consistency
 		},
 		// Default: Custom fuzzer for Payload to handle data consistently
 		func(p *apiv1.Payload, c fuzz.Continue) {
-			length := c.Intn(MAX_PAYLOAD_BYTES) + 1 // 1-MAX_PAYLOAD_BYTES bytes
+			length := c.Intn(MaxPayloadBytes) + 1 // 1-MaxPayloadBytes bytes
 			p.Data = make([]byte, length)
 			for i := 0; i < length; i++ {
 				p.Data[i] = byte(c.Uint32())
