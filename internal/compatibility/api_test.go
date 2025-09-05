@@ -136,14 +136,8 @@ func TestActivityTaskScheduledEventAttributes(t *testing.T) {
 		thrift.ActivityTaskScheduledEventAttributes,
 		proto.ActivityTaskScheduledEventAttributes,
 		FuzzOptions{
-			// TODO: Remove these fields from excluded fields if possible
 			ExcludedFields: []string{
-				"ScheduleToCloseTimeout",
-				"ScheduleToStartTimeout",
-				"StartToCloseTimeout",
-				"HeartbeatTimeout",
-				"RetryPolicy",
-				"TaskList",
+				"TaskList", // GoFuzz has issues with complex nested types, and TaskList is tested below in TestTaskList
 			},
 		},
 	)
@@ -204,7 +198,7 @@ func TestBadBinaries(t *testing.T) {
 		proto.BadBinaries,
 		FuzzOptions{
 			ExcludedFields: []string{
-				// TODO: Fix map traversal issue in clearFieldsIf function for nested protobuf internal fields
+				// TODO: Fix map traversal issue in clearFieldsIf function for nested protobuf internal fields in a map
 				"Binaries",
 			},
 		},
@@ -359,7 +353,8 @@ func TestDataBlob(t *testing.T) {
 						apiv1.EncodingType_ENCODING_TYPE_INVALID,
 						apiv1.EncodingType_ENCODING_TYPE_THRIFTRW,
 						apiv1.EncodingType_ENCODING_TYPE_JSON,
-						// TODO: Support ENCODING_TYPE_PROTO3 in this test
+						// TODO: Determine appropriate mapper behaviour for invalid values
+						// ENCODING_TYPE_PROTO3 intentionally excluded as the mapper panics for this value
 					}
 					*e = validValues[c.Intn(len(validValues))]
 				},
@@ -400,8 +395,7 @@ func TestDecisionTaskFailedEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// TODO: Fix RequestId mapping issue
-				"RequestId",
+				"RequestId", // Excluded as RequestId is currently not mapped. TODO: Map RequestId
 			},
 		},
 	)
@@ -467,8 +461,7 @@ func TestDecisionTaskTimedOutEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// TODO: Fix RequestId mapping issue
-				"RequestId",
+				"RequestId", // Excluded as RequestId is currently not mapped. TODO: Map RequestId
 			},
 		},
 	)
@@ -551,15 +544,7 @@ func TestDescribeDomainResponse_Domain(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{
-				// TODO: Fix these issues
-				"ActiveClusters",      // Nil pointer dereference in mapper conversion
-				"Clusters",            // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"FailoverInfo",        // Protobuf metadata issues in nested structures
-				"IsolationGroups",     // Protobuf metadata issues in nested structures
-				"AsyncWorkflowConfig", // Protobuf metadata issues in nested structures
-				"BadBinaries",         // Protobuf metadata issues in nested structures
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -572,11 +557,10 @@ func TestDescribeDomainResponse(t *testing.T) {
 		thrift.DescribeDomainResponse,
 		proto.DescribeDomainResponse,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
+			NilChance: 0.25,
 			CustomFuncs: []interface{}{
+				// TODO: Figure out this test - it seems to panic immediately
 				func(resp *apiv1.DescribeDomainResponse, c fuzz.Continue) {
-					// TODO: Support DomainStatus_INVALID
 					resp.Domain = &apiv1.Domain{
 						Name:                     c.RandString(),
 						Status:                   apiv1.DomainStatus_DOMAIN_STATUS_REGISTERED,
@@ -585,15 +569,7 @@ func TestDescribeDomainResponse(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{
-				// Exclude nested fields that have complex issues
-				"Domain.ActiveClusters",      // Nil pointer dereference in mapper conversion
-				"Domain.Clusters",            // Protobuf metadata issues in nested ClusterReplicationConfiguration
-				"Domain.FailoverInfo",        // Protobuf metadata issues in nested structures
-				"Domain.IsolationGroups",     // Protobuf metadata issues in nested structures
-				"Domain.AsyncWorkflowConfig", // Protobuf metadata issues in nested structures
-				"Domain.BadBinaries",         // Protobuf metadata issues in nested structures
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -648,10 +624,9 @@ func TestDescribeTaskListResponse(t *testing.T) {
 			},
 			// TODO: Fix these
 			ExcludedFields: []string{
-				"PartitionConfig", // Map traversal issue in clearFieldsIf function for nested protobuf internal fields
-				"Pollers",         // Protobuf metadata issues in nested structures
-				"TaskListStatus",  // Contains maps with protobuf metadata issues
-				"TaskList",        // Protobuf metadata issues in nested structures
+				"PartitionConfig", // Issues with nested maps and protobuf fields. This isn't tested anywhere else. TODO: Test PartitionConfig mapping.
+				"TaskListStatus",  // This is tested in TestTaskListStatus. It is either failing due to nested types or the missing fields from the mapper.
+				"TaskList",        // GoFuzz has issues with nested structures, and this is tested in TestTaskList
 			},
 		},
 	)
@@ -688,6 +663,7 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 		proto.DescribeWorkflowExecutionResponse,
 		FuzzOptions{
 			CustomFuncs: []interface{}{
+				// TODO: Figure out this test - it seems to panic immediately
 				// Custom fuzzer to avoid gofuzz issues with complex types
 				func(resp *apiv1.DescribeWorkflowExecutionResponse, c fuzz.Continue) {
 					// Only populate simple fields to avoid gofuzz panics
@@ -696,13 +672,7 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{
-				// Exclude all complex nested structures that cause issues
-				"WorkflowExecutionInfo", // Complex nested structure with enums and protobuf metadata issues
-				"PendingActivities",     // Array of complex structures
-				"PendingChildren",       // Array of complex structures
-				"PendingDecision",       // Complex structure with protobuf metadata issues
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -827,6 +797,7 @@ func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 		proto.GetWorkflowExecutionHistoryResponse,
 		FuzzOptions{
 			NilChance: 0.0, // Avoid gofuzz nil issues
+			// TODO: Figure out this test - it seems to panic immediately
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.GetWorkflowExecutionHistoryResponse, c fuzz.Continue) {
@@ -836,7 +807,6 @@ func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 						resp.NextPageToken[i] = byte(c.Uint32())
 					}
 					resp.Archived = c.RandBool()
-					// Skip complex History field
 				},
 				func(e *apiv1.EncodingType, c fuzz.Continue) {
 					validValues := []apiv1.EncodingType{
@@ -872,6 +842,7 @@ func TestHistory(t *testing.T) {
 	runFuzzTest(t,
 		thrift.History,
 		proto.History,
+		// TODO: This whole test fails - and HistoryEvent is tested thoroughly in TestHistoryEvent and TestHistoryEventArray
 		FuzzOptions{
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0, // Avoid gofuzz nil issues
@@ -911,6 +882,7 @@ func TestListArchivedWorkflowExecutionsResponse(t *testing.T) {
 		FuzzOptions{
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
+			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.ListArchivedWorkflowExecutionsResponse, c fuzz.Continue) {
@@ -939,6 +911,7 @@ func TestListClosedWorkflowExecutionsResponse(t *testing.T) {
 		FuzzOptions{
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
+			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				func(resp *apiv1.ListClosedWorkflowExecutionsResponse, c fuzz.Continue) {
 					resp.NextPageToken = make([]byte, c.Intn(10))
@@ -987,6 +960,7 @@ func TestListDomainsResponse(t *testing.T) {
 		FuzzOptions{
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
+			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				func(resp *apiv1.ListDomainsResponse, c fuzz.Continue) {
 					resp.NextPageToken = make([]byte, c.Intn(10))
@@ -996,7 +970,7 @@ func TestListDomainsResponse(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"Domains", // Array of complex Domain structures that cause gofuzz issues
+				// "Domains", // Array of complex Domain structures that cause gofuzz issues
 			},
 		},
 	)
@@ -1012,6 +986,7 @@ func TestListOpenWorkflowExecutionsResponse(t *testing.T) {
 		FuzzOptions{
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
+			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				func(resp *apiv1.ListOpenWorkflowExecutionsResponse, c fuzz.Continue) {
 					resp.NextPageToken = make([]byte, c.Intn(10))
@@ -1064,14 +1039,7 @@ func TestListTaskListPartitionsResponse(t *testing.T) {
 	runFuzzTest(t,
 		thrift.ListTaskListPartitionsResponse,
 		proto.ListTaskListPartitionsResponse,
-		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
-			ExcludedFields: []string{
-				"ActivityTaskListPartitions", // Array of complex structures that cause gofuzz issues
-				"DecisionTaskListPartitions", // Array of complex structures that cause gofuzz issues
-			},
-		},
+		FuzzOptions{},
 	)
 }
 func TestListWorkflowExecutionsRequest(t *testing.T) {
@@ -1084,6 +1052,7 @@ func TestListWorkflowExecutionsRequest(t *testing.T) {
 		proto.ListWorkflowExecutionsRequest,
 		FuzzOptions{
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				func(req *apiv1.ListWorkflowExecutionsRequest, c fuzz.Continue) {
 					req.PageSize = c.Int31n(100)
 					req.NextPageToken = make([]byte, c.Intn(10))
@@ -1108,6 +1077,7 @@ func TestListWorkflowExecutionsResponse(t *testing.T) {
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				func(resp *apiv1.ListWorkflowExecutionsResponse, c fuzz.Continue) {
 					resp.NextPageToken = make([]byte, c.Intn(10))
 					for i := range resp.NextPageToken {
@@ -1164,8 +1134,8 @@ func TestPendingActivityInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"StartedWorkerIdentity", // Field mapping issue - not being preserved in mapper
-				"ScheduleId",            // Field mapping issue - not being preserved correctly in mapper
+				"StartedWorkerIdentity", // TODO: StartedWorkerIdentity is not mapped
+				"ScheduleId",            // TODO: ScheduleId is not mapped
 			},
 		},
 	)
@@ -1191,7 +1161,7 @@ func TestPendingChildExecutionInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"Domain", // Field mapping issue - domain field not being preserved correctly in mapper
+				"Domain", // TODO: Domain is not mapped
 			},
 		},
 	)
@@ -1208,6 +1178,7 @@ func TestPendingDecisionInfo(t *testing.T) {
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				func(info *apiv1.PendingDecisionInfo, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
 					info.State = apiv1.PendingDecisionState_PENDING_DECISION_STATE_SCHEDULED
@@ -1251,14 +1222,7 @@ func TestPollForActivityTaskResponse(t *testing.T) {
 	runFuzzTest(t,
 		thrift.PollForActivityTaskResponse,
 		proto.PollForActivityTaskResponse,
-		FuzzOptions{
-			// TODO: Investigate
-			ExcludedFields: []string{
-				"ScheduleToCloseTimeout",
-				"StartToCloseTimeout",
-				"HeartbeatTimeout",
-			},
-		},
+		FuzzOptions{},
 	)
 }
 func TestPollForDecisionTaskRequest(t *testing.T) {
@@ -1296,6 +1260,7 @@ func TestPollForDecisionTaskResponse(t *testing.T) {
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types in PollForDecisionTaskResponse
+				// TODO: Fix this test as we're doing the entire struct
 				func(p *apiv1.PollForDecisionTaskResponse, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
 					p.TaskToken = make([]byte, c.Intn(100))
@@ -1314,12 +1279,7 @@ func TestPollForDecisionTaskResponse(t *testing.T) {
 					// Skip complex types like History, Query, Queries, AutoConfigHint
 				},
 			},
-			ExcludedFields: []string{
-				"History",        // Complex nested structure that gofuzz can't handle
-				"Query",          // WorkflowQuery type may contain interfaces
-				"Queries",        // Map of WorkflowQuery types
-				"AutoConfigHint", // Complex type that may cause fuzzing issues
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -1490,7 +1450,6 @@ func TestRegisterDomainRequest(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{},
 		},
 	)
 }
@@ -1547,8 +1506,8 @@ func TestRequestCancelWorkflowExecutionRequest(t *testing.T) {
 		proto.RequestCancelWorkflowExecutionRequest,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"Cause",               // Field mapping issue - not being preserved correctly in mapper
-				"FirstExecutionRunId", // Field mapping issue - not being preserved correctly in mapper
+				"Cause",               // TODO: Cause is not mapped
+				"FirstExecutionRunId", // TODO: FirstExecutionRunId is not mapped
 			},
 		},
 	)
@@ -1686,6 +1645,7 @@ func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(req *apiv1.RespondDecisionTaskCompletedRequest, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
@@ -1721,6 +1681,7 @@ func TestRespondDecisionTaskCompletedResponse(t *testing.T) {
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.RespondDecisionTaskCompletedResponse, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
@@ -1786,7 +1747,7 @@ func TestRespondQueryTaskCompletedRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"Result", // Field mapping issue - nil values being converted to non-nil objects
+				"Result", // TODO: Result nil values being converted to non-nil objects
 			},
 		},
 	)
@@ -1827,6 +1788,7 @@ func TestScanWorkflowExecutionsResponse(t *testing.T) {
 			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
+				// TODO: Fix this test as we're doing the entire struct
 				// Custom fuzzer to avoid gofuzz panic with complex types
 				func(resp *apiv1.ScanWorkflowExecutionsResponse, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
@@ -1917,6 +1879,7 @@ func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 					*e = validValues[c.Intn(len(validValues))]
 				},
 				// Custom fuzzer to avoid gofuzz panic with complex types
+				// TODO: Fix this test as we're doing the entire struct
 				func(req *apiv1.SignalWithStartWorkflowExecutionRequest, c fuzz.Continue) {
 					// Only populate simple fields to avoid gofuzz panic
 					req.SignalName = c.RandString()
@@ -1932,14 +1895,7 @@ func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 					// Skip complex nested structures like SignalInput
 				},
 			},
-			ExcludedFields: []string{
-				"StartRequest.TaskList",         // Complex nested structure that causes gofuzz issues
-				"StartRequest.WorkflowType",     // Complex nested structure that causes gofuzz issues
-				"StartRequest.RetryPolicy",      // Complex nested structure that causes gofuzz issues
-				"StartRequest.Memo",             // Complex nested structure that causes gofuzz issues
-				"StartRequest.SearchAttributes", // Complex nested structure that causes gofuzz issues
-				"StartRequest.Header",           // Complex nested structure that causes gofuzz issues
-			},
+			ExcludedFields: []string{},
 		},
 	)
 }
@@ -2007,6 +1963,7 @@ func TestStartChildWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 					*e = validValues[c.Intn(len(validValues))]
 				},
 				// Custom fuzzer to avoid gofuzz panic with complex types
+				// TODO: Fix this test as we're doing the entire struct
 				func(attr *apiv1.StartChildWorkflowExecutionInitiatedEventAttributes, c fuzz.Continue) {
 					// Only populate simple fields to avoid gofuzz panic
 					attr.Domain = c.RandString()
@@ -2060,6 +2017,7 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types
+				// TODO: Fix this test as we're doing the entire struct
 				func(req *apiv1.StartWorkflowExecutionRequest, c fuzz.Continue) {
 					// Only populate simple fields to avoid gofuzz panic
 					req.Domain = c.RandString()
@@ -2103,7 +2061,7 @@ func TestStatusFilter(t *testing.T) {
 		FuzzOptions{
 			CustomFuncs: []interface{}{
 				func(e *apiv1.WorkflowExecutionCloseStatus, c fuzz.Continue) {
-					// TODO: Support WORKFLOW_EXECUTION_CLOSE_STATUS_INVALID
+					// TODO: WORKFLOW_EXECUTION_CLOSE_STATUS_INVALID panics as an unexpected value
 					validValues := []apiv1.WorkflowExecutionCloseStatus{
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_COMPLETED,
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_FAILED,
@@ -2185,6 +2143,7 @@ func TestTaskList(t *testing.T) {
 		},
 	)
 }
+
 func TestTaskListMetadata(t *testing.T) {
 	for _, item := range []*apiv1.TaskListMetadata{nil, {}, &testdata.TaskListMetadata} {
 		assert.Equal(t, item, proto.TaskListMetadata(thrift.TaskListMetadata(item)))
@@ -2196,6 +2155,7 @@ func TestTaskListMetadata(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+
 func TestTaskListPartitionMetadata(t *testing.T) {
 	for _, item := range []*apiv1.TaskListPartitionMetadata{nil, {}, &testdata.TaskListPartitionMetadata} {
 		assert.Equal(t, item, proto.TaskListPartitionMetadata(thrift.TaskListPartitionMetadata(item)))
@@ -2217,8 +2177,8 @@ func TestTaskListStatus(t *testing.T) {
 		proto.TaskListStatus,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"NewTasksPerSecond",     // Field mapping issue - not being preserved correctly in mapper
-				"IsolationGroupMetrics", // Field mapping issue - not being preserved correctly in mapper
+				"NewTasksPerSecond",     // TODO: NewTasksPerSecond is not mapped
+				"IsolationGroupMetrics", // TODO: IsolationGroupMetrics is not mapped
 			},
 		},
 	)
@@ -2233,7 +2193,7 @@ func TestTerminateWorkflowExecutionRequest(t *testing.T) {
 		proto.TerminateWorkflowExecutionRequest,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"FirstExecutionRunId", // Field mapping issue - not being preserved correctly in mapper
+				"FirstExecutionRunId", // TODO: FirstExecutionRunId is not mapped
 			},
 		},
 	)
@@ -2268,9 +2228,7 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 	runFuzzTest(t,
 		thrift.TimerStartedEventAttributes,
 		proto.TimerStartedEventAttributes,
-		FuzzOptions{
-			ExcludedFields: []string{},
-		},
+		FuzzOptions{},
 	)
 }
 func TestUpdateDomainRequest(t *testing.T) {
@@ -2282,6 +2240,7 @@ func TestUpdateDomainRequest(t *testing.T) {
 		thrift.UpdateDomainRequest,
 		proto.UpdateDomainRequest,
 		FuzzOptions{
+			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
 				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
 				func(req *apiv1.UpdateDomainRequest, c fuzz.Continue) {
@@ -2428,8 +2387,7 @@ func TestWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// TODO: Fix RequestId mapping issue
-				"RequestId", // Field mapping issue - not being preserved correctly in mapper
+				"RequestId", // TODO: RequestId is not mapped
 			},
 		},
 	)
@@ -2561,6 +2519,7 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types
+				// TODO: Fix this test as we're doing the entire struct
 				func(info *apiv1.WorkflowExecutionInfo, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
 					info.WorkflowExecution = &apiv1.WorkflowExecution{
@@ -2628,6 +2587,7 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
 				// Custom fuzzer to avoid gofuzz panic with complex types
+				// TODO: Fix this test as we're doing the entire struct
 				func(attr *apiv1.WorkflowExecutionStartedEventAttributes, c fuzz.Continue) {
 					// Only fuzz simple fields to avoid gofuzz panic
 					attr.WorkflowType = &apiv1.WorkflowType{Name: c.RandString()}
