@@ -931,19 +931,7 @@ func TestListDomainsRequest(t *testing.T) {
 	runFuzzTest(t,
 		thrift.ListDomainsRequest,
 		proto.ListDomainsRequest,
-		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
-			CustomFuncs: []interface{}{
-				func(req *apiv1.ListDomainsRequest, c fuzz.Continue) {
-					req.PageSize = c.Int31n(100)
-					req.NextPageToken = make([]byte, c.Intn(10))
-					for i := range req.NextPageToken {
-						req.NextPageToken[i] = byte(c.Uint32())
-					}
-				},
-			},
-		},
+		FuzzOptions{},
 	)
 }
 func TestListDomainsResponse(t *testing.T) {
