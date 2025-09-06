@@ -1903,8 +1903,6 @@ func TestStartChildWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 		thrift.StartChildWorkflowExecutionInitiatedEventAttributes,
 		proto.StartChildWorkflowExecutionInitiatedEventAttributes,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
 				func(e *apiv1.TaskListKind, c fuzz.Continue) {
 					validValues := []apiv1.TaskListKind{
@@ -1914,24 +1912,19 @@ func TestStartChildWorkflowExecutionInitiatedEventAttributes(t *testing.T) {
 					}
 					*e = validValues[c.Intn(len(validValues))]
 				},
-				// Custom fuzzer to avoid gofuzz panic with complex types
-				// TODO: Fix this test as we're doing the entire struct
+				// The rest of the attributes are fuzzed here, as gofuzz panics when the entire struct needs to be fuzzed
+				// But it works fine when each individual field is fuzzed indepdenently
 				func(attr *apiv1.StartChildWorkflowExecutionInitiatedEventAttributes, c fuzz.Continue) {
-					// Only populate simple fields to avoid gofuzz panic
-					attr.Domain = c.RandString()
-					attr.WorkflowId = c.RandString()
-					attr.Control = make([]byte, c.Intn(10))
-					for i := range attr.Control {
-						attr.Control[i] = byte(c.Uint32())
-					}
-					// Skip complex nested structures like TaskList, WorkflowType, etc.
+					c.Fuzz(&attr.Domain)
+					c.Fuzz(&attr.WorkflowId)
+					c.Fuzz(&attr.Control)
+					c.Fuzz(&attr.DecisionTaskCompletedEventId)
+					c.Fuzz(&attr.CronSchedule)
+					c.Fuzz(&attr.TaskList)
+					c.Fuzz(&attr.WorkflowType)
+					c.Fuzz(&attr.RetryPolicy)
+					c.Fuzz(&attr.Header)
 				},
-			},
-			ExcludedFields: []string{
-				"TaskList",     // Complex nested structure that causes gofuzz issues
-				"WorkflowType", // Complex nested structure that causes gofuzz issues
-				"RetryPolicy",  // Complex nested structure that causes gofuzz issues
-				"Header",       // Complex nested structure that causes gofuzz issues
 			},
 		},
 	)
