@@ -2481,24 +2481,10 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 		thrift.WorkflowExecutionInfo,
 		proto.WorkflowExecutionInfo,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
 			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// Custom fuzzer to avoid gofuzz panic with complex types
-				// TODO: Fix this test as we're doing the entire struct
-				func(info *apiv1.WorkflowExecutionInfo, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					info.WorkflowExecution = &apiv1.WorkflowExecution{
-						WorkflowId: c.RandString(),
-						RunId:      c.RandString(),
-					}
-					info.Type = &apiv1.WorkflowType{Name: c.RandString()}
-					info.StartTime = &gogo.Timestamp{
-						Seconds: c.Int63n(MaxSafeTimestampSeconds),
-						Nanos:   c.Int31n(NanosecondsPerSecond),
-					}
-					// Use valid WorkflowExecutionCloseStatus values
-					validStatuses := []apiv1.WorkflowExecutionCloseStatus{
+				func(e *apiv1.WorkflowExecutionCloseStatus, c fuzz.Continue) {
+					validValues := []apiv1.WorkflowExecutionCloseStatus{
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_INVALID,
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_COMPLETED,
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_FAILED,
@@ -2507,20 +2493,43 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_CONTINUED_AS_NEW,
 						apiv1.WorkflowExecutionCloseStatus_WORKFLOW_EXECUTION_CLOSE_STATUS_TIMED_OUT,
 					}
-					info.CloseStatus = validStatuses[c.Intn(len(validStatuses))]
-					info.HistoryLength = c.Int63()
-					// Skip complex nested structures
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				func(e *apiv1.CronOverlapPolicy, c fuzz.Continue) {
+					validValues := []apiv1.CronOverlapPolicy{
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID,
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				func(e *apiv1.TaskListKind, c fuzz.Continue) {
+					validValues := []apiv1.TaskListKind{
+						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
+						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
+						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+						apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				// Custom fuzzer for WorkflowExecutionInfo that uses c.Fuzz for maximum coverage
+				func(info *apiv1.WorkflowExecutionInfo, c fuzz.Continue) {
+					c.Fuzz(&info.WorkflowExecution)
+					c.Fuzz(&info.Type)
+					c.Fuzz(&info.StartTime)
+					c.Fuzz(&info.CloseTime)
+					c.Fuzz(&info.CloseStatus) 
+					c.Fuzz(&info.HistoryLength)
+					c.Fuzz(&info.ExecutionTime)
+					c.Fuzz(&info.TaskList)
+					c.Fuzz(&info.IsCron)
+					c.Fuzz(&info.CronOverlapPolicy) 
 				},
 			},
 			ExcludedFields: []string{
-				// Skip all complex nested structures that cause gofuzz issues
-				"ParentDomainId",       // Complex nested structure
-				"ParentWorkflowDomain", // Complex nested structure
-				"ParentExecution",      // Complex nested structure
-				"AutoResetPoints",      // Complex nested structure that causes gofuzz issues
-				"Memo",                 // Complex nested structure that causes gofuzz issues
-				"SearchAttributes",     // Complex nested structure that causes gofuzz issues
-				"IsCron",               // Complex nested structure that causes gofuzz issues
+				"TaskListInfo", // [BUG] TaskListInfo field is not mapping correctly between proto and thrift - becomes nil after round trip
+				"UpdateTime", // [BUG] UpdateTime field is not mapping correctly between proto and thrift - becomes nil after round trip
+				"PartitionConfig", // [BUG] PartitionConfig field is not mapping correctly between proto and thrift - becomes nil after round trip
 			},
 		},
 	)
