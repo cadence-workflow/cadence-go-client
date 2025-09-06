@@ -137,7 +137,7 @@ func TestActivityTaskScheduledEventAttributes(t *testing.T) {
 		proto.ActivityTaskScheduledEventAttributes,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"TaskList", // GoFuzz has issues with complex nested types, and TaskList is tested below in TestTaskList
+				"TaskList", // [TOO HARD] GoFuzz has issues with complex nested types, and TaskList is tested below in TestTaskList
 			},
 		},
 	)
@@ -198,8 +198,7 @@ func TestBadBinaries(t *testing.T) {
 		proto.BadBinaries,
 		FuzzOptions{
 			ExcludedFields: []string{
-				// TODO: Fix map traversal issue in clearFieldsIf function for nested protobuf internal fields in a map
-				"Binaries",
+				"Binaries", // [TOO HARD] clearFieldsIf has issues with nested maps, and Binaries is tested below in TestBadBinaryInfo
 			},
 		},
 	)
@@ -395,7 +394,7 @@ func TestDecisionTaskFailedEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"RequestId", // Excluded as RequestId is currently not mapped. TODO: Map RequestId
+				"RequestId", // [BUG] Excluded as RequestId is currently not mapped.
 			},
 		},
 	)
@@ -461,7 +460,7 @@ func TestDecisionTaskTimedOutEventAttributes(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"RequestId", // Excluded as RequestId is currently not mapped. TODO: Map RequestId
+				"RequestId", // [BUG] Excluded as RequestId is currently not mapped.
 			},
 		},
 	)
@@ -622,11 +621,10 @@ func TestDescribeTaskListResponse(t *testing.T) {
 					*kind = validValues[c.Intn(len(validValues))]
 				},
 			},
-			// TODO: Fix these
 			ExcludedFields: []string{
-				"PartitionConfig", // Issues with nested maps and protobuf fields. This isn't tested anywhere else. TODO: Test PartitionConfig mapping.
-				"TaskListStatus",  // This is tested in TestTaskListStatus. It is either failing due to nested types or the missing fields from the mapper.
-				"TaskList",        // GoFuzz has issues with nested structures, and this is tested in TestTaskList
+				"PartitionConfig", // [TOO HARD] Issues with nested maps and protobuf fields. This isn't tested anywhere else. TODO: Test PartitionConfig mapping.
+				"TaskListStatus",  // [TOO HARD] This is tested in TestTaskListStatus. It is either failing due to nested types or the missing fields from the mapper.
+				"TaskList",        // [TOO HARD] GoFuzz has issues with nested structures, and this is tested in TestTaskList
 			},
 		},
 	)
@@ -839,7 +837,7 @@ func TestHistory(t *testing.T) {
 		assert.Equal(t, item, proto.History(thrift.History(item)))
 	}
 
-	// [TOO HARD] HistoryEvents are too complex (particularly oneofs) for gofuzz to handle. 
+	// [TOO HARD] HistoryEvents are too complex (particularly oneofs) for gofuzz to handle.
 	// The events themselves are tested in TestHistoryEvent, and don't need to be fuzzed here.
 }
 func TestListArchivedWorkflowExecutionsRequest(t *testing.T) {
@@ -926,7 +924,6 @@ func TestListDomainsResponse(t *testing.T) {
 		proto.ListDomainsResponse,
 		FuzzOptions{
 			CustomFuncs: []interface{}{
-				// [INVALID DATA] DomainStatus enum values - gofuzz generates invalid enum values that cause "unexpected enum value" panics
 				func(status *apiv1.DomainStatus, c fuzz.Continue) {
 					validValues := []apiv1.DomainStatus{
 						apiv1.DomainStatus_DOMAIN_STATUS_INVALID,
@@ -936,7 +933,6 @@ func TestListDomainsResponse(t *testing.T) {
 					}
 					*status = validValues[c.Intn(len(validValues))]
 				},
-				// [INVALID DATA] ArchivalStatus enum values - gofuzz generates invalid enum values that cause "unexpected enum value" panics
 				func(status *apiv1.ArchivalStatus, c fuzz.Continue) {
 					validValues := []apiv1.ArchivalStatus{
 						apiv1.ArchivalStatus_ARCHIVAL_STATUS_INVALID,
@@ -945,7 +941,7 @@ func TestListDomainsResponse(t *testing.T) {
 					}
 					*status = validValues[c.Intn(len(validValues))]
 				},
-				// [FLAWED MAPPING] WorkflowExecutionRetentionPeriod - must be day-precision
+				// WorkflowExecutionRetentionPeriod - must be day-precision
 				// because thrift mapping uses durationToDays (truncates to day boundaries)
 				func(domain *apiv1.Domain, c fuzz.Continue) {
 					if domain.WorkflowExecutionRetentionPeriod != nil {
@@ -1094,8 +1090,8 @@ func TestPendingActivityInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"StartedWorkerIdentity", // TODO: StartedWorkerIdentity is not mapped
-				"ScheduleId",            // TODO: ScheduleId is not mapped
+				"StartedWorkerIdentity", // [BUG] StartedWorkerIdentity is not mapped
+				"ScheduleId",            // [BUG] ScheduleId is not mapped
 			},
 		},
 	)
@@ -1121,8 +1117,7 @@ func TestPendingChildExecutionInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// [UNKNOWN] It is not clear why Domain is not mapped
-				"Domain",
+				"Domain", // [BUG] It is not clear why Domain is not mapped
 			},
 		},
 	)
@@ -1150,8 +1145,7 @@ func TestPendingDecisionInfo(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				// [UNKNOWN] ScheduleId is unmapped by either mapper function - it is not clear if this is intentional
-				"ScheduleId",
+				"ScheduleId", // [BUG] ScheduleId is unmapped by either mapper function - it is not clear if this is intentional
 			},
 		},
 	)
@@ -1473,8 +1467,8 @@ func TestRequestCancelWorkflowExecutionRequest(t *testing.T) {
 		proto.RequestCancelWorkflowExecutionRequest,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"Cause",               // TODO: Cause is not mapped
-				"FirstExecutionRunId", // TODO: FirstExecutionRunId is not mapped
+				"Cause",               // [BUG] Cause is not mapped in thrift
+				"FirstExecutionRunId", // [BUG] FirstExecutionRunId is not mapped in either mapper
 			},
 		},
 	)
@@ -1611,7 +1605,6 @@ func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
 		FuzzOptions{
 			NilChance: DefaultNilChance,
 			CustomFuncs: []interface{}{
-				// [TOO HARD] Custom fuzzer to avoid gofuzz panic with complex types
 				func(req *apiv1.RespondDecisionTaskCompletedRequest, c fuzz.Continue) {
 					c.Fuzz(&req.TaskToken)
 					c.Fuzz(&req.ExecutionContext)
@@ -1696,7 +1689,7 @@ func TestRespondQueryTaskCompletedRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"Result", // TODO: Result nil values being converted to non-nil objects
+				"Result", // [BUG] Result nil values being converted to non-nil objects
 			},
 		},
 	)
@@ -1816,7 +1809,6 @@ func TestSignalWithStartWorkflowExecutionRequest(t *testing.T) {
 					}
 					*e = validValues[c.Intn(len(validValues))]
 				},
-				// Custom fuzzer to safely handle the main struct and key fields
 				func(req *apiv1.SignalWithStartWorkflowExecutionRequest, c fuzz.Continue) {
 					c.Fuzz(&req.SignalName)
 					c.Fuzz(&req.Control)
@@ -2137,8 +2129,8 @@ func TestTaskListStatus(t *testing.T) {
 		proto.TaskListStatus,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"NewTasksPerSecond",     // TODO: NewTasksPerSecond is not mapped
-				"IsolationGroupMetrics", // TODO: IsolationGroupMetrics is not mapped
+				"NewTasksPerSecond",     // [BUG] NewTasksPerSecond is not mapped
+				"IsolationGroupMetrics", // [BUG] IsolationGroupMetrics is not mapped
 			},
 		},
 	)
@@ -2153,7 +2145,7 @@ func TestTerminateWorkflowExecutionRequest(t *testing.T) {
 		proto.TerminateWorkflowExecutionRequest,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"FirstExecutionRunId", // TODO: FirstExecutionRunId is not mapped
+				"FirstExecutionRunId", // [BUG] FirstExecutionRunId is not mapped
 			},
 		},
 	)
@@ -2225,7 +2217,7 @@ func TestUpdateDomainRequest(t *testing.T) {
 					c.Fuzz(&req.ActiveClusterName)
 					c.Fuzz(&req.DeleteBadBinary)
 					c.Fuzz(&req.FailoverTimeout)
-					
+
 					// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
 					// because thrift mapping uses durationToDays (truncates to day boundaries)
 					if req.WorkflowExecutionRetentionPeriod != nil {
@@ -2236,10 +2228,10 @@ func TestUpdateDomainRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"UpdateMask",     // [BUG] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
-				"BadBinaries",    // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper
-				"Clusters",       // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper  
-				"ActiveClusters", // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper
+				"UpdateMask",     // [TOO HARD] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
+				"BadBinaries",    // [TOO HARD] Appears to be a fuzzing issue, tested in TestBadBinaries
+				"Clusters",       // [TOO HARD] Appears to be a fuzzing issue
+				"ActiveClusters", // [TOO HARD] Appears to be a fuzzing issue
 			},
 		},
 	)
@@ -2543,7 +2535,7 @@ func TestWorkflowExecutionSignaledEventAttributes(t *testing.T) {
 		proto.WorkflowExecutionSignaledEventAttributes,
 		FuzzOptions{
 			ExcludedFields: []string{
-				"RequestId", // Field mapping issue - not being preserved correctly in mapper
+				"RequestId", // [BUG] Field mapping issue - not being preserved correctly in mapper
 			},
 		},
 	)
@@ -2585,7 +2577,7 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// [BUG] ParentExecutionInfo has inconsistent behaviour - DomainId field is lost during round trip
-				// The proto mapper panics with "either all or none parent execution info must be set" 
+				// The proto mapper panics with "either all or none parent execution info must be set"
 				// TODO: Fix the ParentExecutionInfo mapping to preserve all fields consistently
 				"ParentExecutionInfo",
 			},
