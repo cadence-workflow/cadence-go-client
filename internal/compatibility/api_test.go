@@ -1958,28 +1958,61 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 		thrift.StartWorkflowExecutionRequest,
 		proto.StartWorkflowExecutionRequest,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// Custom fuzzer to avoid gofuzz panic with complex types
-				// TODO: Fix this test as we're doing the entire struct
+				func(e *apiv1.TaskListKind, c fuzz.Continue) {
+					validValues := []apiv1.TaskListKind{
+						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
+						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
+						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				func(policy *apiv1.WorkflowIdReusePolicy, c fuzz.Continue) {
+					validValues := []apiv1.WorkflowIdReusePolicy{
+						apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_INVALID,
+						apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+						apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+						apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+						apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+					}
+					*policy = validValues[c.Intn(len(validValues))]
+				},
+				func(policy *apiv1.CronOverlapPolicy, c fuzz.Continue) {
+					validValues := []apiv1.CronOverlapPolicy{
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID,
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+						apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
+					}
+					*policy = validValues[c.Intn(len(validValues))]
+				},
+				// Fuzz the entire request as gofuzz panics when it tries to populate the entire complex object.
+				// Populating the individual fields independently works though.
 				func(req *apiv1.StartWorkflowExecutionRequest, c fuzz.Continue) {
-					// Only populate simple fields to avoid gofuzz panic
-					req.Domain = c.RandString()
-					req.WorkflowId = c.RandString()
-					req.Identity = c.RandString()
-					req.RequestId = c.RandString()
-					req.CronSchedule = c.RandString()
-					// Skip complex nested structures like Input (Payload), TaskList, WorkflowType, etc.
+					c.Fuzz(&req.Domain)
+					c.Fuzz(&req.WorkflowId)
+					c.Fuzz(&req.WorkflowType)
+					c.Fuzz(&req.TaskList)
+					c.Fuzz(&req.Input)
+					c.Fuzz(&req.ExecutionStartToCloseTimeout)
+					c.Fuzz(&req.TaskStartToCloseTimeout)
+					c.Fuzz(&req.Identity)
+					c.Fuzz(&req.RequestId)
+					c.Fuzz(&req.WorkflowIdReusePolicy)
+					c.Fuzz(&req.RetryPolicy)
+					c.Fuzz(&req.CronSchedule)
+					c.Fuzz(&req.Memo)
+					c.Fuzz(&req.SearchAttributes)
+					c.Fuzz(&req.Header)
+					c.Fuzz(&req.DelayStart)
+					c.Fuzz(&req.JitterStart)
+					c.Fuzz(&req.FirstRunAt)
+					c.Fuzz(&req.CronOverlapPolicy)
 				},
 			},
 			ExcludedFields: []string{
-				"TaskList",         // Complex nested structure that causes gofuzz issues
-				"WorkflowType",     // Complex nested structure that causes gofuzz issues
-				"RetryPolicy",      // Complex nested structure that causes gofuzz issues
-				"Memo",             // Complex nested structure that causes gofuzz issues
-				"SearchAttributes", // Complex nested structure that causes gofuzz issues
-				"Header",           // Complex nested structure that causes gofuzz issues
+				// [BUG] ActiveClusterSelectionPolicy appears to be failing the round trip
+				// TODO: Investigate the mappers and determine where it is failing fuzz testing
+				"ActiveClusterSelectionPolicy",
 			},
 		},
 	)
