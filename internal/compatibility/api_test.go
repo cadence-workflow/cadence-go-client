@@ -661,16 +661,42 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 		proto.DescribeWorkflowExecutionResponse,
 		FuzzOptions{
 			CustomFuncs: []interface{}{
-				// TODO: Figure out this test - it seems to panic immediately
-				// Custom fuzzer to avoid gofuzz issues with complex types
-				func(resp *apiv1.DescribeWorkflowExecutionResponse, c fuzz.Continue) {
-					// Only populate simple fields to avoid gofuzz panics
-					resp.ExecutionConfiguration = &apiv1.WorkflowExecutionConfiguration{
-						TaskList: &apiv1.TaskList{Name: c.RandString()},
+				func(state *apiv1.PendingActivityState, c fuzz.Continue) {
+					validValues := []apiv1.PendingActivityState{
+						apiv1.PendingActivityState_PENDING_ACTIVITY_STATE_INVALID,
+						apiv1.PendingActivityState_PENDING_ACTIVITY_STATE_SCHEDULED,
+						apiv1.PendingActivityState_PENDING_ACTIVITY_STATE_STARTED,
+						apiv1.PendingActivityState_PENDING_ACTIVITY_STATE_CANCEL_REQUESTED,
 					}
+					*state = validValues[c.Intn(len(validValues))]
+				},
+				func(kind *apiv1.TaskListKind, c fuzz.Continue) {
+					validValues := []apiv1.TaskListKind{
+						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
+						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
+						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+					}
+					*kind = validValues[c.Intn(len(validValues))]
+				},
+				func(state *apiv1.PendingDecisionState, c fuzz.Continue) {
+					validValues := []apiv1.PendingDecisionState{
+						apiv1.PendingDecisionState_PENDING_DECISION_STATE_SCHEDULED,
+						apiv1.PendingDecisionState_PENDING_DECISION_STATE_STARTED,
+					}
+					*state = validValues[c.Intn(len(validValues))]
+				},
+				func(resp *apiv1.DescribeWorkflowExecutionResponse, c fuzz.Continue) {
+					c.Fuzz(&resp.ExecutionConfiguration)
+					c.Fuzz(&resp.PendingActivities)
+					c.Fuzz(&resp.PendingDecision)
 				},
 			},
-			ExcludedFields: []string{},
+			ExcludedFields: []string{
+				"WorkflowExecutionInfo",  // [TOO HARD] Complex nested WorkflowExecutionInfo struct - tested in TestWorkflowExecutionInfo
+				"PendingChildren",        // [TOO HARD] Complex nested PendingChildExecutionInfo structs - tested in TestPendingChildExecutionInfo
+				"StartedWorkerIdentity",  // [BUG] StartedWorkerIdentity is not mapped
+				"ScheduleId",             // [BUG] ScheduleId is not mapped
+			},
 		},
 	)
 }
