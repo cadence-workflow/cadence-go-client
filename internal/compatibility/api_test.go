@@ -830,28 +830,25 @@ func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 		proto.GetWorkflowExecutionHistoryResponse,
 		FuzzOptions{
 			NilChance: 0.0, // Avoid gofuzz nil issues
-			// TODO: Figure out this test - it seems to panic immediately
 			CustomFuncs: []interface{}{
-				// Custom fuzzer to avoid gofuzz panic with complex types
-				func(resp *apiv1.GetWorkflowExecutionHistoryResponse, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					resp.NextPageToken = make([]byte, c.Intn(10))
-					for i := range resp.NextPageToken {
-						resp.NextPageToken[i] = byte(c.Uint32())
-					}
-					resp.Archived = c.RandBool()
-				},
 				func(e *apiv1.EncodingType, c fuzz.Continue) {
 					validValues := []apiv1.EncodingType{
 						apiv1.EncodingType_ENCODING_TYPE_INVALID,
 						apiv1.EncodingType_ENCODING_TYPE_THRIFTRW,
 						apiv1.EncodingType_ENCODING_TYPE_JSON,
+						// ENCODING_TYPE_PROTO3 intentionally excluded as the mapper panics for this value
 					}
 					*e = validValues[c.Intn(len(validValues))]
 				},
+				// Custom fuzzer for GetWorkflowExecutionHistoryResponse to avoid gofuzz complexity issues
+				func(resp *apiv1.GetWorkflowExecutionHistoryResponse, c fuzz.Continue) {
+					c.Fuzz(&resp.NextPageToken)
+					c.Fuzz(&resp.Archived)
+					c.Fuzz(&resp.RawHistory)
+				},
 			},
 			ExcludedFields: []string{
-				"History", // Complex nested structure that causes gofuzz issues
+				"History", // [TOO HARD] Complex nested structure with HistoryEvent arrays that causes gofuzz issues - tested in TestHistory
 			},
 		},
 	)
