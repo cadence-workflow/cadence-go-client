@@ -2354,26 +2354,14 @@ func TestWorkflowExecutionCancelRequestedEventAttributes(t *testing.T) {
 		FuzzOptions{
 			CustomFuncs: []interface{}{
 				func(attr *apiv1.WorkflowExecutionCancelRequestedEventAttributes, c fuzz.Continue) {
-					// Handle ExternalExecutionInfo validation - either all fields set or none
-					if c.RandBool() {
-						// Set all fields for valid ExternalExecutionInfo
-						attr.ExternalExecutionInfo = &apiv1.ExternalExecutionInfo{
-							WorkflowExecution: &apiv1.WorkflowExecution{
-								WorkflowId: c.RandString(),
-								RunId:      c.RandString(),
-							},
-							InitiatedId: c.Int63(),
-						}
-					} else {
-						// Set no external execution info
-						attr.ExternalExecutionInfo = nil
-					}
-					attr.Cause = c.RandString()
-					attr.Identity = c.RandString()
+					c.Fuzz(&attr.Cause)
+					c.Fuzz(&attr.Identity)
+					// ExternalExecutionInfo requires all fields to be set or none - tested separately in TestExternalExecutionInfo
+					attr.ExternalExecutionInfo = nil
 				},
 			},
 			ExcludedFields: []string{
-				"RequestId", // TODO: RequestId is not mapped
+				"RequestId", // [BUG] RequestId is not mapped
 			},
 		},
 	)
