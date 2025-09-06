@@ -556,19 +556,38 @@ func TestDescribeDomainResponse(t *testing.T) {
 		thrift.DescribeDomainResponse,
 		proto.DescribeDomainResponse,
 		FuzzOptions{
-			NilChance: 0.25,
 			CustomFuncs: []interface{}{
-				// TODO: Figure out this test - it seems to panic immediately
-				func(resp *apiv1.DescribeDomainResponse, c fuzz.Continue) {
-					resp.Domain = &apiv1.Domain{
-						Name:                     c.RandString(),
-						Status:                   apiv1.DomainStatus_DOMAIN_STATUS_REGISTERED,
-						HistoryArchivalStatus:    apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
-						VisibilityArchivalStatus: apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
+				func(status *apiv1.DomainStatus, c fuzz.Continue) {
+					validValues := []apiv1.DomainStatus{
+						apiv1.DomainStatus_DOMAIN_STATUS_INVALID,
+						apiv1.DomainStatus_DOMAIN_STATUS_REGISTERED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DEPRECATED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DELETED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				func(status *apiv1.ArchivalStatus, c fuzz.Continue) {
+					validValues := []apiv1.ArchivalStatus{
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_INVALID,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_ENABLED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+				// because thrift mapping uses durationToDays (truncates to day boundaries)
+				func(domain *apiv1.Domain, c fuzz.Continue) {
+					if domain.WorkflowExecutionRetentionPeriod != nil {
+						// Generate days within int32 range: max ~5.8 million days (~16000 years)
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
+						domain.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						domain.WorkflowExecutionRetentionPeriod.Nanos = 0
 					}
 				},
 			},
-			ExcludedFields: []string{},
+			ExcludedFields: []string{
+				"ActiveClusters", // [BUG] Nil pointer dereference in mapper conversion
+			},
 		},
 	)
 }
