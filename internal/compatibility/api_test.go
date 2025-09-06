@@ -2218,12 +2218,35 @@ func TestUpdateDomainRequest(t *testing.T) {
 		thrift.UpdateDomainRequest,
 		proto.UpdateDomainRequest,
 		FuzzOptions{
-			// TODO: Fix this test as we're doing the entire struct
 			CustomFuncs: []interface{}{
-				// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+				// [INVALID DATA] ArchivalStatus enum values - gofuzz generates invalid enum values that cause "unexpected enum value" panics
+				func(status *apiv1.ArchivalStatus, c fuzz.Continue) {
+					validValues := []apiv1.ArchivalStatus{
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_INVALID,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_ENABLED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				// Custom fuzzer to handle all safe fields properly
 				func(req *apiv1.UpdateDomainRequest, c fuzz.Continue) {
+					// Fuzz basic fields that are safe to fuzz
+					c.Fuzz(&req.SecurityToken)
+					c.Fuzz(&req.Name)
+					c.Fuzz(&req.Description)
+					c.Fuzz(&req.OwnerEmail)
+					c.Fuzz(&req.Data)
+					c.Fuzz(&req.HistoryArchivalStatus)
+					c.Fuzz(&req.HistoryArchivalUri)
+					c.Fuzz(&req.VisibilityArchivalStatus)
+					c.Fuzz(&req.VisibilityArchivalUri)
+					c.Fuzz(&req.ActiveClusterName)
+					c.Fuzz(&req.DeleteBadBinary)
+					c.Fuzz(&req.FailoverTimeout)
+					
+					// Custom fuzzer for WorkflowExecutionRetentionPeriod - must be day-precision
+					// because thrift mapping uses durationToDays (truncates to day boundaries)
 					if req.WorkflowExecutionRetentionPeriod != nil {
-						// Generate days within int32 range
 						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
 						req.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
 						req.WorkflowExecutionRetentionPeriod.Nanos = 0
@@ -2231,19 +2254,10 @@ func TestUpdateDomainRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"UpdateMask",               // Complex nested structure with protobuf metadata issues
-				"Description",              // Field mapping issue - not being preserved correctly in mapper
-				"OwnerEmail",               // Field mapping issue - not being preserved correctly in mapper
-				"Data",                     // Field mapping issue - not being preserved correctly in mapper
-				"BadBinaries",              // Complex nested structure that causes issues
-				"HistoryArchivalStatus",    // Field mapping issue - not being preserved correctly in mapper
-				"HistoryArchivalUri",       // Field mapping issue - not being preserved correctly in mapper
-				"VisibilityArchivalStatus", // Field mapping issue - not being preserved correctly in mapper
-				"VisibilityArchivalUri",    // Field mapping issue - not being preserved correctly in mapper
-				"ActiveClusterName",        // Field mapping issue - not being preserved correctly in mapper
-				"Clusters",                 // Complex nested structure that causes issues
-				"DeleteBadBinary",          // Field mapping issue - not being preserved correctly in mapper
-				"ActiveClusters",           // Complex nested structure that causes issues
+				"UpdateMask",     // [BUG] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
+				"BadBinaries",    // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper
+				"Clusters",       // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper  
+				"ActiveClusters", // [NIL PANIC] Complex nested structure causes nil pointer dereference in mapper
 			},
 		},
 	)
