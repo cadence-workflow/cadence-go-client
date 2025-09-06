@@ -2537,17 +2537,17 @@ func TestWorkflowExecutionInfo(t *testing.T) {
 					c.Fuzz(&info.Type)
 					c.Fuzz(&info.StartTime)
 					c.Fuzz(&info.CloseTime)
-					c.Fuzz(&info.CloseStatus) 
+					c.Fuzz(&info.CloseStatus)
 					c.Fuzz(&info.HistoryLength)
 					c.Fuzz(&info.ExecutionTime)
 					c.Fuzz(&info.TaskList)
 					c.Fuzz(&info.IsCron)
-					c.Fuzz(&info.CronOverlapPolicy) 
+					c.Fuzz(&info.CronOverlapPolicy)
 				},
 			},
 			ExcludedFields: []string{
-				"TaskListInfo", // [BUG] TaskListInfo field is not mapping correctly between proto and thrift - becomes nil after round trip
-				"UpdateTime", // [BUG] UpdateTime field is not mapping correctly between proto and thrift - becomes nil after round trip
+				"TaskListInfo",    // [BUG] TaskListInfo field is not mapping correctly between proto and thrift - becomes nil after round trip
+				"UpdateTime",      // [BUG] UpdateTime field is not mapping correctly between proto and thrift - becomes nil after round trip
 				"PartitionConfig", // [BUG] PartitionConfig field is not mapping correctly between proto and thrift - becomes nil after round trip
 			},
 		},
