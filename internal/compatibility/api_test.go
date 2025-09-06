@@ -2561,35 +2561,37 @@ func TestWorkflowExecutionStartedEventAttributes(t *testing.T) {
 		thrift.WorkflowExecutionStartedEventAttributes,
 		proto.WorkflowExecutionStartedEventAttributes,
 		FuzzOptions{
-			// TODO: Re-enable NilChance and fix the mapper
-			NilChance: 0.0,
 			CustomFuncs: []interface{}{
-				// Custom fuzzer to avoid gofuzz panic with complex types
-				// TODO: Fix this test as we're doing the entire struct
+				func(initiator *apiv1.ContinueAsNewInitiator, c fuzz.Continue) {
+					validValues := []apiv1.ContinueAsNewInitiator{
+						apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_INVALID,
+						apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_DECIDER,
+						apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_RETRY_POLICY,
+						apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_CRON_SCHEDULE,
+					}
+					*initiator = validValues[c.Intn(len(validValues))]
+				},
+				func(kind *apiv1.TaskListKind, c fuzz.Continue) {
+					validValues := []apiv1.TaskListKind{
+						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
+						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
+						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+					}
+					*kind = validValues[c.Intn(len(validValues))]
+				},
 				func(attr *apiv1.WorkflowExecutionStartedEventAttributes, c fuzz.Continue) {
-					// Only fuzz simple fields to avoid gofuzz panic
-					attr.WorkflowType = &apiv1.WorkflowType{Name: c.RandString()}
-					attr.TaskList = &apiv1.TaskList{Name: c.RandString()}
-					attr.Identity = c.RandString()
-					attr.OriginalExecutionRunId = c.RandString()
-					attr.CronSchedule = c.RandString()
-					attr.ContinuedExecutionRunId = c.RandString()
-					attr.Initiator = apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_DECIDER
-					attr.FirstExecutionRunId = c.RandString()
-					// Skip complex nested structures
+					c.Fuzz(&attr.WorkflowType)
+					c.Fuzz(&attr.TaskList)
+					c.Fuzz(&attr.Identity)
+					c.Fuzz(&attr.FirstExecutionRunId)
+					c.Fuzz(&attr.OriginalExecutionRunId)
 				},
 			},
 			ExcludedFields: []string{
-				// Skip all complex nested structures that cause gofuzz issues
-				"Input",                   // Complex Payload structure that causes gofuzz issues
-				"ParentWorkflowDomain",    // Complex nested structure
-				"ParentWorkflowExecution", // Complex nested structure
-				"ParentInitiatedEventId",  // Complex nested structure
-				"RetryPolicy",             // Complex nested structure that causes gofuzz issues
-				"Header",                  // Complex nested structure that causes gofuzz issues
-				"Memo",                    // Complex nested structure that causes gofuzz issues
-				"SearchAttributes",        // Complex nested structure that causes gofuzz issues
-				"LastCompletionResult",    // Complex Payload structure that causes gofuzz issues
+				// [BUG] ParentExecutionInfo has inconsistent behaviour - DomainId field is lost during round trip
+				// The proto mapper panics with "either all or none parent execution info must be set" 
+				// TODO: Fix the ParentExecutionInfo mapping to preserve all fields consistently
+				"ParentExecutionInfo",
 			},
 		},
 	)
