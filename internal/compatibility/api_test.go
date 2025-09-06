@@ -611,20 +611,10 @@ func TestDescribeTaskListResponse(t *testing.T) {
 		thrift.DescribeTaskListResponse,
 		proto.DescribeTaskListResponse,
 		FuzzOptions{
-			CustomFuncs: []interface{}{
-				func(kind *apiv1.TaskListKind, c fuzz.Continue) {
-					validValues := []apiv1.TaskListKind{
-						apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
-						apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
-						apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
-					}
-					*kind = validValues[c.Intn(len(validValues))]
-				},
-			},
 			ExcludedFields: []string{
-				"PartitionConfig", // [TOO HARD] Issues with nested maps and protobuf fields. This isn't tested anywhere else. TODO: Test PartitionConfig mapping.
-				"TaskListStatus",  // [TOO HARD] This is tested in TestTaskListStatus. It is either failing due to nested types or the missing fields from the mapper.
-				"TaskList",        // [TOO HARD] GoFuzz has issues with nested structures, and this is tested in TestTaskList
+				"PartitionConfig", // [BUG] PartitionConfig field is lost during round trip - complex nested maps with TaskListPartition not preserved
+				"TaskListStatus",  // [BUG] TaskListStatus fields IsolationGroupMetrics and NewTasksPerSecond are not mapped - they become nil/0 after round trip
+				"TaskList",        // [BUG] TaskList field is lost during round trip - mapper not preserving this field correctly
 			},
 		},
 	)
