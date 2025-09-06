@@ -701,10 +701,10 @@ func TestDescribeWorkflowExecutionResponse(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"WorkflowExecutionInfo",  // [TOO HARD] Complex nested WorkflowExecutionInfo struct - tested in TestWorkflowExecutionInfo
-				"PendingChildren",        // [TOO HARD] Complex nested PendingChildExecutionInfo structs - tested in TestPendingChildExecutionInfo
-				"StartedWorkerIdentity",  // [BUG] StartedWorkerIdentity is not mapped
-				"ScheduleId",             // [BUG] ScheduleId is not mapped
+				"WorkflowExecutionInfo", // [TOO HARD] Complex nested WorkflowExecutionInfo struct - tested in TestWorkflowExecutionInfo
+				"PendingChildren",       // [TOO HARD] Complex nested PendingChildExecutionInfo structs - tested in TestPendingChildExecutionInfo
+				"StartedWorkerIdentity", // [BUG] StartedWorkerIdentity is not mapped
+				"ScheduleId",            // [BUG] ScheduleId is not mapped
 			},
 		},
 	)
