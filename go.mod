@@ -8,6 +8,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/golang/mock v1.5.0
+	github.com/google/gofuzz v1.0.0
 	github.com/jonboulle/clockwork v0.4.0
 	github.com/marusama/semaphore/v2 v2.5.0
 	github.com/opentracing/opentracing-go v1.1.0
