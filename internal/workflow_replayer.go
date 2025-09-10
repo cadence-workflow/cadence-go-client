@@ -324,7 +324,10 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 			Logger:                            logger,
 			DisableStickyExecution:            true,
 		},
-		TaskList: replayTaskListName,
+		TaskList: &shared.TaskList{
+			Name: common.StringPtr(replayTaskListName),
+			Kind: shared.TaskListKindNormal.Ptr(),
+		},
 	}
 
 	metricScope := tally.NoopScope
