@@ -1047,6 +1047,31 @@ func (s *workflowClientTestSuite) TearDownSubTest() {
 	s.TearDownTest()
 }
 
+func (s *workflowClientTestSuite) TestSignalWorkflow() {
+	signalName := "my signal"
+	signalInput := []byte("my signal input")
+
+	s.service.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, request *shared.SignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.SignalWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			SignalName: common.StringPtr(signalName),
+			Input:      signalInput,
+			Identity:   common.StringPtr(identity),
+			RequestId:  nil,
+		}, request)
+		return nil
+	}).Times(1)
+
+	err := s.client.SignalWorkflow(context.Background(), workflowID, runID, signalName, signalInput)
+	s.NoError(err)
+}
+
 func (s *workflowClientTestSuite) TestSignalWithStartWorkflow() {
 	signalName := "my signal"
 	signalInput := []byte("my signal input")
@@ -1707,44 +1732,48 @@ func serializeEvents(events []*shared.HistoryEvent) *shared.DataBlob {
 }
 
 func (s *workflowClientTestSuite) TestCancelWorkflow() {
-	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), newPartialCancelRequestMatcher(common.StringPtr("testWf"), common.StringPtr("test reason")), gomock.All(gomock.Any())).Return(nil)
+	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), gomock.Any(), gomock.All(gomock.Any())).DoAndReturn(func(_ context.Context, request *shared.RequestCancelWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.RequestCancelWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			Identity:            common.StringPtr(identity),
+			RequestId:           nil,
+			Cause:               common.StringPtr("test reason"),
+			FirstExecutionRunID: nil,
+		}, request)
+		return nil
+	}).Times(1)
 
-	err := s.client.CancelWorkflow(context.Background(), "testWf", "testRun", WithCancelReason("test reason"))
+	err := s.client.CancelWorkflow(context.Background(), workflowID, runID, WithCancelReason("test reason"))
 
 	s.NoError(err)
 }
 
 func (s *workflowClientTestSuite) TestCancelWorkflowBackwardsCompatible() {
-	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), newPartialCancelRequestMatcher(common.StringPtr("testWf"), nil), gomock.All(gomock.Any())).Return(nil)
-
-	err := s.client.CancelWorkflow(context.Background(), "testWf", "testRun")
+	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), gomock.Any(), gomock.All(gomock.Any())).DoAndReturn(func(_ context.Context, request *shared.RequestCancelWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.RequestCancelWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			Identity:            common.StringPtr(identity),
+			RequestId:           nil,
+			Cause:               nil,
+			FirstExecutionRunID: nil,
+		}, request)
+		return nil
+	}).Times(1)
+	err := s.client.CancelWorkflow(context.Background(), workflowID, runID)
 
 	s.NoError(err)
-}
-
-type PartialCancelRequestMatcher struct {
-	wfID  *string
-	cause *string
-}
-
-func newPartialCancelRequestMatcher(wfID *string, cause *string) gomock.Matcher {
-	return &PartialCancelRequestMatcher{
-		wfID:  wfID,
-		cause: cause,
-	}
-}
-
-func (m *PartialCancelRequestMatcher) Matches(a interface{}) bool {
-	aEx, ok := a.(*shared.RequestCancelWorkflowExecutionRequest)
-	if !ok {
-		return false
-	}
-
-	return (aEx.Cause == m.cause || *aEx.Cause == *m.cause) && *aEx.WorkflowExecution.WorkflowId == *m.wfID
-}
-
-func (m *PartialCancelRequestMatcher) String() string {
-	return "partial cancellation request matcher matches cause and wfId fields"
 }
 
 func (s *workflowClientTestSuite) TestTerminateWorkflow() {

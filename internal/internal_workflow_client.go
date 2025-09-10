@@ -401,7 +401,8 @@ func (wc *workflowClient) CancelWorkflow(ctx context.Context, workflowID string,
 			WorkflowId: common.StringPtr(workflowID),
 			RunId:      getRunID(runID),
 		},
-		Identity: common.StringPtr(wc.identity),
+		Identity:  common.StringPtr(wc.identity),
+		RequestId: common.StringPtr(uuid.New()),
 	}
 
 	for _, opt := range opts {

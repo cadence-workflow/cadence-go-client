@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
@@ -1627,6 +1628,7 @@ func signalWorkflow(
 		SignalName: common.StringPtr(signalName),
 		Input:      signalInput,
 		Identity:   common.StringPtr(identity),
+		RequestId:  common.StringPtr(uuid.New()),
 	}
 
 	return backoff.Retry(ctx,
