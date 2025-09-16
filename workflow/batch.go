@@ -1,11 +1,10 @@
-package x
+package workflow
 
 import (
 	"go.uber.org/cadence/internal/batch"
-	"go.uber.org/cadence/workflow"
 )
 
-var _ workflow.Future = (BatchFuture)(nil) // to ensure it's compatible
+var _ Future = (BatchFuture)(nil) // to ensure it's compatible
 
 // BatchFuture wraps a collection of futures, and provides some convenience methods for dealing with them in bulk.
 type BatchFuture interface {
@@ -22,10 +21,10 @@ type BatchFuture interface {
 	// exposed normally, but multiple ones are bundled in the same way as errors.Join.
 	// For consistency when checking individual errors, consider using `multierr.Errors(err)` in all cases,
 	// or `GetFutures()[i].Get(ctx, nil)` to get the original errors at each index.
-	Get(ctx workflow.Context, valuePtr interface{}) error
+	Get(ctx Context, valuePtr interface{}) error
 	// GetFutures returns a slice of all the wrapped futures.
 	// This slice MUST NOT be modified, but the individual futures can be used normally.
-	GetFutures() []workflow.Future
+	GetFutures() []Future
 }
 
 // NewBatchFuture creates a bounded-concurrency helper for doing bulk work in your workflow.
@@ -35,6 +34,6 @@ type BatchFuture interface {
 //
 // When NewBatchFuture is called, futures created by the factories will be started concurrently until the concurrency limit (batchSize) is reached.
 // The remaining factories will be queued and started as previous futures complete, maintaining the specified concurrency level.
-func NewBatchFuture(ctx workflow.Context, batchSize int, factories []func(ctx workflow.Context) workflow.Future) (BatchFuture, error) {
+func NewBatchFuture(ctx Context, batchSize int, factories []func(ctx Context) Future) (BatchFuture, error) {
 	return batch.NewBatchFuture(ctx, batchSize, factories)
 }
