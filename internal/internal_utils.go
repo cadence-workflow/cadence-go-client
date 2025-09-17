@@ -75,7 +75,8 @@ type (
 	FeatureFlags struct {
 		WorkflowExecutionAlreadyCompletedErrorEnabled bool
 		// Deprecated: use AutoScalerOptions instead
-		PollerAutoScalerEnabled bool
+		PollerAutoScalerEnabled   bool
+		EphemeralTaskListsEnabled bool
 	}
 )
 

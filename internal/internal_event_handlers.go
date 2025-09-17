@@ -121,6 +121,7 @@ type (
 		contextPropagators           []ContextPropagator
 		tracer                       opentracing.Tracer
 		workflowInterceptorFactories []WorkflowInterceptorFactory
+		featureFlags                 FeatureFlags
 	}
 
 	localActivityTask struct {
@@ -205,6 +206,7 @@ func newWorkflowExecutionEventHandler(
 	contextPropagators []ContextPropagator,
 	tracer opentracing.Tracer,
 	workflowInterceptorFactories []WorkflowInterceptorFactory,
+	featureFlags FeatureFlags,
 ) workflowExecutionEventHandler {
 	context := &workflowEnvironmentImpl{
 		workflowInfo:                 workflowInfo,
@@ -222,6 +224,7 @@ func newWorkflowExecutionEventHandler(
 		contextPropagators:           contextPropagators,
 		tracer:                       tracer,
 		workflowInterceptorFactories: workflowInterceptorFactories,
+		featureFlags:                 featureFlags,
 	}
 	context.logger = logger.With(
 		zapcore.Field{Key: tagWorkflowType, Type: zapcore.StringType, String: workflowInfo.WorkflowType.Name},
@@ -472,7 +475,7 @@ func (wc *workflowEnvironmentImpl) ExecuteActivity(parameters executeActivityPar
 	}
 	activityID := scheduleTaskAttr.GetActivityId()
 	scheduleTaskAttr.ActivityType = activityTypePtr(parameters.ActivityType)
-	scheduleTaskAttr.TaskList = common.TaskListPtr(m.TaskList{Name: common.StringPtr(parameters.TaskListName)})
+	scheduleTaskAttr.TaskList = common.TaskListPtr(m.TaskList{Name: common.StringPtr(parameters.TaskListName), Kind: parameters.TaskListKind.Ptr()})
 	scheduleTaskAttr.Input = parameters.Input
 	scheduleTaskAttr.ScheduleToCloseTimeoutSeconds = common.Int32Ptr(parameters.ScheduleToCloseTimeoutSeconds)
 	scheduleTaskAttr.StartToCloseTimeoutSeconds = common.Int32Ptr(parameters.StartToCloseTimeoutSeconds)
@@ -802,6 +805,10 @@ func (wc *workflowEnvironmentImpl) GetRegistry() *registry {
 
 func (wc *workflowEnvironmentImpl) GetWorkflowInterceptors() []WorkflowInterceptorFactory {
 	return wc.workflowInterceptorFactories
+}
+
+func (wc *workflowEnvironmentImpl) GetFeatureFlags() FeatureFlags {
+	return wc.featureFlags
 }
 
 func (weh *workflowExecutionEventHandlerImpl) ProcessEvent(

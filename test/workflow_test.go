@@ -659,6 +659,25 @@ func (w *Workflows) OverrideSpanContext(ctx workflow.Context) (map[string]string
 	return res, err
 }
 
+func (w *Workflows) Session(ctx workflow.Context) (string, error) {
+	ctx = workflow.WithActivityOptions(ctx, w.defaultActivityOptions())
+
+	so := &workflow.SessionOptions{
+		CreationTimeout:  time.Second * 10,
+		ExecutionTimeout: time.Second * 10,
+	}
+	sessionCtx, err := workflow.CreateSession(ctx, so)
+	if err != nil {
+		return "", err
+	}
+	defer workflow.CompleteSession(sessionCtx)
+	var result string
+	if err = workflow.ExecuteActivity(sessionCtx, "Activities_GetTaskList").Get(ctx, &result); err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
 func (w *Workflows) register(worker worker.Worker) {
 	// Kept to verify backward compatibility of workflow registration.
 	workflow.RegisterWithOptions(w.Basic, workflow.RegisterOptions{DisableAlreadyRegisteredCheck: true})
@@ -689,6 +708,7 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.WorkflowWithLocalActivityCtxPropagation)
 	worker.RegisterWorkflow(w.NonDeterminismSimulatorWorkflow)
 	worker.RegisterWorkflow(w.OverrideSpanContext)
+	worker.RegisterWorkflow(w.Session)
 
 }
 

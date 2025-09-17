@@ -34,6 +34,8 @@ func TaskListKind(t apiv1.TaskListKind) *shared.TaskListKind {
 		return shared.TaskListKindNormal.Ptr()
 	case apiv1.TaskListKind_TASK_LIST_KIND_STICKY:
 		return shared.TaskListKindSticky.Ptr()
+	case apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL:
+		return shared.TaskListKindEphemeral.Ptr()
 	}
 	panic("unexpected enum value")
 }

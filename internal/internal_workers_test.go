@@ -23,6 +23,8 @@ package internal
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -93,7 +95,7 @@ func (s *WorkersTestSuite) TestWorkflowWorker() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentDecisionTaskPollers: 5,
 			Logger:                           logger},
@@ -125,7 +127,7 @@ func (s *WorkersTestSuite) testActivityWorker(useLocallyDispatched bool) {
 	s.service.EXPECT().RespondActivityTaskCompleted(gomock.Any(), gomock.Any(), callOptions()...).Return(nil).AnyTimes()
 
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 5,
 			Logger:                           testlogger.NewZap(s.T())},
@@ -170,7 +172,7 @@ func (s *WorkersTestSuite) TestActivityWorkerStop() {
 	stopC := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: AugmentWorkerOptions(
 			WorkerOptions{
 				MaxConcurrentActivityTaskPollers:   5,
@@ -211,7 +213,7 @@ func (s *WorkersTestSuite) TestPollForDecisionTask_InternalServiceError() {
 	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).Return(&m.PollForDecisionTaskResponse{}, &m.InternalServiceError{}).AnyTimes()
 
 	executionParameters := workerExecutionParameters{
-		TaskList: "testDecisionTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testDecisionTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentDecisionTaskPollers: 5,
 			Logger:                           testlogger.NewZap(s.T())},
@@ -890,6 +892,105 @@ func (s *WorkersTestSuite) TestMultipleLocallyDispatchedActivity() {
 	// for currently unbuffered channel at least one activity should be sent
 	s.True(activityResponseCompletedCount.Load() > 0)
 	s.True(activityCalledCount.Load() > 0)
+}
+
+func (s *WorkersTestSuite) TestSessionWorker() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	pollCount := atomic.NewInt32(0)
+	done := make(chan struct{})
+	var hostSpecificTl sync.Once
+	var commonTl sync.Once
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
+	s.service.EXPECT().PollForActivityTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForActivityTaskRequest, opts ...yarpc.CallOption) (*m.PollForActivityTaskResponse, error) {
+		// The host-specific TL
+		if strings.Contains(request.TaskList.GetName(), "@") && request.TaskList.GetKind() == m.TaskListKindNormal {
+			hostSpecificTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		// The common creation TL
+		if request.TaskList.GetName() == "test-tl__internal_session_creation" && request.TaskList.GetKind() == m.TaskListKindNormal {
+			commonTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		return &m.PollForActivityTaskResponse{}, nil
+	}).AnyTimes()
+	options := WorkerOptions{
+		Logger:                testlogger.NewZap(s.T()),
+		DisableActivityWorker: true,
+		DisableWorkflowWorker: true,
+		EnableSessionWorker:   true,
+		Identity:              "test-worker-identity",
+	}
+	worker, err := newAggregatedWorker(s.service, domain, "test-tl", options)
+	s.NoError(err, "worked to create worker")
+
+	err = worker.Start()
+	s.NoError(err, "worker failed to start")
+	defer worker.Stop()
+
+	// Wait for both to complete
+	select {
+	case <-ctx.Done():
+		s.Fail("Timed out")
+	case <-done:
+	}
+}
+
+func (s *WorkersTestSuite) TestSessionWorker_Ephemeral() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	pollCount := atomic.NewInt32(0)
+	done := make(chan struct{})
+	var hostSpecificTl sync.Once
+	var commonTl sync.Once
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
+	s.service.EXPECT().PollForActivityTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForActivityTaskRequest, opts ...yarpc.CallOption) (*m.PollForActivityTaskResponse, error) {
+		// The host-specific TL is a random UUID and the
+		if strings.Contains(request.TaskList.GetName(), "@") && request.TaskList.GetKind() == m.TaskListKindEphemeral {
+			hostSpecificTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		// The common creation TL
+		if request.TaskList.GetName() == "test-tl__internal_session_creation" && request.TaskList.GetKind() == m.TaskListKindNormal {
+			commonTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		return &m.PollForActivityTaskResponse{}, nil
+	}).AnyTimes()
+	options := WorkerOptions{
+		Logger:                testlogger.NewZap(s.T()),
+		DisableActivityWorker: true,
+		DisableWorkflowWorker: true,
+		EnableSessionWorker:   true,
+		Identity:              "test-worker-identity",
+		FeatureFlags:          FeatureFlags{EphemeralTaskListsEnabled: true},
+	}
+	worker, err := newAggregatedWorker(s.service, domain, "test-tl", options)
+	s.NoError(err, "worked to create worker")
+
+	err = worker.Start()
+	s.NoError(err, "worker failed to start")
+	defer worker.Stop()
+
+	// Wait for both to complete
+	select {
+	case <-ctx.Done():
+		s.Fail("Timed out")
+	case <-done:
+	}
 }
 
 // wait for test to complete - timeout and fail after 10 seconds to not block execution of other tests

@@ -772,8 +772,12 @@ func (wc *workflowEnvironmentInterceptor) ExecuteActivity(ctx Context, typeName 
 			// Use session tasklist
 			oldTaskListName := options.TaskListName
 			options.TaskListName = sessionInfo.tasklist
+			if wc.env.GetFeatureFlags().EphemeralTaskListsEnabled {
+				options.TaskListKind = s.TaskListKindEphemeral
+			}
 			defer func() {
 				options.TaskListName = oldTaskListName
+				options.TaskListKind = s.TaskListKindNormal
 			}()
 		}
 	}

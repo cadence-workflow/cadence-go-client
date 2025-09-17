@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/testlogger"
 
 	"github.com/golang/mock/gomock"
@@ -179,7 +180,7 @@ func (s *InterfacesTestSuite) TestInterface() {
 	domain := "testDomain"
 	// Workflow execution parameters.
 	workflowExecutionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 4,
 			MaxConcurrentDecisionTaskPollers: 4,
@@ -211,7 +212,7 @@ func (s *InterfacesTestSuite) TestInterface() {
 
 	// Create activity execution parameters.
 	activityExecutionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 10,
 			MaxConcurrentDecisionTaskPollers: 10,

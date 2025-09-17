@@ -74,6 +74,7 @@ func DescribeTaskListResponse(t *apiv1.DescribeTaskListResponse) *shared.Describ
 	return &shared.DescribeTaskListResponse{
 		Pollers:        PollerInfoArray(t.Pollers),
 		TaskListStatus: TaskListStatus(t.TaskListStatus),
+		TaskList:       TaskList(t.TaskList),
 	}
 }
 

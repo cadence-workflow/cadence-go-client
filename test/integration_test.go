@@ -161,6 +161,7 @@ func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 		Logger:                            zaptest.NewLogger(ts.T()),
 		WorkflowInterceptorChainFactories: []interceptors.WorkflowInterceptorFactory{ts.tracer},
 		ContextPropagators:                []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
+		EnableSessionWorker:               true,
 	}
 
 	if testName == "TestNonDeterministicWorkflowQuery" || testName == "TestNonDeterministicWorkflowFailPolicy" {
@@ -168,6 +169,11 @@ func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 
 		// disable sticky executon so each workflow yield will require rerunning it from beginning
 		options.DisableStickyExecution = true
+	}
+	if testName == "TestSession_Ephemeral" {
+		options.FeatureFlags = internal.FeatureFlags{
+			EphemeralTaskListsEnabled: true,
+		}
 	}
 
 	ts.worker = worker.New(ts.rpcClient.Interface, domainName, ts.taskListName, options)
@@ -581,6 +587,31 @@ func (ts *IntegrationTestSuite) TestOverrideSpanContext() {
 	_, err := ts.executeWorkflow("test-override-span-context", ts.workflows.OverrideSpanContext, &result)
 	ts.NoError(err)
 	ts.Equal("some-value", result["mockpfx-baggage-some-key"])
+}
+
+func (ts *IntegrationTestSuite) TestSession() {
+	var result string
+	_, err := ts.executeWorkflow("test-session", ts.workflows.Session, &result)
+	ts.NoError(err)
+	tl := ts.describeTaskList(result)
+	ts.NotNil(tl)
+	ts.Equal(shared.TaskListKindNormal.Ptr(), tl.Kind)
+}
+
+func (ts *IntegrationTestSuite) TestSession_Ephemeral() {
+	// Ephemeral TaskList is enabled by the test name
+	var result string
+	_, err := ts.executeWorkflow("test-session-ephemeral", ts.workflows.Session, &result)
+	ts.NoError(err)
+	tl := ts.describeTaskList(result)
+	ts.NotNil(tl)
+	ts.Equal(shared.TaskListKindEphemeral.Ptr(), tl.Kind)
+}
+
+func (ts *IntegrationTestSuite) describeTaskList(taskListName string) *shared.TaskList {
+	descResp, err := ts.libClient.DescribeTaskList(context.Background(), taskListName, shared.TaskListTypeActivity)
+	ts.Require().NoError(err)
+	return descResp.GetTaskList()
 }
 
 // TestVersionedWorkflowV1 tests that a workflow started on the worker with VersionedWorkflowV1

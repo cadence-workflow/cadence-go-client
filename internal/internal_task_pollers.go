@@ -99,7 +99,7 @@ type (
 	activityTaskPoller struct {
 		basePoller
 		domain              string
-		taskListName        string
+		taskList            *s.TaskList
 		identity            string
 		service             workflowserviceclient.Interface
 		taskHandler         ActivityTaskHandler
@@ -301,7 +301,7 @@ func newWorkflowTaskPoller(
 		basePoller:                   basePoller{shutdownC: params.WorkerStopChannel},
 		service:                      service,
 		domain:                       domain,
-		taskListName:                 params.TaskList,
+		taskListName:                 params.TaskList.GetName(),
 		identity:                     params.Identity,
 		taskHandler:                  taskHandler,
 		ldaTunnel:                    ldaTunnelInterface,
@@ -1040,7 +1040,7 @@ func newActivityTaskPoller(taskHandler ActivityTaskHandler, service workflowserv
 		taskHandler:         taskHandler,
 		service:             service,
 		domain:              domain,
-		taskListName:        params.TaskList,
+		taskList:            params.TaskList,
 		identity:            params.Identity,
 		logger:              params.Logger,
 		metricsScope:        metrics.NewTaggedScope(params.MetricsScope),
@@ -1061,7 +1061,7 @@ func (atp *activityTaskPoller) poll(ctx context.Context) (*s.PollForActivityTask
 	})
 	request := &s.PollForActivityTaskRequest{
 		Domain:           common.StringPtr(atp.domain),
-		TaskList:         common.TaskListPtr(s.TaskList{Name: common.StringPtr(atp.taskListName)}),
+		TaskList:         atp.taskList,
 		Identity:         common.StringPtr(atp.identity),
 		TaskListMetadata: &s.TaskListMetadata{MaxTasksPerSecond: &atp.activitiesPerSecond},
 	}
@@ -1164,7 +1164,7 @@ func (atp *activityTaskPoller) ProcessTask(task interface{}) error {
 
 	executionStartTime := time.Now()
 	// Process the activity task.
-	request, err := atp.taskHandler.Execute(atp.taskListName, activityTask.task)
+	request, err := atp.taskHandler.Execute(atp.taskList.GetName(), activityTask.task)
 	if err != nil {
 		metricsScope.Counter(metrics.ActivityExecutionFailedCounter).Inc(1)
 		return err
