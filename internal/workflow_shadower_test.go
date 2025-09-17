@@ -203,7 +203,7 @@ func (s *workflowShadowerSuite) TestShadowOptionsValidation() {
 			options:   ShadowOptions{},
 			expectErr: false,
 			validationFn: func(options *ShadowOptions) {
-				s.Equal("(CloseTime = missing)", options.WorkflowQuery)
+				s.Equal("(CloseTime = missing or CloseTime != missing)", options.WorkflowQuery)
 				s.Equal(1.0, options.SamplingRate)
 				s.Equal(1, options.Concurrency)
 			},
@@ -255,7 +255,7 @@ func (s *workflowShadowerSuite) TestShadowOptionsWithExcludeTypes() {
 		Mode:          ShadowModeNormal,
 	}
 	expectedQuery := fmt.Sprintf(
-		`(WorkflowType = "includedType1" or WorkflowType = "includedType2") and (WorkflowType != "excludedType1" and WorkflowType != "excludedType2") and (CloseTime = missing)`,
+		`(WorkflowType = "includedType1" or WorkflowType = "includedType2") and (WorkflowType != "excludedType1" and WorkflowType != "excludedType2") and (CloseTime = missing or CloseTime != missing)`,
 	)
 	shadower, err := NewWorkflowShadower(s.mockService, "testDomain", options, ReplayOptions{}, nil)
 	s.NoError(err)
