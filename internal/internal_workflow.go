@@ -807,6 +807,14 @@ func (s *coroutineState) initialYield(stackDepth int, status string) {
 // yield indicates that coroutine cannot make progress and should sleep
 // this call blocks
 func (s *coroutineState) yield(status string) {
+	// make sure we're the running coroutine before writing to the aboutToBlock
+	// channel, as it's not safe to undo that write if the caller used the
+	// wrong context to make a blocking call.
+	if s.blocked.Load() {
+		// same as initialYield
+		panic("trying to block on coroutine which is already blocked, most likely a wrong Context is used to do blocking" +
+			" call (like Future.Get() or Channel.Receive()")
+	}
 	s.aboutToBlock <- true
 	s.initialYield(3, status) // omit three levels of stack. To adjust change to 0 and count the lines to remove.
 	s.keptBlocked = true
