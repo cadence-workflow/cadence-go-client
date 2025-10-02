@@ -273,6 +273,11 @@ func (a thrift2protoAdapter) DeleteDomain(ctx context.Context, DeleteRequest *sh
 	return err
 }
 
+func (a thrift2protoAdapter) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	response, err := a.domain.FailoverDomain(ctx, proto.FailoverDomainRequest(request), opts...)
+	return thrift.FailoverDomainResponse(response), thrift.Error(err)
+}
+
 type domainAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }

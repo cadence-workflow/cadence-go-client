@@ -521,3 +521,13 @@ func (w *workflowServiceAuthWrapper) DeleteDomain(ctx context.Context, DeleteReq
 	err = w.service.DeleteDomain(ctx, DeleteRequest, opts...)
 	return err
 }
+
+func (w *workflowServiceAuthWrapper) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	result, err := w.service.FailoverDomain(ctx, request, opts...)
+	return result, err
+}
