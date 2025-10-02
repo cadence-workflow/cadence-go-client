@@ -316,3 +316,9 @@ func (w *workflowServiceIsolationGroupWrapper) DeleteDomain(ctx context.Context,
 	opts = append(opts, w.getIsolationGroupIdentifier())
 	return w.service.DeleteDomain(ctx, DeleteRequest, opts...)
 }
+
+func (w *workflowServiceIsolationGroupWrapper) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.FailoverDomain(ctx, request, opts...)
+	return result, err
+}

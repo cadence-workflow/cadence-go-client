@@ -406,6 +406,15 @@ func TestAPICalls(t *testing.T) {
 				m.EXPECT().DeleteDomain(gomock.Any(), &shared.DeleteDomainRequest{}, gomock.Any()).Times(1).Return(nil)
 			},
 		},
+		"FailoverDomain": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.FailoverDomain(ctx, &shared.FailoverDomainRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().FailoverDomain(gomock.Any(), &shared.FailoverDomainRequest{}, gomock.Any()).Times(1).Return(&shared.FailoverDomainResponse{}, nil)
+			},
+			expectedResponse: &shared.FailoverDomainResponse{},
+		},
 	}
 
 	for name, td := range tests {

@@ -747,3 +747,19 @@ func (s *serviceWrapperSuite) TestDeleteDomainInvalidToken() {
 	err := sw.DeleteDomain(ctx, &shared.DeleteDomainRequest{})
 	s.EqualError(err, "error")
 }
+
+func (s *serviceWrapperSuite) TestFailoverDomainValidToken() {
+	s.Service.EXPECT().FailoverDomain(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.FailoverDomain(ctx, &shared.FailoverDomainRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestFailoverDomainInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.FailoverDomain(ctx, &shared.FailoverDomainRequest{})
+	s.EqualError(err, "error")
+}
