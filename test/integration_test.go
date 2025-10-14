@@ -559,7 +559,7 @@ func (ts *IntegrationTestSuite) TestFailoverDomain() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 	name := domainName
-	activeClusterName := "clusterA"
+	activeClusterName := "cluster0"
 	err := ts.domainClient.Failover(ctx, &shared.FailoverDomainRequest{
 		DomainName:              &name,
 		DomainActiveClusterName: &activeClusterName,
@@ -786,6 +786,7 @@ func (ts *IntegrationTestSuite) registerDomain() {
 	err := ts.domainClient.Register(ctx, &shared.RegisterDomainRequest{
 		Name:                                   &name,
 		WorkflowExecutionRetentionPeriodInDays: &retention,
+		Clusters:                               make([]*shared.ClusterReplicationConfiguration, 0),
 	})
 	if err != nil {
 		if _, ok := err.(*shared.DomainAlreadyExistsError); ok {
