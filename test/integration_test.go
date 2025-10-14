@@ -555,6 +555,22 @@ func (ts *IntegrationTestSuite) TestDomainUpdate() {
 	ts.Equal(description, *domain.DomainInfo.Description)
 }
 
+func (ts *IntegrationTestSuite) TestFailoverDomain() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	name := domainName
+	activeClusterName := "clusterA"
+	err := ts.domainClient.Failover(ctx, &shared.FailoverDomainRequest{
+		DomainName:              &name,
+		DomainActiveClusterName: &activeClusterName,
+	})
+	ts.NoError(err)
+
+	domain, err := ts.domainClient.Describe(ctx, name)
+	ts.NoError(err)
+	ts.Equal(activeClusterName, *domain.ReplicationConfiguration.ActiveClusterName)
+}
+
 func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowFailPolicy() {
 	_, err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
 	var customErr *internal.CustomError

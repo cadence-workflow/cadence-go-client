@@ -467,6 +467,13 @@ type (
 		//	- BadRequestError
 		//	- InternalServiceError
 		Update(ctx context.Context, request *s.UpdateDomainRequest) error
+
+		// Failover a domain to another cluster.
+		// The errors it can throw:
+		//	- EntityNotExistsError
+		//	- BadRequestError
+		//	- InternalServiceError
+		Failover(ctx context.Context, request *s.FailoverDomainRequest) error
 	}
 )
 

@@ -2166,7 +2166,7 @@ func TestTaskListStatus(t *testing.T) {
 			ExcludedFields: []string{
 				"NewTasksPerSecond",     // [BUG] NewTasksPerSecond is not mapped
 				"IsolationGroupMetrics", // [BUG] IsolationGroupMetrics is not mapped
-				"Empty",                 // Empty field is not mapped
+				"Empty",                 // Empty is only used in matching <-> matching communication, and doesn't need to be mapped
 			},
 		},
 	)
