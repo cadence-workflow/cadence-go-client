@@ -45,6 +45,24 @@ func (_m *DomainClient) Describe(ctx context.Context, name string) (*shared.Desc
 	return r0, r1
 }
 
+// Failover provides a mock function with given fields: ctx, request
+func (_m *DomainClient) Failover(ctx context.Context, request *shared.FailoverDomainRequest) error {
+	ret := _m.Called(ctx, request)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Failover")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *shared.FailoverDomainRequest) error); ok {
+		r0 = rf(ctx, request)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Register provides a mock function with given fields: ctx, request
 func (_m *DomainClient) Register(ctx context.Context, request *shared.RegisterDomainRequest) error {
 	ret := _m.Called(ctx, request)

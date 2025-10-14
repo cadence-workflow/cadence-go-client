@@ -66,6 +66,7 @@ type IntegrationTestSuite struct {
 const (
 	ctxTimeout                 = 15 * time.Second
 	domainName                 = "integration-test-domain"
+	domainToFailover           = "integration-test-xdc-domain"
 	domainCacheRefreshInterval = 20 * time.Second
 	testContextKey             = "test-context-key"
 )
@@ -114,7 +115,8 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 			ContextPropagators: []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
 		})
 	ts.domainClient = client.NewDomainClient(ts.rpcClient.Interface, &client.Options{})
-	ts.registerDomain()
+	ts.registerDomain(domainName)
+	ts.registerDomain(domainToFailover)
 	internal.StartVersionMetrics(tally.NoopScope)
 }
 
@@ -555,6 +557,22 @@ func (ts *IntegrationTestSuite) TestDomainUpdate() {
 	ts.Equal(description, *domain.DomainInfo.Description)
 }
 
+func (ts *IntegrationTestSuite) TestFailoverDomain() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	name := domainToFailover
+	activeClusterName := "cluster0"
+	err := ts.domainClient.Failover(ctx, &shared.FailoverDomainRequest{
+		DomainName:              &name,
+		DomainActiveClusterName: &activeClusterName,
+	})
+	ts.NoError(err)
+
+	domain, err := ts.domainClient.Describe(ctx, name)
+	ts.NoError(err)
+	ts.Equal(activeClusterName, *domain.ReplicationConfiguration.ActiveClusterName)
+}
+
 func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowFailPolicy() {
 	_, err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
 	var customErr *internal.CustomError
@@ -762,13 +780,13 @@ func (ts *IntegrationTestSuite) replayVersionedWorkflow(version VersionedWorkflo
 	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
 }
 
-func (ts *IntegrationTestSuite) registerDomain() {
+func (ts *IntegrationTestSuite) registerDomain(domainName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
-	name := domainName
+
 	retention := int32(1)
 	err := ts.domainClient.Register(ctx, &shared.RegisterDomainRequest{
-		Name:                                   &name,
+		Name:                                   &domainName,
 		WorkflowExecutionRetentionPeriodInDays: &retention,
 	})
 	if err != nil {

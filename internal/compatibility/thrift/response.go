@@ -371,3 +371,35 @@ func RestartWorkflowExecutionResponse(t *apiv1.RestartWorkflowExecutionResponse)
 		RunId: &t.RunId,
 	}
 }
+
+func FailoverDomainResponse(t *apiv1.FailoverDomainResponse) *shared.FailoverDomainResponse {
+	if t == nil || t.Domain == nil {
+		return nil
+	}
+	return &shared.FailoverDomainResponse{
+		DomainInfo: &shared.DomainInfo{
+			Name:        &t.Domain.Name,
+			Status:      DomainStatus(t.Domain.Status),
+			Description: &t.Domain.Description,
+			OwnerEmail:  &t.Domain.OwnerEmail,
+			Data:        t.Domain.Data,
+			UUID:        &t.Domain.Id,
+		},
+		Configuration: &shared.DomainConfiguration{
+			WorkflowExecutionRetentionPeriodInDays: durationToDays(t.Domain.WorkflowExecutionRetentionPeriod),
+			EmitMetric:                             boolPtr(true),
+			BadBinaries:                            BadBinaries(t.Domain.BadBinaries),
+			HistoryArchivalStatus:                  ArchivalStatus(t.Domain.HistoryArchivalStatus),
+			HistoryArchivalURI:                     &t.Domain.HistoryArchivalUri,
+			VisibilityArchivalStatus:               ArchivalStatus(t.Domain.VisibilityArchivalStatus),
+			VisibilityArchivalURI:                  &t.Domain.VisibilityArchivalUri,
+		},
+		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
+			ActiveClusterName: &t.Domain.ActiveClusterName,
+			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
+		},
+		FailoverVersion: &t.Domain.FailoverVersion,
+		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
+	}
+}

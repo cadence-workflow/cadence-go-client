@@ -2166,6 +2166,7 @@ func TestTaskListStatus(t *testing.T) {
 			ExcludedFields: []string{
 				"NewTasksPerSecond",     // [BUG] NewTasksPerSecond is not mapped
 				"IsolationGroupMetrics", // [BUG] IsolationGroupMetrics is not mapped
+				"Empty",                 // Empty is only used in matching <-> matching communication, and doesn't need to be mapped
 			},
 		},
 	)
@@ -2453,6 +2454,24 @@ func TestWorkflowExecutionContinuedAsNewEventAttributes(t *testing.T) {
 						apiv1.ContinueAsNewInitiator_CONTINUE_AS_NEW_INITIATOR_CRON_SCHEDULE,
 					}
 					*e = validValues[c.Intn(len(validValues))]
+				},
+				// Custom fuzzer for the entire struct to prevent gofuzz from trying to fuzz ActiveClusterSelectionPolicy
+				// which has a complex oneof structure that causes "Can't handle <nil>" panics during fuzzing
+				func(attr *apiv1.WorkflowExecutionContinuedAsNewEventAttributes, c fuzz.Continue) {
+					c.Fuzz(&attr.NewExecutionRunId)
+					c.Fuzz(&attr.WorkflowType)
+					c.Fuzz(&attr.TaskList)
+					c.Fuzz(&attr.Input)
+					c.Fuzz(&attr.ExecutionStartToCloseTimeout)
+					c.Fuzz(&attr.TaskStartToCloseTimeout)
+					c.Fuzz(&attr.DecisionTaskCompletedEventId)
+					c.Fuzz(&attr.BackoffStartInterval)
+					c.Fuzz(&attr.Initiator)
+					c.Fuzz(&attr.Failure)
+					c.Fuzz(&attr.LastCompletionResult)
+					c.Fuzz(&attr.Header)
+					c.Fuzz(&attr.Memo)
+					c.Fuzz(&attr.SearchAttributes)
 				},
 			},
 		},

@@ -164,3 +164,36 @@ func TestUpdateDomain(t *testing.T) {
 		})
 	}
 }
+
+func TestFailoverDomain(t *testing.T) {
+	testcases := []struct {
+		name     string
+		rpcError error
+	}{
+		{
+			name:     "success",
+			rpcError: nil,
+		},
+		{
+			name:     "failure",
+			rpcError: &s.AccessDeniedError{},
+		},
+	}
+
+	for _, tt := range testcases {
+		t.Run(tt.name, func(t *testing.T) {
+			td := newDomainClientTestData(t)
+			request := &s.FailoverDomainRequest{
+				DomainName:              common.StringPtr(testDomain),
+				DomainActiveClusterName: common.StringPtr("clusterA"),
+			}
+
+			td.mockWorkflowService.EXPECT().
+				FailoverDomain(gomock.Any(), request, gomock.Any()).
+				Return(nil, tt.rpcError)
+
+			err := td.dc.Failover(context.Background(), request)
+			assert.Equal(t, tt.rpcError, err, "error should be returned as-is")
+		})
+	}
+}

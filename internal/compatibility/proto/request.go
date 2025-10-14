@@ -694,6 +694,16 @@ func DeleteDomainRequest(r *shared.DeleteDomainRequest) *apiv1.DeleteDomainReque
 	}
 }
 
+func FailoverDomainRequest(t *shared.FailoverDomainRequest) *apiv1.FailoverDomainRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.FailoverDomainRequest{
+		DomainName:              t.GetDomainName(),
+		DomainActiveClusterName: *t.DomainActiveClusterName,
+	}
+}
+
 func ActiveClusterSelectionPolicy(t *shared.ActiveClusterSelectionPolicy) *apiv1.ActiveClusterSelectionPolicy {
 	if t == nil {
 		return nil
