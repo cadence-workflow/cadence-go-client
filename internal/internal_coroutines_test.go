@@ -31,6 +31,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func createRootTestContext(t *testing.T) (ctx Context) {
@@ -664,6 +665,7 @@ func TestDispatchClose(t *testing.T) {
 }
 
 func TestPanic(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	var history []string
 	d, _ := newDispatcher(createRootTestContext(t), func(ctx Context) {
 		c := NewNamedChannel(ctx, "forever_blocked")
@@ -680,6 +682,8 @@ func TestPanic(t *testing.T) {
 		history = append(history, "root")
 		c.Receive(ctx, nil) // blocked forever
 	})
+	defer d.Close() // stop other coroutines, as only one panicked
+
 	require.EqualValues(t, 0, len(history))
 	err := d.ExecuteUntilAllBlocked()
 	require.Error(t, err)
