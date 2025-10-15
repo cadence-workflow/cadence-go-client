@@ -154,6 +154,7 @@ type (
 		unblock      chan unblockFunc // used to notify coroutine that it should continue executing.
 		keptBlocked  bool             // true indicates that coroutine didn't make any progress since the last yield unblocking
 		closed       bool             // indicates that owning coroutine has finished execution
+		stopped      chan struct{}    // close(stopped) when finished closing
 		blocked      atomic.Bool
 		panicError   *workflowPanicError // non nil if coroutine had unhandled panic
 	}
@@ -166,6 +167,9 @@ type (
 		executing        bool       // currently running ExecuteUntilAllBlocked. Used to avoid recursive calls to it.
 		mutex            sync.Mutex // used to synchronize executing
 		closed           bool
+		// callback to report if stopping the dispatcher times out (>1s per coroutine).
+		// nearly every case should take less than a millisecond, so this is only for fairly significant mistakes.
+		shutdownTimeout func(idx int, stacks string)
 	}
 
 	// The current timeout resolution implementation is in seconds and uses math.Ceil() as the duration. But is
@@ -533,7 +537,23 @@ func (d *syncWorkflowDefinition) Close() {
 // Context passed to the root function is child of the passed rootCtx.
 // This way rootCtx can be used to pass values to the coroutine code.
 func newDispatcher(rootCtx Context, root func(ctx Context)) (*dispatcherImpl, Context) {
-	result := &dispatcherImpl{}
+	env := getWorkflowEnvironment(rootCtx)
+	met := env.GetMetricsScope()
+	log := env.GetLogger()
+	result := &dispatcherImpl{
+		shutdownTimeout: func(idx int, stacks string) {
+			// dispatcher/coroutine shutdown should be nearly instant.
+			// this is called if it is not.
+			met.Counter("cadence-workflow-shutdown-timeout").Inc(1)
+			log.Error(
+				"workflow failed to shut down within ~1s. "+
+					"generally this means a significant problem with user code, "+
+					"e.g. mutexes, time.Sleep, or infinite loops in defers",
+				zap.String("stacks", stacks),
+				zap.Int("coroutine", idx),
+			)
+		},
+	}
 	ctxWithState := result.newCoroutine(rootCtx, root)
 	return result, ctxWithState
 }
@@ -857,6 +877,10 @@ func (s *coroutineState) close() {
 	s.aboutToBlock <- true
 }
 
+func (s *coroutineState) wait() <-chan struct{} {
+	return s.stopped
+}
+
 func (s *coroutineState) exit() {
 	if !s.closed {
 		s.unblock <- func(status string, stackDepth int) bool {
@@ -886,6 +910,7 @@ func (d *dispatcherImpl) newNamedCoroutine(ctx Context, name string, f func(ctx 
 	state := d.newState(name)
 	spawned := WithValue(ctx, coroutinesContextKey, state)
 	go func(crt *coroutineState) {
+		defer close(crt.stopped)
 		defer crt.close()
 		defer func() {
 			if r := recover(); r != nil {
@@ -905,6 +930,7 @@ func (d *dispatcherImpl) newState(name string) *coroutineState {
 		dispatcher:   d,
 		aboutToBlock: make(chan bool, 1),
 		unblock:      make(chan unblockFunc),
+		stopped:      make(chan struct{}),
 	}
 	d.sequence++
 	d.coroutines = append(d.coroutines, c)
@@ -971,10 +997,35 @@ func (d *dispatcherImpl) Close() {
 	}
 	d.closed = true
 	d.mutex.Unlock()
+	// collect a stacktrace before stopping things, so it can be reported if it
+	// does not stop cleanly (because it's too late by that point).
+	stacktrace := d.StackTrace()
+	t := time.NewTimer(time.Second)
+	reported := false
 	for i := 0; i < len(d.coroutines); i++ {
 		c := d.coroutines[i]
 		if !c.closed {
 			c.exit()
+			select {
+			case <-c.wait():
+				// clean shutdown
+				t.Stop()
+			case <-t.C:
+				// timeout, emit a warning log and metric.
+				// this only needs to be done once because we report all stacks
+				// the first time.
+				if !reported {
+					d.shutdownTimeout(i, stacktrace)
+					reported = true
+				}
+				// and continue waiting, it's not safe to ignore it and cause
+				// other goroutines to exit concurrently.
+				//
+				// since this is a full second after shutdown began, there's a
+				// good chance this will never finish, and will become a leaked
+				// goroutine.  these can at least be seen in pprof.
+				<-c.wait()
+			}
 		}
 	}
 }
