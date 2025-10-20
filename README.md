@@ -1,6 +1,7 @@
 # Go framework for Cadence
 [![CI Checks](https://github.com/cadence-workflow/cadence-go-client/actions/workflows/ci-checks.yml/badge.svg)](https://github.com/cadence-workflow/cadence-go-client/actions/workflows/ci-checks.yml)
 [![Coverage](https://codecov.io/gh/uber-go/cadence-client/graph/badge.svg?token=iEpqo5HbDe)](https://codecov.io/gh/uber-go/cadence-client)
+[![Slack Status](https://img.shields.io/badge/slack-join_chat-white.svg?logo=slack&style=social)](https://communityinviter.com/apps/cloud-native/cncf)
 [![GoDoc](https://godoc.org/go.uber.org/cadence?status.svg)](https://godoc.org/go.uber.org/cadence)
 
 [Cadence](https://github.com/uber/cadence) is a distributed, scalable, durable, and highly available orchestration engine we developed at Uber Engineering to execute asynchronous long-running business logic in a scalable and resilient way.
@@ -28,6 +29,8 @@ You can also find the API documentation [here](https://godoc.org/go.uber.org/cad
 
 ## Contributing
 We'd love your help in making the Cadence Go client great. Please review our [contribution guidelines](CONTRIBUTING.md).
+
+If you'd like to propose a new feature or discuss issues, join the [CNCF Slack workspace](https://communityinviter.com/apps/cloud-native/cncf) in the **#cadence-users** channel to start a discussion.
 
 ## License
 Apache 2.0 License, please see [LICENSE](LICENSE) for details.
