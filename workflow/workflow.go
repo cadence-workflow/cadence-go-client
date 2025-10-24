@@ -62,6 +62,9 @@ type (
 
 	// GetVersionOption is used to specify options for GetVersion
 	GetVersionOption = internal.GetVersionOption
+
+	// ResettableTimer represents a timer that can be reset to a new duration
+	ResettableTimer = internal.ResettableTimer
 )
 
 // Register - registers a workflow function with the framework.

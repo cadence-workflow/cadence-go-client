@@ -154,6 +154,17 @@ func NewTimer(ctx Context, d time.Duration) Future {
 	return internal.NewTimer(ctx, d)
 }
 
+// NewResettableTimer returns a timer that can be reset to restart its countdown. The timer becomes ready after the
+// specified duration d. You can reset the timer by calling timer.Reset() with no arguments to restart with the original
+// duration, or pass a new duration to change it. The timer's status can be checked using timer.Get(ctx, nil)
+// or timer.IsReady(). This is useful for implementing timeout patterns that should restart based on external
+// events. The workflow needs to use this NewResettableTimer() instead of creating new timers repeatedly.
+// The current timer resolution implementation is in seconds and uses math.Ceil(d.Seconds()) as the duration. But is
+// subjected to change in the future.
+func NewResettableTimer(ctx Context, d time.Duration) ResettableTimer {
+	return internal.NewResettableTimer(ctx, d)
+}
+
 // Sleep pauses the current workflow for at least the duration d. A negative or zero duration causes Sleep to return
 // immediately. Workflow code needs to use this Sleep() to sleep instead of the Go lang library one(timer.Sleep()).
 // You can cancel the pending sleep by cancel the Context (using context from workflow.WithCancel(ctx)).
