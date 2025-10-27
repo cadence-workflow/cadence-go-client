@@ -225,7 +225,7 @@ func RegisterDomainRequest(t *shared.RegisterDomainRequest) *apiv1.RegisterDomai
 		WorkflowExecutionRetentionPeriod: daysToDuration(t.WorkflowExecutionRetentionPeriodInDays),
 		Clusters:                         ClusterReplicationConfigurationArray(t.Clusters),
 		ActiveClusterName:                t.GetActiveClusterName(),
-		ActiveClustersByRegion:           t.GetActiveClustersByRegion(),
+		ActiveClusters:                   ActiveClusters(t.ActiveClusters),
 		Data:                             t.Data,
 		SecurityToken:                    t.GetSecurityToken(),
 		IsGlobalDomain:                   t.GetIsGlobalDomain(),
@@ -704,35 +704,12 @@ func FailoverDomainRequest(t *shared.FailoverDomainRequest) *apiv1.FailoverDomai
 	}
 }
 
-func ActiveClusterSelectionPolicy(t *shared.ActiveClusterSelectionPolicy) *apiv1.ActiveClusterSelectionPolicy {
+func ListFailoverHistoryRequest(t *shared.ListFailoverHistoryRequest) *apiv1.ListFailoverHistoryRequest {
 	if t == nil {
 		return nil
 	}
-	plc := &apiv1.ActiveClusterSelectionPolicy{
-		Strategy: ActiveClusterSelectionStrategy(t.Strategy),
+	return &apiv1.ListFailoverHistoryRequest{
+		Filters:    ListFailoverHistoryRequestFilters(t.Filters),
+		Pagination: PaginationOptions(t.Pagination),
 	}
-
-	if plc.Strategy == apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID {
-		return nil
-	}
-
-	switch *t.Strategy {
-	case shared.ActiveClusterSelectionStrategyRegionSticky:
-		plc.StrategyConfig = &apiv1.ActiveClusterSelectionPolicy_ActiveClusterStickyRegionConfig{
-			ActiveClusterStickyRegionConfig: &apiv1.ActiveClusterStickyRegionConfig{
-				StickyRegion: *t.StickyRegion,
-			},
-		}
-	case shared.ActiveClusterSelectionStrategyExternalEntity:
-		plc.StrategyConfig = &apiv1.ActiveClusterSelectionPolicy_ActiveClusterExternalEntityConfig{
-			ActiveClusterExternalEntityConfig: &apiv1.ActiveClusterExternalEntityConfig{
-				ExternalEntityType: *t.ExternalEntityType,
-				ExternalEntityKey:  *t.ExternalEntityKey,
-			},
-		}
-	default:
-		return nil
-	}
-
-	return plc
 }

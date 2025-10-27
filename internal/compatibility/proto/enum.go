@@ -408,16 +408,3 @@ func CronOverlapPolicy(t *shared.CronOverlapPolicy) apiv1.CronOverlapPolicy {
 	}
 	return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID
 }
-
-func ActiveClusterSelectionStrategy(t *shared.ActiveClusterSelectionStrategy) apiv1.ActiveClusterSelectionStrategy {
-	if t == nil {
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID
-	}
-	switch *t {
-	case shared.ActiveClusterSelectionStrategyRegionSticky:
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_REGION_STICKY
-	case shared.ActiveClusterSelectionStrategyExternalEntity:
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY
-	}
-	return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID
-}

@@ -531,3 +531,13 @@ func (w *workflowServiceAuthWrapper) FailoverDomain(ctx context.Context, request
 	result, err := w.service.FailoverDomain(ctx, request, opts...)
 	return result, err
 }
+
+func (w *workflowServiceAuthWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
+	return result, err
+}

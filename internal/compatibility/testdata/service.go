@@ -34,7 +34,7 @@ var (
 		WorkflowExecutionRetentionPeriod: DomainRetention,
 		Clusters:                         ClusterReplicationConfigurationArray,
 		ActiveClusterName:                ClusterName1,
-		ActiveClustersByRegion:           ActiveClustersByRegion,
+		ActiveClusters:                   ActiveClusters,
 		Data:                             DomainData,
 		SecurityToken:                    SecurityToken,
 		IsGlobalDomain:                   true,
@@ -370,7 +370,7 @@ var (
 		SearchAttributes:             &SearchAttributes,
 		Header:                       &Header,
 		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
-		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicyRegionSticky,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy,
 	}
 	StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2 = apiv1.StartWorkflowExecutionRequest{
 		Domain:                       DomainName,
@@ -389,7 +389,7 @@ var (
 		SearchAttributes:             &SearchAttributes,
 		Header:                       &Header,
 		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
-		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicyExternalEntity,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy2,
 	}
 	StartWorkflowExecutionResponse = apiv1.StartWorkflowExecutionResponse{
 		RunId: RunID,

@@ -347,15 +347,3 @@ func TestCronOverlapPolicy(t *testing.T) {
 	}
 	assert.Equal(t, apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID, proto.CronOverlapPolicy(thrift.CronOverlapPolicy(999)))
 }
-
-func TestActiveClusterSelectionStrategy(t *testing.T) {
-	for _, v := range []apiv1.ActiveClusterSelectionStrategy{
-		apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID,
-		apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_REGION_STICKY,
-		apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY,
-	} {
-		assert.Equal(t, v, proto.ActiveClusterSelectionStrategy(thrift.ActiveClusterSelectionStrategy(v)))
-	}
-
-	assert.Equal(t, apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID, proto.ActiveClusterSelectionStrategy(thrift.ActiveClusterSelectionStrategy(999)))
-}

@@ -598,6 +598,10 @@ type (
 	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
 	QueryConsistencyLevel int
 
+	ClusterAttribute struct {
+		Scope string
+		Name  string
+	}
 	// ActiveClusterSelectionPolicy defines the policy for selecting the active cluster to start the workflow execution on for active-active domains.
 	// Active-active domains can be configured to be active in multiple clusters (at most one in a given region).
 	// Individual workflows can be configured to be active in one of the active clusters of the domain.
@@ -609,17 +613,8 @@ type (
 	//   Cadence server must be aware of the external entity type used. Custom types can be registered following the documentation in
 	//   https://github.com/cadence-workflow/cadence/blob/master/docs/design/active-active/active-active.md
 	ActiveClusterSelectionPolicy struct {
-		Strategy           ActiveClusterSelectionStrategy
-		ExternalEntityType string
-		ExternalEntityKey  string
+		ClusterAttribute *ClusterAttribute
 	}
-
-	ActiveClusterSelectionStrategy int
-)
-
-const (
-	ActiveClusterSelectionStrategyRegionSticky ActiveClusterSelectionStrategy = iota
-	ActiveClusterSelectionStrategyExternalEntity
 )
 
 const (

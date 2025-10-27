@@ -322,3 +322,9 @@ func (w *workflowServiceIsolationGroupWrapper) FailoverDomain(ctx context.Contex
 	result, err := w.service.FailoverDomain(ctx, request, opts...)
 	return result, err
 }
+
+func (w *workflowServiceIsolationGroupWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
+	return result, err
+}

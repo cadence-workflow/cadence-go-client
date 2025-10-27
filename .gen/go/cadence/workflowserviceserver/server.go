@@ -90,6 +90,11 @@ type Interface interface {
 		ListRequest *shared.ListDomainsRequest,
 	) (*shared.ListDomainsResponse, error)
 
+	ListFailoverHistory(
+		ctx context.Context,
+		ListRequest *shared.ListFailoverHistoryRequest,
+	) (*shared.ListFailoverHistoryResponse, error)
+
 	ListOpenWorkflowExecutions(
 		ctx context.Context,
 		ListRequest *shared.ListOpenWorkflowExecutionsRequest,
@@ -419,6 +424,17 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 					Unary: thrift.UnaryHandler(h.ListDomains),
 				},
 				Signature:    "ListDomains(ListRequest *shared.ListDomainsRequest) (*shared.ListDomainsResponse)",
+				ThriftModule: cadence.ThriftModule,
+			},
+
+			thrift.Method{
+				Name: "ListFailoverHistory",
+				HandlerSpec: thrift.HandlerSpec{
+
+					Type:  transport.Unary,
+					Unary: thrift.UnaryHandler(h.ListFailoverHistory),
+				},
+				Signature:    "ListFailoverHistory(ListRequest *shared.ListFailoverHistoryRequest) (*shared.ListFailoverHistoryResponse)",
 				ThriftModule: cadence.ThriftModule,
 			},
 
@@ -765,7 +781,7 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 		},
 	}
 
-	procedures := make([]transport.Procedure, 0, 46)
+	procedures := make([]transport.Procedure, 0, 47)
 	procedures = append(procedures, thrift.BuildProcedures(service, opts...)...)
 	return procedures
 }
@@ -1207,6 +1223,36 @@ func (h handler) ListDomains(ctx context.Context, body wire.Value) (thrift.Respo
 
 	hadError := appErr != nil
 	result, err := cadence.WorkflowService_ListDomains_Helper.WrapResponse(success, appErr)
+
+	var response thrift.Response
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+
+	return response, err
+}
+
+func (h handler) ListFailoverHistory(ctx context.Context, body wire.Value) (thrift.Response, error) {
+	var args cadence.WorkflowService_ListFailoverHistory_Args
+	if err := args.FromWire(body); err != nil {
+		return thrift.Response{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode Thrift request for service 'WorkflowService' procedure 'ListFailoverHistory': %w", err)
+	}
+
+	success, appErr := h.impl.ListFailoverHistory(ctx, args.ListRequest)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_ListFailoverHistory_Helper.WrapResponse(success, appErr)
 
 	var response thrift.Response
 	if err == nil {

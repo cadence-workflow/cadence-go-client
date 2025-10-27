@@ -101,49 +101,19 @@ func TestConvertActiveClusterSelectionPolicy(t *testing.T) {
 			thriftPolicy: nil,
 		},
 		{
-			name: "region sticky policy",
+			name: "valid policy",
 			policy: &ActiveClusterSelectionPolicy{
-				Strategy: ActiveClusterSelectionStrategyRegionSticky,
+				ClusterAttribute: &ClusterAttribute{
+					Scope: "region",
+					Name:  "us-east-1",
+				},
 			},
 			thriftPolicy: &s.ActiveClusterSelectionPolicy{
-				Strategy: s.ActiveClusterSelectionStrategyRegionSticky.Ptr(),
+				ClusterAttribute: &s.ClusterAttribute{
+					Scope: common.StringPtr("region"),
+					Name:  common.StringPtr("us-east-1"),
+				},
 			},
-		},
-		{
-			name: "external entity policy - success",
-			policy: &ActiveClusterSelectionPolicy{
-				Strategy:           ActiveClusterSelectionStrategyExternalEntity,
-				ExternalEntityType: "test-type",
-				ExternalEntityKey:  "test-key",
-			},
-			thriftPolicy: &s.ActiveClusterSelectionPolicy{
-				Strategy:           s.ActiveClusterSelectionStrategyExternalEntity.Ptr(),
-				ExternalEntityType: common.StringPtr("test-type"),
-				ExternalEntityKey:  common.StringPtr("test-key"),
-			},
-		},
-		{
-			name: "external entity policy - missing type",
-			policy: &ActiveClusterSelectionPolicy{
-				Strategy:          ActiveClusterSelectionStrategyExternalEntity,
-				ExternalEntityKey: "test-key",
-			},
-			wantErr: true,
-		},
-		{
-			name: "external entity policy - missing key",
-			policy: &ActiveClusterSelectionPolicy{
-				Strategy:           ActiveClusterSelectionStrategyExternalEntity,
-				ExternalEntityType: "test-type",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid strategy",
-			policy: &ActiveClusterSelectionPolicy{
-				Strategy: ActiveClusterSelectionStrategy(-1),
-			},
-			wantErr: true,
 		},
 	}
 
