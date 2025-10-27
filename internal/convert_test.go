@@ -101,6 +101,11 @@ func TestConvertActiveClusterSelectionPolicy(t *testing.T) {
 			thriftPolicy: nil,
 		},
 		{
+			name:         "empty policy",
+			policy:       &ActiveClusterSelectionPolicy{},
+			thriftPolicy: &s.ActiveClusterSelectionPolicy{},
+		},
+		{
 			name: "valid policy",
 			policy: &ActiveClusterSelectionPolicy{
 				ClusterAttribute: &ClusterAttribute{
