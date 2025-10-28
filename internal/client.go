@@ -603,15 +603,11 @@ type (
 		Name  string
 	}
 	// ActiveClusterSelectionPolicy defines the policy for selecting the active cluster to start the workflow execution on for active-active domains.
-	// Active-active domains can be configured to be active in multiple clusters (at most one in a given region).
-	// Individual workflows can be configured to be active in one of the active clusters of the domain.
-	//
-	// There are two supported strategies:
-	// - Region sticky: The workflow will be active in the active cluster of the region that start workflow request is sent to.
-	// - External entity: The workflow can be associated with an external entity which has a corresponding region.
-	// 	 The workflow will be considered active in the active cluster of the region that the external entity is in.
-	//   Cadence server must be aware of the external entity type used. Custom types can be registered following the documentation in
-	//   https://github.com/cadence-workflow/cadence/blob/master/docs/design/active-active/active-active.md
+	// Active-active domains are domains having cluster attributes. Each cluster attribute have their own active cluster which can be different from domain's active cluster.
+	// Workflows in active-active domains are divided into sub-groups by their cluster attributes.
+	// A workflow can specify its cluster attribute by setting the active cluster selection policy in its start workflow request.
+	// If no active cluster selection policy is provided or the cluster attribute is not found in domain's metadata,
+	// the workflow's active cluster is the domain's active cluster.
 	ActiveClusterSelectionPolicy struct {
 		ClusterAttribute *ClusterAttribute
 	}
