@@ -278,6 +278,11 @@ func (a thrift2protoAdapter) FailoverDomain(ctx context.Context, request *shared
 	return thrift.FailoverDomainResponse(response), thrift.Error(err)
 }
 
+func (a thrift2protoAdapter) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	response, err := a.domain.ListFailoverHistory(ctx, proto.ListFailoverHistoryRequest(request), opts...)
+	return thrift.ListFailoverHistoryResponse(response), thrift.Error(err)
+}
+
 type domainAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }

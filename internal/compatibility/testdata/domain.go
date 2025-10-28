@@ -89,19 +89,23 @@ var (
 	ClusterReplicationConfigurationArray = []*apiv1.ClusterReplicationConfiguration{
 		&ClusterReplicationConfiguration,
 	}
-	ActiveClustersByRegion = map[string]string{
-		"Region1": ClusterName1,
-		"Region2": ClusterName2,
-	}
 	ActiveClusters = &apiv1.ActiveClusters{
-		RegionToCluster: map[string]*apiv1.ActiveClusterInfo{
-			"Region1": &apiv1.ActiveClusterInfo{
-				ActiveClusterName: ClusterName1,
-				FailoverVersion:   0,
+		ActiveClustersByClusterAttribute: map[string]*apiv1.ClusterAttributeScope{
+			"region": &apiv1.ClusterAttributeScope{
+				ClusterAttributes: map[string]*apiv1.ActiveClusterInfo{
+					"us-east-1": &apiv1.ActiveClusterInfo{
+						ActiveClusterName: ClusterName1,
+						FailoverVersion:   0,
+					},
+				},
 			},
-			"Region2": &apiv1.ActiveClusterInfo{
-				ActiveClusterName: ClusterName2,
-				FailoverVersion:   0,
+			"city": &apiv1.ClusterAttributeScope{
+				ClusterAttributes: map[string]*apiv1.ActiveClusterInfo{
+					"london": &apiv1.ActiveClusterInfo{
+						ActiveClusterName: ClusterName2,
+						FailoverVersion:   0,
+					},
+				},
 			},
 		},
 	}

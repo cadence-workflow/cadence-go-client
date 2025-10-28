@@ -171,21 +171,17 @@ var (
 		},
 	}
 
-	ActiveClusterSelectionPolicyRegionSticky = &apiv1.ActiveClusterSelectionPolicy{
-		Strategy: apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_REGION_STICKY,
-		StrategyConfig: &apiv1.ActiveClusterSelectionPolicy_ActiveClusterStickyRegionConfig{
-			ActiveClusterStickyRegionConfig: &apiv1.ActiveClusterStickyRegionConfig{
-				StickyRegion: "us-east-1",
-			},
+	ActiveClusterSelectionPolicy = &apiv1.ActiveClusterSelectionPolicy{
+		ClusterAttribute: &apiv1.ClusterAttribute{
+			Scope: "region",
+			Name:  "us-east-1",
 		},
 	}
-	ActiveClusterSelectionPolicyExternalEntity = &apiv1.ActiveClusterSelectionPolicy{
-		Strategy: apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY,
-		StrategyConfig: &apiv1.ActiveClusterSelectionPolicy_ActiveClusterExternalEntityConfig{
-			ActiveClusterExternalEntityConfig: &apiv1.ActiveClusterExternalEntityConfig{
-				ExternalEntityType: "external-entity-type",
-				ExternalEntityKey:  "external-entity-key",
-			},
+
+	ActiveClusterSelectionPolicy2 = &apiv1.ActiveClusterSelectionPolicy{
+		ClusterAttribute: &apiv1.ClusterAttribute{
+			Scope: "location",
+			Name:  "London",
 		},
 	}
 
@@ -366,5 +362,12 @@ var (
 		StartedTime:           Timestamp2,
 		Attempt:               Attempt,
 		OriginalScheduledTime: Timestamp3,
+	}
+	PaginationOptions = apiv1.PaginationOptions{
+		PageSize:      5,
+		NextPageToken: []byte(`token`),
+	}
+	ListFailoverHistoryRequestFilters = apiv1.ListFailoverHistoryRequestFilters{
+		DomainId: "id",
 	}
 )

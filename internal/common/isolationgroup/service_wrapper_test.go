@@ -415,6 +415,15 @@ func TestAPICalls(t *testing.T) {
 			},
 			expectedResponse: &shared.FailoverDomainResponse{},
 		},
+		"ListFailoverHistory": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.ListFailoverHistory(ctx, &shared.ListFailoverHistoryRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().ListFailoverHistory(gomock.Any(), &shared.ListFailoverHistoryRequest{}, gomock.Any()).Times(1).Return(&shared.ListFailoverHistoryResponse{}, nil)
+			},
+			expectedResponse: &shared.ListFailoverHistoryResponse{},
+		},
 	}
 
 	for name, td := range tests {

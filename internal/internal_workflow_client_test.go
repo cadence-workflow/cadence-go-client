@@ -2866,7 +2866,12 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				DelayStart:                      0 * time.Second,
 				JitterStart:                     0 * time.Second,
 				CronOverlapPolicy:               shared.CronOverlapPolicyBufferone,
-				ActiveClusterSelectionPolicy:    &ActiveClusterSelectionPolicy{Strategy: ActiveClusterSelectionStrategyRegionSticky},
+				ActiveClusterSelectionPolicy: &ActiveClusterSelectionPolicy{
+					ClusterAttribute: &ClusterAttribute{
+						Scope: "region",
+						Name:  "us-east-1",
+					},
+				},
 			},
 			workflowFunc: func(ctx Context) {},
 			wantRequest: &shared.StartWorkflowExecutionRequest{
@@ -2887,7 +2892,12 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				Header:                              &shared.Header{Fields: map[string][]byte{}},
 				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
 				CronOverlapPolicy:                   shared.CronOverlapPolicyBufferone.Ptr(),
-				ActiveClusterSelectionPolicy:        &shared.ActiveClusterSelectionPolicy{Strategy: shared.ActiveClusterSelectionStrategyRegionSticky.Ptr()},
+				ActiveClusterSelectionPolicy: &shared.ActiveClusterSelectionPolicy{
+					ClusterAttribute: &shared.ClusterAttribute{
+						Scope: common.StringPtr("region"),
+						Name:  common.StringPtr("us-east-1"),
+					},
+				},
 			},
 		},
 		{
@@ -2981,23 +2991,6 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			workflowFunc: func(ctx Context, a, b int) {}, // this causes error because args not provided
 			args:         []interface{}{},
 			wantErr:      "expected 2 args for function",
-		},
-		{
-			name: "missing external entity type in active cluster selection policy",
-			options: StartWorkflowOptions{
-				ID:                              workflowID,
-				TaskList:                        tasklist,
-				ExecutionStartToCloseTimeout:    10 * time.Second,
-				DecisionTaskStartToCloseTimeout: 5 * time.Second,
-				DelayStart:                      0 * time.Second,
-				JitterStart:                     0 * time.Second,
-				CronOverlapPolicy:               shared.CronOverlapPolicyBufferone,
-				ActiveClusterSelectionPolicy: &ActiveClusterSelectionPolicy{
-					Strategy: ActiveClusterSelectionStrategyExternalEntity,
-				},
-			},
-			workflowFunc: func(ctx Context) {},
-			wantErr:      "external entity type is required for external entity strategy",
 		},
 	}
 

@@ -584,9 +584,6 @@ func TestDescribeDomainResponse(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{
-				"ActiveClusters", // [BUG,NEEDS INVESTIGATION] Appears to be a nil pointer dereference in mapper conversion
-			},
 		},
 	)
 }
@@ -2019,11 +2016,6 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 					c.Fuzz(&req.CronOverlapPolicy)
 				},
 			},
-			ExcludedFields: []string{
-				// [BUG,NEEDS INVESTIGATION] ActiveClusterSelectionPolicy appears to be failing the round trip
-				// TODO: Investigate the mappers and determine where it is failing fuzz testing
-				"ActiveClusterSelectionPolicy",
-			},
 		},
 	)
 }
@@ -2219,6 +2211,39 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+func TestListFailoverHistoryRequest(t *testing.T) {
+	for _, item := range []*apiv1.ListFailoverHistoryRequest{nil, {}, &testdata.ListFailoverHistoryRequest} {
+		assert.Equal(t, item, proto.ListFailoverHistoryRequest(thrift.ListFailoverHistoryRequest(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ListFailoverHistoryRequest,
+		proto.ListFailoverHistoryRequest,
+		FuzzOptions{},
+	)
+}
+func TestListFailoverHistoryResponse(t *testing.T) {
+	for _, item := range []*apiv1.ListFailoverHistoryResponse{nil, {}} {
+		assert.Equal(t, item, proto.ListFailoverHistoryResponse(thrift.ListFailoverHistoryResponse(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ListFailoverHistoryResponse,
+		proto.ListFailoverHistoryResponse,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.FailoverType, c fuzz.Continue) {
+					validValues := []apiv1.FailoverType{
+						apiv1.FailoverType_FAILOVER_TYPE_INVALID,
+						apiv1.FailoverType_FAILOVER_TYPE_FORCE,
+						apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
+		},
+	)
+}
 func TestUpdateDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.UpdateDomainRequest{nil, {UpdateMask: &gogo.FieldMask{}}, &testdata.UpdateDomainRequest} {
 		assert.Equal(t, item, proto.UpdateDomainRequest(thrift.UpdateDomainRequest(item)))
@@ -2264,10 +2289,9 @@ func TestUpdateDomainRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"UpdateMask",     // [NOT INVESTIGATED] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
-				"BadBinaries",    // [NOT INVESTIGATED] Appears to be a fuzzing issue, tested in TestBadBinaries
-				"Clusters",       // [NOT INVESTIGATED] Appears to be a fuzzing issue
-				"ActiveClusters", // [NOT INVESTIGATED] Appears to be a fuzzing issue
+				"UpdateMask",  // [NOT INVESTIGATED] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
+				"BadBinaries", // [NOT INVESTIGATED] Appears to be a fuzzing issue, tested in TestBadBinaries
+				"Clusters",    // [NOT INVESTIGATED] Appears to be a fuzzing issue
 			},
 		},
 	)
@@ -2304,7 +2328,6 @@ func TestUpdateDomainResponse(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// Exclude nested fields that have complex issues like in DescribeDomainResponse
-				"Domain.ActiveClusters",      // [BUG,NEEDS INVESTIGATION] Nil pointer dereference in mapper conversion
 				"Domain.Clusters",            // [NOT INVESTIGATED] Protobuf metadata issues in nested ClusterReplicationConfiguration
 				"Domain.FailoverInfo",        // [NOT INVESTIGATED] Protobuf metadata issues in nested structures
 				"Domain.IsolationGroups",     // [NOT INVESTIGATED] Protobuf metadata issues in nested structures

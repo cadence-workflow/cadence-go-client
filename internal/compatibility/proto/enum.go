@@ -409,15 +409,17 @@ func CronOverlapPolicy(t *shared.CronOverlapPolicy) apiv1.CronOverlapPolicy {
 	return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID
 }
 
-func ActiveClusterSelectionStrategy(t *shared.ActiveClusterSelectionStrategy) apiv1.ActiveClusterSelectionStrategy {
+func FailoverType(t *shared.FailoverType) apiv1.FailoverType {
 	if t == nil {
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
 	}
 	switch *t {
-	case shared.ActiveClusterSelectionStrategyRegionSticky:
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_REGION_STICKY
-	case shared.ActiveClusterSelectionStrategyExternalEntity:
-		return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_EXTERNAL_ENTITY
+	case shared.FailoverTypeInvalid:
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+	case shared.FailoverTypeForce:
+		return apiv1.FailoverType_FAILOVER_TYPE_FORCE
+	case shared.FailoverTypeGraceful:
+		return apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL
 	}
-	return apiv1.ActiveClusterSelectionStrategy_ACTIVE_CLUSTER_SELECTION_STRATEGY_INVALID
+	return apiv1.FailoverType_FAILOVER_TYPE_INVALID
 }
