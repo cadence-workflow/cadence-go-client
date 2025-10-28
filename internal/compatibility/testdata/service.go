@@ -43,6 +43,10 @@ var (
 		VisibilityArchivalStatus:         ArchivalStatus,
 		VisibilityArchivalUri:            VisibilityArchivalURI,
 	}
+	ListFailoverHistoryRequest = apiv1.ListFailoverHistoryRequest{
+		Filters:    &ListFailoverHistoryRequestFilters,
+		Pagination: &PaginationOptions,
+	}
 	DescribeDomainRequest_ID = apiv1.DescribeDomainRequest{
 		DescribeBy: &apiv1.DescribeDomainRequest_Id{Id: DomainID},
 	}

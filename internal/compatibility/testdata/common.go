@@ -363,4 +363,11 @@ var (
 		Attempt:               Attempt,
 		OriginalScheduledTime: Timestamp3,
 	}
+	PaginationOptions = apiv1.PaginationOptions{
+		PageSize:      5,
+		NextPageToken: []byte(`token`),
+	}
+	ListFailoverHistoryRequestFilters = apiv1.ListFailoverHistoryRequestFilters{
+		DomainId: "id",
+	}
 )

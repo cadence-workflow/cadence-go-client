@@ -2211,6 +2211,17 @@ func TestTimerStartedEventAttributes(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+func TestListFailoverHistoryRequest(t *testing.T) {
+	for _, item := range []*apiv1.ListFailoverHistoryRequest{nil, {}, &testdata.ListFailoverHistoryRequest} {
+		assert.Equal(t, item, proto.ListFailoverHistoryRequest(thrift.ListFailoverHistoryRequest(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ListFailoverHistoryRequest,
+		proto.ListFailoverHistoryRequest,
+		FuzzOptions{},
+	)
+}
 func TestUpdateDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.UpdateDomainRequest{nil, {UpdateMask: &gogo.FieldMask{}}, &testdata.UpdateDomainRequest} {
 		assert.Equal(t, item, proto.UpdateDomainRequest(thrift.UpdateDomainRequest(item)))

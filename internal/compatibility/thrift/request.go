@@ -604,21 +604,12 @@ func ListOpenWorkflowExecutionsRequest(r *apiv1.ListOpenWorkflowExecutionsReques
 	}
 }
 
-func ActiveClusterSelectionPolicy(t *apiv1.ActiveClusterSelectionPolicy) *shared.ActiveClusterSelectionPolicy {
+func ListFailoverHistoryRequest(t *apiv1.ListFailoverHistoryRequest) *shared.ListFailoverHistoryRequest {
 	if t == nil {
 		return nil
 	}
-	return &shared.ActiveClusterSelectionPolicy{
-		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
-	}
-}
-
-func ClusterAttribute(t *apiv1.ClusterAttribute) *shared.ClusterAttribute {
-	if t == nil {
-		return nil
-	}
-	return &shared.ClusterAttribute{
-		Scope: &t.Scope,
-		Name:  &t.Name,
+	return &shared.ListFailoverHistoryRequest{
+		Filters:    ListFailoverHistoryRequestFilters(t.Filters),
+		Pagination: PaginationOptions(t.Pagination),
 	}
 }

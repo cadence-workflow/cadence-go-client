@@ -710,6 +710,25 @@ func ActivityLocalDispatchInfoMap(t map[string]*apiv1.ActivityLocalDispatchInfo)
 	return v
 }
 
+func ActiveClusterSelectionPolicy(t *apiv1.ActiveClusterSelectionPolicy) *shared.ActiveClusterSelectionPolicy {
+	if t == nil {
+		return nil
+	}
+	return &shared.ActiveClusterSelectionPolicy{
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
+
+func ClusterAttribute(t *apiv1.ClusterAttribute) *shared.ClusterAttribute {
+	if t == nil {
+		return nil
+	}
+	return &shared.ClusterAttribute{
+		Scope: &t.Scope,
+		Name:  &t.Name,
+	}
+}
+
 func ActiveClusters(t *apiv1.ActiveClusters) *shared.ActiveClusters {
 	if t == nil {
 		return nil
@@ -796,5 +815,24 @@ func FailoverEvent(t *apiv1.FailoverEvent) *shared.FailoverEvent {
 		CreatedTime:      timeToUnixNano(t.CreatedTime),
 		FailoverType:     FailoverType(t.FailoverType),
 		ClusterFailovers: ClusterFailoverArray(t.ClusterFailovers),
+	}
+}
+
+func PaginationOptions(t *apiv1.PaginationOptions) *shared.PaginationOptions {
+	if t == nil {
+		return nil
+	}
+	return &shared.PaginationOptions{
+		PageSize:      &t.PageSize,
+		NextPageToken: t.NextPageToken,
+	}
+}
+
+func ListFailoverHistoryRequestFilters(t *apiv1.ListFailoverHistoryRequestFilters) *shared.ListFailoverHistoryRequestFilters {
+	if t == nil {
+		return nil
+	}
+	return &shared.ListFailoverHistoryRequestFilters{
+		DomainID: &t.DomainId,
 	}
 }
