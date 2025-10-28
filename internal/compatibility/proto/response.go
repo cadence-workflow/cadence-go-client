@@ -349,3 +349,13 @@ func UpdateDomainResponse(t *shared.UpdateDomainResponse) *apiv1.UpdateDomainRes
 		Domain: domain,
 	}
 }
+
+func ListFailoverHistoryResponse(t *shared.ListFailoverHistoryResponse) *apiv1.ListFailoverHistoryResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ListFailoverHistoryResponse{
+		FailoverEvents: FailoverEventArray(t.FailoverEvents),
+		NextPageToken:  t.NextPageToken,
+	}
+}

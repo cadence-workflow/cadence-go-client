@@ -761,6 +761,51 @@ func ActiveClusterInfo(t *shared.ActiveClusterInfo) *apiv1.ActiveClusterInfo {
 	}
 }
 
+func ClusterFailoverArray(t []*shared.ClusterFailover) []*apiv1.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	v := make([]*apiv1.ClusterFailover, len(t))
+	for i := range t {
+		v[i] = ClusterFailover(t[i])
+	}
+	return v
+}
+
+func ClusterFailover(t *shared.ClusterFailover) *apiv1.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ClusterFailover{
+		FromCluster:      ActiveClusterInfo(t.FromCluster),
+		ToCluster:        ActiveClusterInfo(t.ToCluster),
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
+
+func FailoverEventArray(t []*shared.FailoverEvent) []*apiv1.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	v := make([]*apiv1.FailoverEvent, len(t))
+	for i := range t {
+		v[i] = FailoverEvent(t[i])
+	}
+	return v
+}
+
+func FailoverEvent(t *shared.FailoverEvent) *apiv1.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.FailoverEvent{
+		Id:               t.GetID(),
+		CreatedTime:      unixNanoToTime(t.CreatedTime),
+		FailoverType:     FailoverType(t.FailoverType),
+		ClusterFailovers: ClusterFailoverArray(t.ClusterFailovers),
+	}
+}
+
 func PaginationOptions(t *shared.PaginationOptions) *apiv1.PaginationOptions {
 	if t == nil {
 		return nil

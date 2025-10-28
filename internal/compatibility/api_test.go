@@ -2222,6 +2222,28 @@ func TestListFailoverHistoryRequest(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+func TestListFailoverHistoryResponse(t *testing.T) {
+	for _, item := range []*apiv1.ListFailoverHistoryResponse{nil, {}} {
+		assert.Equal(t, item, proto.ListFailoverHistoryResponse(thrift.ListFailoverHistoryResponse(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ListFailoverHistoryResponse,
+		proto.ListFailoverHistoryResponse,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.FailoverType, c fuzz.Continue) {
+					validValues := []apiv1.FailoverType{
+						apiv1.FailoverType_FAILOVER_TYPE_INVALID,
+						apiv1.FailoverType_FAILOVER_TYPE_FORCE,
+						apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
+		},
+	)
+}
 func TestUpdateDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.UpdateDomainRequest{nil, {UpdateMask: &gogo.FieldMask{}}, &testdata.UpdateDomainRequest} {
 		assert.Equal(t, item, proto.UpdateDomainRequest(thrift.UpdateDomainRequest(item)))
