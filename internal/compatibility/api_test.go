@@ -584,9 +584,6 @@ func TestDescribeDomainResponse(t *testing.T) {
 					}
 				},
 			},
-			ExcludedFields: []string{
-				"ActiveClusters", // [BUG,NEEDS INVESTIGATION] Appears to be a nil pointer dereference in mapper conversion
-			},
 		},
 	)
 }
@@ -2019,11 +2016,6 @@ func TestStartWorkflowExecutionRequest(t *testing.T) {
 					c.Fuzz(&req.CronOverlapPolicy)
 				},
 			},
-			ExcludedFields: []string{
-				// [BUG,NEEDS INVESTIGATION] ActiveClusterSelectionPolicy appears to be failing the round trip
-				// TODO: Investigate the mappers and determine where it is failing fuzz testing
-				"ActiveClusterSelectionPolicy",
-			},
 		},
 	)
 }
@@ -2264,10 +2256,9 @@ func TestUpdateDomainRequest(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"UpdateMask",     // [NOT INVESTIGATED] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
-				"BadBinaries",    // [NOT INVESTIGATED] Appears to be a fuzzing issue, tested in TestBadBinaries
-				"Clusters",       // [NOT INVESTIGATED] Appears to be a fuzzing issue
-				"ActiveClusters", // [NOT INVESTIGATED] Appears to be a fuzzing issue
+				"UpdateMask",  // [NOT INVESTIGATED] Complex nested structure with protobuf metadata issues - mapper incorrectly populates UpdateMask paths
+				"BadBinaries", // [NOT INVESTIGATED] Appears to be a fuzzing issue, tested in TestBadBinaries
+				"Clusters",    // [NOT INVESTIGATED] Appears to be a fuzzing issue
 			},
 		},
 	)
@@ -2304,7 +2295,6 @@ func TestUpdateDomainResponse(t *testing.T) {
 			},
 			ExcludedFields: []string{
 				// Exclude nested fields that have complex issues like in DescribeDomainResponse
-				"Domain.ActiveClusters",      // [BUG,NEEDS INVESTIGATION] Nil pointer dereference in mapper conversion
 				"Domain.Clusters",            // [NOT INVESTIGATED] Protobuf metadata issues in nested ClusterReplicationConfiguration
 				"Domain.FailoverInfo",        // [NOT INVESTIGATED] Protobuf metadata issues in nested structures
 				"Domain.IsolationGroups",     // [NOT INVESTIGATED] Protobuf metadata issues in nested structures

@@ -347,3 +347,14 @@ func TestCronOverlapPolicy(t *testing.T) {
 	}
 	assert.Equal(t, apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID, proto.CronOverlapPolicy(thrift.CronOverlapPolicy(999)))
 }
+
+func TestFailoverType(t *testing.T) {
+	for _, v := range []apiv1.FailoverType{
+		apiv1.FailoverType_FAILOVER_TYPE_INVALID,
+		apiv1.FailoverType_FAILOVER_TYPE_FORCE,
+		apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL,
+	} {
+		assert.Equal(t, v, proto.FailoverType(thrift.FailoverType(v)))
+	}
+	assert.Equal(t, apiv1.FailoverType_FAILOVER_TYPE_INVALID, proto.FailoverType(thrift.FailoverType(999)))
+}

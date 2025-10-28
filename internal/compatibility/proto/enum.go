@@ -408,3 +408,18 @@ func CronOverlapPolicy(t *shared.CronOverlapPolicy) apiv1.CronOverlapPolicy {
 	}
 	return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID
 }
+
+func FailoverType(t *shared.FailoverType) apiv1.FailoverType {
+	if t == nil {
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+	}
+	switch *t {
+	case shared.FailoverTypeInvalid:
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+	case shared.FailoverTypeForce:
+		return apiv1.FailoverType_FAILOVER_TYPE_FORCE
+	case shared.FailoverTypeGraceful:
+		return apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL
+	}
+	return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+}
