@@ -92,6 +92,10 @@ type (
 	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
 	QueryConsistencyLevel = internal.QueryConsistencyLevel
 
+	// ClusterAttribute represents a secondary attribute of global domains. Each domain can have multiple cluster attributes and each cluster attribute manages its own
+	// active cluster independently. It provides a way to split workflows from a domain into sub-domains by, distinguished by cluster attributes.
+	ClusterAttribute = internal.ClusterAttribute
+
 	// ActiveClusterSelectionPolicy - Policy for selecting the active cluster to start the workflow execution on for active-active domains.
 	// An example policy is:
 	//   {
@@ -101,7 +105,7 @@ type (
 	//     }
 	//   }
 	// The workflow will be active in the corresponding active cluster of that cluster attribute specified in the policy
-	// If the policy is empty or nil, the workflow will be active in the domain's active cluster.
+	// If the policy is empty or nil or the cluster attribute doesn't exist, the workflow will be active in the domain's active cluster.
 	ActiveClusterSelectionPolicy = internal.ActiveClusterSelectionPolicy
 
 	// CancelOption values are functional options for the CancelWorkflow method.
