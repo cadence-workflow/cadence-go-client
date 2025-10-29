@@ -93,6 +93,15 @@ type (
 	QueryConsistencyLevel = internal.QueryConsistencyLevel
 
 	// ActiveClusterSelectionPolicy - Policy for selecting the active cluster to start the workflow execution on for active-active domains.
+	// An example policy is:
+	//   {
+	//     ClusterAttribute: {
+	//       Scope: "region",
+	//       Name: "us-west",
+	//     }
+	//   }
+	// The workflow will be active in the corresponding active cluster of that cluster attribute specified in the policy
+	// If the policy is empty or nil, the workflow will be active in the domain's active cluster.
 	ActiveClusterSelectionPolicy = internal.ActiveClusterSelectionPolicy
 
 	// CancelOption values are functional options for the CancelWorkflow method.
