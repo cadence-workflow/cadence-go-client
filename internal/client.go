@@ -509,8 +509,7 @@ type (
 		CronOverlapPolicy s.CronOverlapPolicy
 
 		// ActiveClusterSelectionPolicy - Policy for selecting the active cluster to start the workflow execution on for active-active domains.
-		// Note: This doesn't apply to local or active-passive domains.
-		// Optional: defaulted to region sticky strategy with receiver cluster as the active cluster.
+		// Optional: defaulted to nil, if it's nil, the active cluster of the workflow is the domain's active cluster.
 		ActiveClusterSelectionPolicy *ActiveClusterSelectionPolicy
 	}
 
