@@ -95,6 +95,7 @@ const (
 	scopeRestartWorkflowExecution                  = CadenceMetricsPrefix + "RestartWorkflowExecution"
 	scopeDeleteDomain                              = CadenceMetricsPrefix + "DeleteDomain"
 	scopeNameFailoverDomain                        = CadenceMetricsPrefix + "FailoverDomain"
+	scopeNameListFailoverHistory                   = CadenceMetricsPrefix + "ListFailoverHistory"
 )
 
 // NewWorkflowServiceWrapper creates a new wrapper to WorkflowService that will emit metrics for each service call.
@@ -457,6 +458,13 @@ func (w *workflowServiceMetricsWrapper) DeleteDomain(ctx context.Context, reques
 func (w *workflowServiceMetricsWrapper) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
 	scope := w.getOperationScope(scopeNameFailoverDomain)
 	result, err := w.service.FailoverDomain(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	scope := w.getOperationScope(scopeNameListFailoverHistory)
+	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }

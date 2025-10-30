@@ -21,8 +21,6 @@
 package internal
 
 import (
-	"fmt"
-
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
@@ -50,26 +48,18 @@ func convertActiveClusterSelectionPolicy(policy *ActiveClusterSelectionPolicy) (
 	if policy == nil {
 		return nil, nil
 	}
+	return &s.ActiveClusterSelectionPolicy{
+		ClusterAttribute: convertClusterAttribute(policy.ClusterAttribute),
+	}, nil
+}
 
-	switch policy.Strategy {
-	case ActiveClusterSelectionStrategyRegionSticky:
-		return &s.ActiveClusterSelectionPolicy{
-			Strategy: s.ActiveClusterSelectionStrategyRegionSticky.Ptr(),
-		}, nil
-	case ActiveClusterSelectionStrategyExternalEntity:
-		if policy.ExternalEntityType == "" {
-			return nil, fmt.Errorf("external entity type is required for external entity strategy")
-		}
-		if policy.ExternalEntityKey == "" {
-			return nil, fmt.Errorf("external entity key is required for external entity strategy")
-		}
-		return &s.ActiveClusterSelectionPolicy{
-			Strategy:           s.ActiveClusterSelectionStrategyExternalEntity.Ptr(),
-			ExternalEntityType: common.StringPtr(policy.ExternalEntityType),
-			ExternalEntityKey:  common.StringPtr(policy.ExternalEntityKey),
-		}, nil
-	default:
-		return nil, fmt.Errorf("invalid active cluster selection strategy: %d", policy.Strategy)
+func convertClusterAttribute(attr *ClusterAttribute) *s.ClusterAttribute {
+	if attr == nil {
+		return nil
+	}
+	return &s.ClusterAttribute{
+		Scope: &attr.Scope,
+		Name:  &attr.Name,
 	}
 }
 

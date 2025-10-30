@@ -763,3 +763,19 @@ func (s *serviceWrapperSuite) TestFailoverDomainInvalidToken() {
 	_, err := sw.FailoverDomain(ctx, &shared.FailoverDomainRequest{})
 	s.EqualError(err, "error")
 }
+
+func (s *serviceWrapperSuite) TestListFailoverHistoryValidToken() {
+	s.Service.EXPECT().ListFailoverHistory(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ListFailoverHistory(ctx, &shared.ListFailoverHistoryRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestListFailoverHistoryInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ListFailoverHistory(ctx, &shared.ListFailoverHistoryRequest{})
+	s.EqualError(err, "error")
+}

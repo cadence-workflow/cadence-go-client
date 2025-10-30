@@ -403,3 +403,13 @@ func FailoverDomainResponse(t *apiv1.FailoverDomainResponse) *shared.FailoverDom
 		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
 	}
 }
+
+func ListFailoverHistoryResponse(t *apiv1.ListFailoverHistoryResponse) *shared.ListFailoverHistoryResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.ListFailoverHistoryResponse{
+		FailoverEvents: FailoverEventArray(t.FailoverEvents),
+		NextPageToken:  t.NextPageToken,
+	}
+}

@@ -710,20 +710,129 @@ func ActivityLocalDispatchInfoMap(t map[string]*apiv1.ActivityLocalDispatchInfo)
 	return v
 }
 
-func ActiveClusters(ac *apiv1.ActiveClusters) *shared.ActiveClusters {
-	if ac == nil {
+func ActiveClusterSelectionPolicy(t *apiv1.ActiveClusterSelectionPolicy) *shared.ActiveClusterSelectionPolicy {
+	if t == nil {
 		return nil
 	}
+	return &shared.ActiveClusterSelectionPolicy{
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
 
-	clByRegion := make(map[string]*shared.ActiveClusterInfo)
-	for region, clInfo := range ac.RegionToCluster {
-		clByRegion[region] = &shared.ActiveClusterInfo{
-			ActiveClusterName: &clInfo.ActiveClusterName,
-			FailoverVersion:   &clInfo.FailoverVersion,
+func ClusterAttribute(t *apiv1.ClusterAttribute) *shared.ClusterAttribute {
+	if t == nil {
+		return nil
+	}
+	return &shared.ClusterAttribute{
+		Scope: &t.Scope,
+		Name:  &t.Name,
+	}
+}
+
+func ActiveClusters(t *apiv1.ActiveClusters) *shared.ActiveClusters {
+	if t == nil {
+		return nil
+	}
+	var activeClustersByClusterAttribute map[string]*shared.ClusterAttributeScope
+	if t.ActiveClustersByClusterAttribute != nil {
+		activeClustersByClusterAttribute = make(map[string]*shared.ClusterAttributeScope)
+		for scopeType, scope := range t.ActiveClustersByClusterAttribute {
+			activeClustersByClusterAttribute[scopeType] = ClusterAttributeScope(scope)
 		}
 	}
 
 	return &shared.ActiveClusters{
-		ActiveClustersByRegion: clByRegion,
+		ActiveClustersByClusterAttribute: activeClustersByClusterAttribute,
+	}
+}
+
+func ClusterAttributeScope(t *apiv1.ClusterAttributeScope) *shared.ClusterAttributeScope {
+	if t == nil {
+		return nil
+	}
+	var clusterAttributes map[string]*shared.ActiveClusterInfo
+	if len(t.ClusterAttributes) > 0 {
+		clusterAttributes = make(map[string]*shared.ActiveClusterInfo)
+		for name, clusterInfo := range t.ClusterAttributes {
+			clusterAttributes[name] = ActiveClusterInfo(clusterInfo)
+		}
+	}
+
+	return &shared.ClusterAttributeScope{
+		ClusterAttributes: clusterAttributes,
+	}
+}
+
+func ActiveClusterInfo(t *apiv1.ActiveClusterInfo) *shared.ActiveClusterInfo {
+	if t == nil {
+		return nil
+	}
+	return &shared.ActiveClusterInfo{
+		ActiveClusterName: &t.ActiveClusterName,
+		FailoverVersion:   &t.FailoverVersion,
+	}
+}
+
+func ClusterFailoverArray(t []*apiv1.ClusterFailover) []*shared.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	v := make([]*shared.ClusterFailover, len(t))
+	for i := range t {
+		v[i] = ClusterFailover(t[i])
+	}
+	return v
+}
+
+func ClusterFailover(t *apiv1.ClusterFailover) *shared.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	return &shared.ClusterFailover{
+		FromCluster:      ActiveClusterInfo(t.FromCluster),
+		ToCluster:        ActiveClusterInfo(t.ToCluster),
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
+
+func FailoverEventArray(t []*apiv1.FailoverEvent) []*shared.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	v := make([]*shared.FailoverEvent, len(t))
+	for i := range t {
+		v[i] = FailoverEvent(t[i])
+	}
+	return v
+}
+
+func FailoverEvent(t *apiv1.FailoverEvent) *shared.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	return &shared.FailoverEvent{
+		ID:               &t.Id,
+		CreatedTime:      timeToUnixNano(t.CreatedTime),
+		FailoverType:     FailoverType(t.FailoverType),
+		ClusterFailovers: ClusterFailoverArray(t.ClusterFailovers),
+	}
+}
+
+func PaginationOptions(t *apiv1.PaginationOptions) *shared.PaginationOptions {
+	if t == nil {
+		return nil
+	}
+	return &shared.PaginationOptions{
+		PageSize:      &t.PageSize,
+		NextPageToken: t.NextPageToken,
+	}
+}
+
+func ListFailoverHistoryRequestFilters(t *apiv1.ListFailoverHistoryRequestFilters) *shared.ListFailoverHistoryRequestFilters {
+	if t == nil {
+		return nil
+	}
+	return &shared.ListFailoverHistoryRequestFilters{
+		DomainID: &t.DomainId,
 	}
 }

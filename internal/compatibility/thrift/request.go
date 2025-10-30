@@ -22,7 +22,6 @@ package thrift
 
 import (
 	"go.uber.org/cadence/.gen/go/shared"
-	"go.uber.org/cadence/internal/common"
 
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
@@ -228,7 +227,7 @@ func RegisterDomainRequest(t *apiv1.RegisterDomainRequest) *shared.RegisterDomai
 		WorkflowExecutionRetentionPeriodInDays: durationToDays(t.WorkflowExecutionRetentionPeriod),
 		Clusters:                               ClusterReplicationConfigurationArray(t.Clusters),
 		ActiveClusterName:                      &t.ActiveClusterName,
-		ActiveClustersByRegion:                 t.ActiveClustersByRegion,
+		ActiveClusters:                         ActiveClusters(t.ActiveClusters),
 		Data:                                   t.Data,
 		SecurityToken:                          &t.SecurityToken,
 		IsGlobalDomain:                         &t.IsGlobalDomain,
@@ -605,25 +604,12 @@ func ListOpenWorkflowExecutionsRequest(r *apiv1.ListOpenWorkflowExecutionsReques
 	}
 }
 
-func ActiveClusterSelectionPolicy(t *apiv1.ActiveClusterSelectionPolicy) *shared.ActiveClusterSelectionPolicy {
+func ListFailoverHistoryRequest(t *apiv1.ListFailoverHistoryRequest) *shared.ListFailoverHistoryRequest {
 	if t == nil {
 		return nil
 	}
-	plc := &shared.ActiveClusterSelectionPolicy{
-		Strategy: ActiveClusterSelectionStrategy(t.Strategy),
+	return &shared.ListFailoverHistoryRequest{
+		Filters:    ListFailoverHistoryRequestFilters(t.Filters),
+		Pagination: PaginationOptions(t.Pagination),
 	}
-
-	if plc.Strategy == nil {
-		return nil
-	}
-
-	switch *plc.Strategy {
-	case shared.ActiveClusterSelectionStrategyRegionSticky:
-		plc.StickyRegion = common.StringPtr(t.GetActiveClusterStickyRegionConfig().GetStickyRegion())
-	case shared.ActiveClusterSelectionStrategyExternalEntity:
-		plc.ExternalEntityType = common.StringPtr(t.GetActiveClusterExternalEntityConfig().GetExternalEntityType())
-		plc.ExternalEntityKey = common.StringPtr(t.GetActiveClusterExternalEntityConfig().GetExternalEntityKey())
-	}
-
-	return plc
 }
