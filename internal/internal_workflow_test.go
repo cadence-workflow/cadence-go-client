@@ -1345,3 +1345,156 @@ func (t *WorkflowOptionTest) TestKnowQueryType_WithHandlers() {
 		},
 		wo.KnownQueryTypes())
 }
+
+func (s *WorkflowUnitTest) Test_ResettableTimerFiresAfterExpiration() {
+	wf := func(ctx Context) error {
+		timer := NewResettableTimer(ctx, 5*time.Second)
+
+		timerFired := false
+		NewSelector(ctx).AddFuture(timer, func(f Future) {
+			err := f.Get(ctx, nil)
+			s.NoError(err)
+			timerFired = true
+		}).Select(ctx)
+
+		s.True(timerFired, "Timer should fire after 5 seconds with no resets")
+		return nil
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.ExecuteWorkflow(wf)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+}
+
+func (s *WorkflowUnitTest) Test_ResettableTimerDoesNotFireWhenKeptReset() {
+	wf := func(ctx Context) error {
+		timer := NewResettableTimer(ctx, 2*time.Second)
+		activityCh := GetSignalChannel(ctx, "activity")
+		stopCh := GetSignalChannel(ctx, "stop")
+
+		timerFired := false
+		activityCount := 0
+		stopped := false
+
+		for !stopped {
+			selector := NewSelector(ctx)
+
+			selector.AddFuture(timer, func(f Future) {
+				timerFired = true
+			})
+
+			selector.AddReceive(activityCh, func(c Channel, more bool) {
+				var signal string
+				c.Receive(ctx, &signal)
+				activityCount++
+				timer.Reset()
+			})
+
+			selector.AddReceive(stopCh, func(c Channel, more bool) {
+				var stop bool
+				c.Receive(ctx, &stop)
+				stopped = true
+			})
+
+			selector.Select(ctx)
+		}
+
+		s.Equal(3, activityCount, "Should have received 3 activity signals")
+		s.False(timerFired, "Timer should NOT fire when continuously reset")
+		return nil
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow("activity", "scan1")
+	}, 500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow("activity", "scan2")
+	}, 1500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow("activity", "scan3")
+	}, 2500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow("stop", true)
+	}, 4*time.Second)
+
+	env.ExecuteWorkflow(wf)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+}
+
+func (s *WorkflowUnitTest) Test_ResettableTimerFiresAfterResetsStop() {
+	wf := func(ctx Context) error {
+		timer := NewResettableTimer(ctx, 5*time.Second)
+
+		timer.Reset()                // Still 5s
+		timer.Reset(2 * time.Second) // Now 2s
+
+		timerFired := false
+		NewSelector(ctx).AddFuture(timer, func(f Future) {
+			err := f.Get(ctx, nil)
+			s.NoError(err)
+			timerFired = true
+		}).Select(ctx)
+
+		s.True(timerFired, "Timer should eventually fire after resets stop")
+		return nil
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.ExecuteWorkflow(wf)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+}
+
+func (s *WorkflowUnitTest) Test_ResettableTimerResetAfterFireIsNoop() {
+	wf := func(ctx Context) error {
+		timer := NewResettableTimer(ctx, 1*time.Second)
+
+		err := timer.Get(ctx, nil)
+		s.NoError(err)
+		s.True(timer.IsReady(), "Timer should be ready after firing")
+
+		timer.Reset(5 * time.Second)
+		s.True(timer.IsReady(), "Timer should still be ready (reset was no-op)")
+
+		timer.Reset()
+		s.True(timer.IsReady(), "Multiple resets after fire are all no-ops")
+		return nil
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.ExecuteWorkflow(wf)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+}
+
+func (s *WorkflowUnitTest) Test_ResettableTimerResetWithDifferentDurations() {
+	wf := func(ctx Context) error {
+		timer := NewResettableTimer(ctx, 10*time.Second)
+
+		timer.Reset(1 * time.Second)
+
+		timerFired := false
+		startTime := Now(ctx)
+
+		NewSelector(ctx).AddFuture(timer, func(f Future) {
+			err := f.Get(ctx, nil)
+			s.NoError(err)
+			timerFired = true
+		}).Select(ctx)
+
+		elapsed := Now(ctx).Sub(startTime)
+
+		s.True(timerFired, "Timer should fire")
+		s.Less(elapsed, 5*time.Second, "Should fire with reset duration, not original")
+		return nil
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.ExecuteWorkflow(wf)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+}
