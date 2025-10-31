@@ -1289,6 +1289,9 @@ func reportActivityComplete(
 		switch request.(type) {
 		case *s.RespondActivityTaskCanceledRequest:
 			metricsScope.Counter(metrics.ActivityTaskCanceledCounter).Inc(1)
+			// Also emit failed counter for canceled activities since they represent failures
+			// from a customer monitoring perspective (e.g., heartbeat timeouts)
+			metricsScope.Counter(metrics.ActivityTaskFailedCounter).Inc(1)
 		case *s.RespondActivityTaskFailedRequest:
 			metricsScope.Counter(metrics.ActivityTaskFailedCounter).Inc(1)
 		case *s.RespondActivityTaskCompletedRequest:
@@ -1342,6 +1345,9 @@ func reportActivityCompleteByID(
 		switch request.(type) {
 		case *s.RespondActivityTaskCanceledByIDRequest:
 			metricsScope.Counter(metrics.ActivityTaskCanceledByIDCounter).Inc(1)
+			// Also emit failed counter for canceled activities since they represent failures
+			// from a customer monitoring perspective (e.g., heartbeat timeouts)
+			metricsScope.Counter(metrics.ActivityTaskFailedByIDCounter).Inc(1)
 		case *s.RespondActivityTaskFailedByIDRequest:
 			metricsScope.Counter(metrics.ActivityTaskFailedByIDCounter).Inc(1)
 		case *s.RespondActivityTaskCompletedByIDRequest:
