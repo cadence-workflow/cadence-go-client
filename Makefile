@@ -165,6 +165,30 @@ $(BUILD)/go_mod_check: go.mod internal/tools/go.mod
 	$Q ./scripts/check-gomod-version.sh go.uber.org/thriftrw $(if $(verbose),-v)
 	$Q touch $@
 
+# checks that the idl submodule points to a commit on master, and that it matches the go module (which must be a pseudo version).
+# this is only used in an explicit CI step, because it's expected to fail when developing.
+#
+# `git ls-tree HEAD idls` is selected because this only cares about the committed/checked-out target,
+# not whatever the current status is, because only the committed value will exist for others.
+#
+# and last but not least: this avoids using `go` to make this check take only a couple seconds in CI,
+# so the whole docker container doesn't have to be prepared.
+.idl-status:
+	$(Q) cd idls && \
+		SUBMODULE_COMMIT=$$(git rev-parse HEAD) && \
+		BRANCH_INFO=$$(git branch -r --contains "$$SUBMODULE_COMMIT" | head -n1) && \
+		if ! git branch -r --contains "$$SUBMODULE_COMMIT" | grep -q "origin/master"; then \
+			echo "Error: Submodule commit $$SUBMODULE_COMMIT belongs to $$BRANCH_INFO, not to master branch" && \
+			exit 1; \
+		fi
+	$(Q) idlsha=$$(git ls-tree HEAD idls | awk '{print substr($$3,0,12)}') && \
+		gosha=$$(grep github.com/uber/cadence-idl go.mod | tr '-' '\n' | tail -n1) && \
+		if [[ "$$idlsha" != "$$gosha" ]]; then \
+			echo "IDL submodule sha ($$idlsha) does not match go module sha ($$gosha)." >&2 && \
+			echo "Make sure the IDL PR has been merged, and this PR is updated, before merging here." >&2 && \
+			exit 1; \
+		fi
+
 # ====================================
 # Codegen targets
 # ====================================
