@@ -785,6 +785,7 @@ func (ts *IntegrationTestSuite) registerDomain(domainName string) {
 	defer cancel()
 
 	retention := int32(1)
+	// just testing
 	err := ts.domainClient.Register(ctx, &shared.RegisterDomainRequest{
 		Name:                                   &domainName,
 		WorkflowExecutionRetentionPeriodInDays: &retention,
