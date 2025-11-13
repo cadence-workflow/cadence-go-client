@@ -115,8 +115,8 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 			ContextPropagators: []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
 		})
 	ts.domainClient = client.NewDomainClient(ts.rpcClient.Interface, &client.Options{})
-	ts.registerDomain(domainName)
-	ts.registerDomain(domainToFailover)
+	ts.registerDomain(domainName, false /* isGlobalDomain */)
+	ts.registerDomain(domainToFailover, true /* isGlobalDomain */)
 	internal.StartVersionMetrics(tally.NoopScope)
 }
 
@@ -780,7 +780,7 @@ func (ts *IntegrationTestSuite) replayVersionedWorkflow(version VersionedWorkflo
 	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
 }
 
-func (ts *IntegrationTestSuite) registerDomain(domainName string) {
+func (ts *IntegrationTestSuite) registerDomain(domainName string, isGlobalDomain bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
@@ -788,6 +788,7 @@ func (ts *IntegrationTestSuite) registerDomain(domainName string) {
 	err := ts.domainClient.Register(ctx, &shared.RegisterDomainRequest{
 		Name:                                   &domainName,
 		WorkflowExecutionRetentionPeriodInDays: &retention,
+		IsGlobalDomain:                         &isGlobalDomain,
 	})
 	if err != nil {
 		if _, ok := err.(*shared.DomainAlreadyExistsError); ok {
