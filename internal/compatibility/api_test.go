@@ -476,6 +476,137 @@ func TestDeprecateDomainRequest(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+
+func TestFailoverDomainRequest(t *testing.T) {
+	// Test complete field mapping - all fields should now be properly mapped
+	t.Run("CompleteFieldMapping", func(t *testing.T) {
+		// Create a thrift FailoverDomainRequest with all fields
+		domainName := testdata.DomainName
+		clusterName := testdata.ClusterName1
+		thriftRequest := &shared.FailoverDomainRequest{
+			DomainName:              &domainName,
+			DomainActiveClusterName: &clusterName,
+			ActiveClusters:          thrift.ActiveClusters(testdata.ActiveClusters),
+		}
+
+		// Convert to proto
+		protoRequest := proto.FailoverDomainRequest(thriftRequest)
+
+		// Verify that all fields are mapped correctly
+		assert.Equal(t, testdata.DomainName, protoRequest.DomainName)
+		assert.Equal(t, testdata.ClusterName1, protoRequest.DomainActiveClusterName)
+		assert.NotNil(t, protoRequest.ActiveClusters, "ActiveClusters field should be mapped")
+
+		// Test round-trip conversion
+		convertedBack := thrift.FailoverDomainRequest(protoRequest)
+		assert.NotNil(t, convertedBack)
+		assert.Equal(t, testdata.DomainName, convertedBack.GetDomainName())
+		assert.Equal(t, testdata.ClusterName1, convertedBack.GetDomainActiveClusterName())
+		assert.NotNil(t, convertedBack.ActiveClusters, "ActiveClusters should survive round-trip conversion")
+	})
+
+	// Test bidirectional conversion with standard test pattern
+	t.Run("BidirectionalConversion", func(t *testing.T) {
+		for _, item := range []*apiv1.FailoverDomainRequest{nil, {}, &testdata.FailoverDomainRequest} {
+			assert.Equal(t, item, proto.FailoverDomainRequest(thrift.FailoverDomainRequest(item)))
+		}
+	})
+
+	// Test with nil and empty cases
+	t.Run("NilAndEmptyCases", func(t *testing.T) {
+		assert.Nil(t, proto.FailoverDomainRequest(nil))
+		assert.Nil(t, thrift.FailoverDomainRequest(nil))
+
+		emptyRequest := &shared.FailoverDomainRequest{}
+		converted := proto.FailoverDomainRequest(emptyRequest)
+		assert.NotNil(t, converted)
+		assert.Equal(t, "", converted.DomainName)
+		assert.Equal(t, "", converted.DomainActiveClusterName)
+		assert.Nil(t, converted.ActiveClusters)
+	})
+
+	// Fuzz test to ensure robustness
+	runFuzzTest(t,
+		thrift.FailoverDomainRequest,
+		proto.FailoverDomainRequest,
+		FuzzOptions{
+			ExcludedFields: []string{
+				"RegionToCluster", // [DEPRECATED] This field is deprecated and not mapped in conversion functions
+			},
+		},
+	)
+}
+
+func TestFailoverDomainResponse(t *testing.T) {
+	// Test complete bidirectional conversion
+	t.Run("BidirectionalConversion", func(t *testing.T) {
+		// Test nil case
+		assert.Nil(t, proto.FailoverDomainResponse(thrift.FailoverDomainResponse(nil)))
+
+		// Test empty case - empty response should create a response with nil domain
+		emptyResponse := &apiv1.FailoverDomainResponse{}
+		converted := proto.FailoverDomainResponse(thrift.FailoverDomainResponse(emptyResponse))
+		assert.Nil(t, converted) // thrift.FailoverDomainResponse returns nil for empty response
+
+		// Test full response
+		fullResponse := &testdata.FailoverDomainResponse
+		assert.Equal(t, fullResponse, proto.FailoverDomainResponse(thrift.FailoverDomainResponse(fullResponse)))
+	})
+
+	// Test that both conversion directions work
+	t.Run("ConversionDirections", func(t *testing.T) {
+		// Test proto -> thrift
+		thriftResponse := thrift.FailoverDomainResponse(&testdata.FailoverDomainResponse)
+		assert.NotNil(t, thriftResponse)
+		assert.NotNil(t, thriftResponse.DomainInfo)
+		assert.Equal(t, testdata.DomainName, *thriftResponse.DomainInfo.Name)
+
+		// Test thrift -> proto
+		protoResponse := proto.FailoverDomainResponse(thriftResponse)
+		assert.NotNil(t, protoResponse)
+		assert.NotNil(t, protoResponse.Domain)
+		assert.Equal(t, testdata.DomainName, protoResponse.Domain.Name)
+	})
+
+	// Fuzz test for robustness
+	runFuzzTest(t,
+		thrift.FailoverDomainResponse,
+		proto.FailoverDomainResponse,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(status *apiv1.DomainStatus, c fuzz.Continue) {
+					validValues := []apiv1.DomainStatus{
+						apiv1.DomainStatus_DOMAIN_STATUS_INVALID,
+						apiv1.DomainStatus_DOMAIN_STATUS_REGISTERED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DEPRECATED,
+						apiv1.DomainStatus_DOMAIN_STATUS_DELETED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				func(status *apiv1.ArchivalStatus, c fuzz.Continue) {
+					validValues := []apiv1.ArchivalStatus{
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_INVALID,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_DISABLED,
+						apiv1.ArchivalStatus_ARCHIVAL_STATUS_ENABLED,
+					}
+					*status = validValues[c.Intn(len(validValues))]
+				},
+				// WorkflowExecutionRetentionPeriod - must be day-precision
+				func(domain *apiv1.Domain, c fuzz.Continue) {
+					if domain.WorkflowExecutionRetentionPeriod != nil {
+						days := c.Int63n(MaxDurationSeconds / (24 * 3600))
+						domain.WorkflowExecutionRetentionPeriod.Seconds = days * 24 * 3600
+						domain.WorkflowExecutionRetentionPeriod.Nanos = 0
+					}
+				},
+			},
+			ExcludedFields: []string{
+				"RegionToCluster", // [DEPRECATED] This field is deprecated and not mapped in conversion functions
+			},
+		},
+	)
+}
+
 func TestDescribeDomainRequest(t *testing.T) {
 	for _, item := range []*apiv1.DescribeDomainRequest{
 		&testdata.DescribeDomainRequest_ID,
@@ -3047,7 +3178,7 @@ func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
 			field.Set(reflect.Zero(field.Type()))
 		}
 
-		// Recursively clear fields in nested structs and slices
+		// Recursively clear fields in nested structs, slices, and maps
 		if field.CanInterface() {
 			switch field.Kind() {
 			case reflect.Ptr:
@@ -3059,6 +3190,13 @@ func clearFieldsIf(obj interface{}, shouldClear func(fieldName string) bool) {
 			case reflect.Slice:
 				for j := 0; j < field.Len(); j++ {
 					elem := field.Index(j)
+					if elem.CanInterface() {
+						clearFieldsIf(elem.Interface(), shouldClear)
+					}
+				}
+			case reflect.Map:
+				for _, key := range field.MapKeys() {
+					elem := field.MapIndex(key)
 					if elem.CanInterface() {
 						clearFieldsIf(elem.Interface(), shouldClear)
 					}

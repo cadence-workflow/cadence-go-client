@@ -350,6 +350,38 @@ func UpdateDomainResponse(t *shared.UpdateDomainResponse) *apiv1.UpdateDomainRes
 	}
 }
 
+func FailoverDomainResponse(t *shared.FailoverDomainResponse) *apiv1.FailoverDomainResponse {
+	if t == nil {
+		return nil
+	}
+	domain := apiv1.Domain{
+		FailoverVersion: t.GetFailoverVersion(),
+		IsGlobalDomain:  t.GetIsGlobalDomain(),
+	}
+	if info := t.DomainInfo; info != nil {
+		domain.Id = info.GetUUID()
+		domain.Name = info.GetName()
+		domain.Status = DomainStatus(info.Status)
+		domain.Description = info.GetDescription()
+		domain.OwnerEmail = info.GetOwnerEmail()
+		domain.Data = info.Data
+	}
+	if config := t.Configuration; config != nil {
+		domain.WorkflowExecutionRetentionPeriod = daysToDuration(config.WorkflowExecutionRetentionPeriodInDays)
+		domain.BadBinaries = BadBinaries(config.BadBinaries)
+		domain.HistoryArchivalStatus = ArchivalStatus(config.HistoryArchivalStatus)
+		domain.HistoryArchivalUri = config.GetHistoryArchivalURI()
+		domain.VisibilityArchivalStatus = ArchivalStatus(config.VisibilityArchivalStatus)
+		domain.VisibilityArchivalUri = config.GetVisibilityArchivalURI()
+	}
+	if repl := t.ReplicationConfiguration; repl != nil {
+		domain.ActiveClusterName = repl.GetActiveClusterName()
+		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
+	}
+	return &apiv1.FailoverDomainResponse{Domain: &domain}
+}
+
 func ListFailoverHistoryResponse(t *shared.ListFailoverHistoryResponse) *apiv1.ListFailoverHistoryResponse {
 	if t == nil {
 		return nil

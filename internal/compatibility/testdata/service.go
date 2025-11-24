@@ -107,6 +107,14 @@ var (
 		Name:          DomainName,
 		SecurityToken: SecurityToken,
 	}
+	FailoverDomainRequest = apiv1.FailoverDomainRequest{
+		DomainName:              DomainName,
+		DomainActiveClusterName: ClusterName1,
+		ActiveClusters:          ActiveClusters,
+	}
+	FailoverDomainResponse = apiv1.FailoverDomainResponse{
+		Domain: &Domain,
+	}
 	ListWorkflowExecutionsRequest = apiv1.ListWorkflowExecutionsRequest{
 		Domain:        DomainName,
 		PageSize:      PageSize,
