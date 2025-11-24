@@ -698,10 +698,16 @@ func FailoverDomainRequest(t *shared.FailoverDomainRequest) *apiv1.FailoverDomai
 	if t == nil {
 		return nil
 	}
-	return &apiv1.FailoverDomainRequest{
-		DomainName:              t.GetDomainName(),
-		DomainActiveClusterName: *t.DomainActiveClusterName,
+	request := &apiv1.FailoverDomainRequest{
+		DomainName: t.GetDomainName(),
 	}
+	if t.DomainActiveClusterName != nil {
+		request.DomainActiveClusterName = *t.DomainActiveClusterName
+	}
+	if t.ActiveClusters != nil {
+		request.ActiveClusters = ActiveClusters(t.ActiveClusters)
+	}
+	return request
 }
 
 func ListFailoverHistoryRequest(t *shared.ListFailoverHistoryRequest) *apiv1.ListFailoverHistoryRequest {
