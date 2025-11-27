@@ -604,6 +604,22 @@ func ListOpenWorkflowExecutionsRequest(r *apiv1.ListOpenWorkflowExecutionsReques
 	}
 }
 
+func FailoverDomainRequest(t *apiv1.FailoverDomainRequest) *shared.FailoverDomainRequest {
+	if t == nil {
+		return nil
+	}
+	request := &shared.FailoverDomainRequest{
+		DomainName: &t.DomainName,
+	}
+	if t.DomainActiveClusterName != "" {
+		request.DomainActiveClusterName = &t.DomainActiveClusterName
+	}
+	if t.ActiveClusters != nil {
+		request.ActiveClusters = ActiveClusters(t.ActiveClusters)
+	}
+	return request
+}
+
 func ListFailoverHistoryRequest(t *apiv1.ListFailoverHistoryRequest) *shared.ListFailoverHistoryRequest {
 	if t == nil {
 		return nil
