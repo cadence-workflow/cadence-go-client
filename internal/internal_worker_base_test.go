@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	// "github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
@@ -50,7 +49,7 @@ func TestBaseWorker_processTask_warnLogOnOtherError(t *testing.T) {
 	worker.pollTask()
 	worker.Stop()
 
-	assert.LessOrEqual(t, 1, observed.FilterMessage("poller permit acquire error").Len())
+	assert.GreaterOrEqual(t, observed.FilterMessage("poller permit acquire error").Len(), 1)
 }
 
 type testTaskWorker struct{}
