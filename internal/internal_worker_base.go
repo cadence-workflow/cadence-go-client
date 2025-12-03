@@ -139,7 +139,7 @@ type (
 		pollLimiter          *rate.Limiter
 		taskLimiter          *rate.Limiter
 		limiterContext       context.Context
-		limiterContextCancel func()
+		limiterContextCancel context.CancelCauseFunc
 		retrier              *backoff.ConcurrentRetrier // Service errors back off retrier
 		logger               *zap.Logger
 		metricsScope         tally.Scope
@@ -168,7 +168,7 @@ func createPollRetryPolicy() backoff.RetryPolicy {
 }
 
 func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope tally.Scope, sessionTokenBucket *sessionTokenBucket) *baseWorker {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
 	logger = logger.With(zap.String(tagWorkerType, options.workerType))
 	metricsScope = tagScope(metricsScope, tagWorkerType, options.workerType)
 
@@ -324,7 +324,10 @@ func (bw *baseWorker) pollTask() {
 	if pErr := bw.concurrency.PollerPermit.Acquire(bw.limiterContext); pErr == nil {
 		defer bw.concurrency.PollerPermit.Release()
 	} else {
-		bw.logger.Warn("poller permit acquire error", zap.Error(pErr))
+		if !errors.Is(context.Cause(bw.limiterContext), errShutdown) { // don't log on shutdown
+			bw.logger.Warn("poller permit acquire error", zap.Error(pErr))
+		}
+		return // don't try to poll without a permit, will retry on next poll
 	}
 
 	bw.retrier.Throttle()
@@ -418,7 +421,7 @@ func (bw *baseWorker) Stop() {
 		return
 	}
 	close(bw.shutdownCh)
-	bw.limiterContextCancel()
+	bw.limiterContextCancel(errShutdown)
 	bw.concurrencyAutoScaler.Stop()
 
 	if success := util.AwaitWaitGroup(&bw.shutdownWG, bw.options.shutdownTimeout); !success {
