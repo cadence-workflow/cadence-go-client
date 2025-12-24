@@ -478,6 +478,7 @@ func (t *TestWorkflowEnvironment) SetTestTimeout(idleTimeout time.Duration) *Tes
 // This is based on the workflow time (a.k.a workflow.Now() time).
 func (t *TestWorkflowEnvironment) SetWorkflowTimeout(executionTimeout time.Duration) *TestWorkflowEnvironment {
 	t.impl.executionTimeout = executionTimeout
+	t.impl.workflowInfo.ExecutionStartToCloseTimeoutSeconds = int32(executionTimeout.Seconds())
 	return t
 }
 
