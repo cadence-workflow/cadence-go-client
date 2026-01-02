@@ -263,7 +263,7 @@ func (bw *baseWorker) isShutdown() bool {
 
 func (bw *baseWorker) runPoller() {
 	defer bw.shutdownWG.Done()
-	defer bw.options.pollerTracker.Start().Stop()
+	defer bw.options.pollerTracker.Start(bw.options.workerType).Stop()
 
 	bw.metricsScope.Counter(metrics.PollerStartCounter).Inc(1)
 

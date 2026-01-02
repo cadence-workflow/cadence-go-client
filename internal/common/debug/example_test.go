@@ -25,18 +25,19 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-
-	"go.uber.org/atomic"
 )
 
 type (
 	// pollerTrackerImpl implements the PollerTracker interface
 	pollerTrackerImpl struct {
-		pollerCount atomic.Int32
+		sync.RWMutex
+		count map[string]int64
 	}
 
 	// stopperImpl implements the Stopper interface
 	stopperImpl struct {
+		sync.Once
+		workerType    string
 		pollerTracker *pollerTrackerImpl
 	}
 
@@ -93,40 +94,67 @@ func (asi *activityStopperImpl) Stop() {
 	})
 }
 
-func (p *pollerTrackerImpl) Start() Stopper {
-	p.pollerCount.Inc()
-	return &stopperImpl{
-		pollerTracker: p,
-	}
+func (p *pollerTrackerImpl) Start(workerType string) Stopper {
+	p.Lock()
+	defer p.Unlock()
+	p.count[workerType]++
+	return &stopperImpl{pollerTracker: p, workerType: workerType}
 }
 
-func (p *pollerTrackerImpl) Stats() int32 {
-	return p.pollerCount.Load()
+func (p *pollerTrackerImpl) Stats() Pollers {
+	var pollers Pollers
+	p.RLock()
+	defer p.RUnlock()
+	for pollerType, count := range p.count {
+		if count > 0 {
+			pollers = append(pollers, struct {
+				Type  string
+				Count int64
+			}{Type: pollerType, Count: count})
+		}
+	}
+	sort.Slice(pollers, func(i, j int) bool {
+		return pollers[i].Type < pollers[j].Type
+	})
+	return pollers
 }
 
 func (s *stopperImpl) Stop() {
-	s.pollerTracker.pollerCount.Dec()
+	s.Do(func() {
+		s.pollerTracker.Lock()
+		defer s.pollerTracker.Unlock()
+		s.pollerTracker.count[s.workerType]--
+		if s.pollerTracker.count[s.workerType] == 0 {
+			delete(s.pollerTracker.count, s.workerType)
+		}
+	})
 }
 
 func Example() {
 	var pollerTracker PollerTracker
-	pollerTracker = &pollerTrackerImpl{}
+	pollerTracker = &pollerTrackerImpl{count: make(map[string]int64)}
 
 	// Initially, poller count should be 0
-	fmt.Println(fmt.Sprintf("poller stats: %d", pollerTracker.Stats()))
+	jsonPollers, _ := json.MarshalIndent(pollerTracker.Stats(), "", "  ")
+	fmt.Println(string(jsonPollers))
 
-	// Start a poller and verify that the count increments
-	stopper1 := pollerTracker.Start()
-	fmt.Println(fmt.Sprintf("poller stats: %d", pollerTracker.Stats()))
-
-	// Start another poller and verify that the count increments again
-	stopper2 := pollerTracker.Start()
-	fmt.Println(fmt.Sprintf("poller stats: %d", pollerTracker.Stats()))
-
+	// Start pollers and verify that the count increments
+	stopper1 := pollerTracker.Start("ActivityWorker")
+	jsonPollers, _ = json.MarshalIndent(pollerTracker.Stats(), "", "  ")
+	fmt.Println(string(jsonPollers))
+	stopper2 := pollerTracker.Start("ActivityWorker")
+	jsonPollers, _ = json.MarshalIndent(pollerTracker.Stats(), "", "  ")
+	fmt.Println(string(jsonPollers))
+	// Start another poller type and verify that the count increments
+	stopper3 := pollerTracker.Start("WorkflowWorker")
+	jsonPollers, _ = json.MarshalIndent(pollerTracker.Stats(), "", "  ")
+	fmt.Println(string(jsonPollers))
 	// Stop the pollers and verify the counter
 	stopper1.Stop()
 	stopper2.Stop()
-	fmt.Println(fmt.Sprintf("poller stats: %d", pollerTracker.Stats()))
+	stopper3.Stop()
+	jsonPollers, _ = json.MarshalIndent(pollerTracker.Stats(), "", "  ")
+	fmt.Println(string(jsonPollers))
 
 	var activityTracker ActivityTracker
 	activityTracker = &activityTrackerImpl{activityCount: make(map[ActivityInfo]int64)}
@@ -157,10 +185,30 @@ func Example() {
 	fmt.Println(string(jsonActivities))
 
 	// Output:
-	// poller stats: 0
-	// poller stats: 1
-	// poller stats: 2
-	// poller stats: 0
+	// null
+	// [
+	//   {
+	//     "Type": "ActivityWorker",
+	//     "Count": 1
+	//   }
+	// ]
+	// [
+	//   {
+	//     "Type": "ActivityWorker",
+	//     "Count": 2
+	//   }
+	// ]
+	// [
+	//   {
+	//     "Type": "ActivityWorker",
+	//     "Count": 2
+	//   },
+	//   {
+	//     "Type": "WorkflowWorker",
+	//     "Count": 1
+	//   }
+	// ]
+	// null
 	// [
 	//   {
 	//     "Info": {
