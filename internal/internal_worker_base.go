@@ -27,9 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"go.uber.org/cadence/internal/common/debug"
@@ -338,10 +336,7 @@ func (bw *baseWorker) pollTask() {
 		}
 		if err != nil {
 			if isNonRetriableError(err) {
-				bw.logger.Error("Worker received non-retriable error. Shutting down.", zap.Error(err))
-				p, _ := os.FindProcess(os.Getpid())
-				p.Signal(syscall.SIGINT)
-				return
+				bw.logger.Error("Worker received non-retriable error from PollTask; continue polling.", zap.Error(err)) //Report error and continue polling
 			}
 			bw.retrier.Failed()
 		} else {
