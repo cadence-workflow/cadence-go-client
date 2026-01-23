@@ -96,7 +96,7 @@ func TestRespondTaskCompleted_failed(t *testing.T) {
 			Details:        []byte(assert.AnError.Error()),
 			Identity:       common.StringPtr(_testIdentity),
 			BinaryChecksum: common.StringPtr(getBinaryChecksum()),
-		}, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		}, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		res, err := poller.RespondTaskCompletedWithMetrics(nil, assert.AnError, &s.PollForDecisionTaskResponse{
 			TaskToken: testTaskToken,
@@ -115,7 +115,7 @@ func TestRespondTaskCompleted_failed(t *testing.T) {
 			Details:        []byte(assert.AnError.Error()),
 			Identity:       common.StringPtr(_testIdentity),
 			BinaryChecksum: common.StringPtr(getBinaryChecksum()),
-		}, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(assert.AnError)
+		}, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(assert.AnError)
 
 		// We cannot test RespondTaskCompleted since it uses backoff and has a hardcoded retry mechanism for 60 seconds.
 		_, err := poller.respondTaskCompletedAttempt(errorToFailDecisionTask(testTaskToken, assert.AnError, _testIdentity), &s.PollForDecisionTaskResponse{
