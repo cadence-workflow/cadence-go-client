@@ -59,6 +59,10 @@ const (
 	clientImplHeaderName  = "cadence-client-name"
 	clientImplHeaderValue = "uber-go"
 
+	// callerTypeHeaderName refers to the name of the header that contains the caller type
+	callerTypeHeaderName  = "cadence-caller-type"
+	callerTypeHeaderValue = "sdk"
+
 	clientFeatureFlagsHeaderName = "cadence-client-feature-flags"
 
 	// defaultRPCTimeout is the default tchannel rpc call timeout
@@ -86,6 +90,7 @@ var (
 		yarpc.WithHeader(libraryVersionHeaderName, LibraryVersion),
 		yarpc.WithHeader(featureVersionHeaderName, FeatureVersion),
 		yarpc.WithHeader(clientImplHeaderName, clientImplHeaderValue),
+		yarpc.WithHeader(callerTypeHeaderName, callerTypeHeaderValue),
 	}
 )
 
