@@ -428,14 +428,24 @@ func (wtp *workflowTaskPoller) RespondTaskCompletedWithMetrics(completedRequest 
 		metricsScope.Counter(metrics.DecisionTaskCompletedCounter).Inc(1)
 	}
 
-	metricsScope.Timer(metrics.DecisionExecutionLatency).Record(time.Now().Sub(startTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.DecisionExecutionLatency,
+		time.Now().Sub(startTime),
+		metrics.Default1ms100s,
+	)
 
 	responseStartTime := time.Now()
 	if response, err = wtp.respondTaskCompleted(completedRequest, task); err != nil {
 		metricsScope.Counter(metrics.DecisionResponseFailedCounter).Inc(1)
 		return
 	}
-	metricsScope.Timer(metrics.DecisionResponseLatency).Record(time.Now().Sub(responseStartTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.DecisionResponseLatency,
+		time.Now().Sub(responseStartTime),
+		metrics.Default1ms100s,
+	)
 
 	return
 }
@@ -706,7 +716,12 @@ func (lath *localActivityTaskHandler) executeLocalActivityTask(task *localActivi
 		defer span.Finish()
 		laResult, err = ae.ExecuteWithActualArgs(ctx, task.params.InputArgs)
 		executionLatency := time.Now().Sub(laStartTime)
-		metricsScope.Timer(metrics.LocalActivityExecutionLatency).Record(executionLatency)
+		metrics.EmitLatency(
+			metricsScope,
+			metrics.LocalActivityExecutionLatency,
+			executionLatency,
+			metrics.Default1ms100s,
+		)
 		if executionLatency > timeoutDuration {
 			// If local activity takes longer than expected timeout, the context would already be DeadlineExceeded and
 			// the result would be discarded. Print a warning in this case.
@@ -869,10 +884,20 @@ func (wtp *workflowTaskPoller) poll(ctx context.Context) (interface{}, error) {
 
 	metricsScope := wtp.metricsScope.GetTaggedScope(tagWorkflowType, response.WorkflowType.GetName())
 	metricsScope.Counter(metrics.DecisionPollSucceedCounter).Inc(1)
-	metricsScope.Timer(metrics.DecisionPollLatency).Record(time.Now().Sub(startTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.DecisionPollLatency,
+		time.Now().Sub(startTime),
+		metrics.Default1ms100s,
+	)
 
 	scheduledToStartLatency := time.Duration(response.GetStartedTimestamp() - response.GetScheduledTimestamp())
-	metricsScope.Timer(metrics.DecisionScheduledToStartLatency).Record(scheduledToStartLatency)
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.DecisionScheduledToStartLatency,
+		scheduledToStartLatency,
+		metrics.High1ms24h,
+	)
 	return task, nil
 }
 
@@ -981,7 +1006,12 @@ func newGetHistoryPageFunc(
 		}
 
 		metricsScope.Counter(metrics.WorkflowGetHistorySucceedCounter).Inc(1)
-		metricsScope.Timer(metrics.WorkflowGetHistoryLatency).Record(time.Now().Sub(startTime))
+		metrics.EmitLatency(
+			metricsScope,
+			metrics.WorkflowGetHistoryLatency,
+			time.Now().Sub(startTime),
+			metrics.Default1ms100s,
+		)
 
 		var h *s.History
 
@@ -1125,10 +1155,20 @@ func (atp *activityTaskPoller) pollWithMetrics(ctx context.Context,
 	activityType := response.ActivityType.GetName()
 	metricsScope := getMetricsScopeForActivity(atp.metricsScope, workflowType, activityType)
 	metricsScope.Counter(metrics.ActivityPollSucceedCounter).Inc(1)
-	metricsScope.Timer(metrics.ActivityPollLatency).Record(time.Now().Sub(startTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.ActivityPollLatency,
+		time.Now().Sub(startTime),
+		metrics.Default1ms100s,
+	)
 
 	scheduledToStartLatency := time.Duration(response.GetStartedTimestamp() - response.GetScheduledTimestampOfThisAttempt())
-	metricsScope.Timer(metrics.ActivityScheduledToStartLatency).Record(scheduledToStartLatency)
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.ActivityScheduledToStartLatency,
+		scheduledToStartLatency,
+		metrics.High1ms24h,
+	)
 
 	return &activityTask{task: response, pollStartTime: startTime, autoConfigHint: response.GetAutoConfigHint()}, nil
 }
@@ -1169,7 +1209,12 @@ func (atp *activityTaskPoller) ProcessTask(task interface{}) error {
 		metricsScope.Counter(metrics.ActivityExecutionFailedCounter).Inc(1)
 		return err
 	}
-	metricsScope.Timer(metrics.ActivityExecutionLatency).Record(time.Now().Sub(executionStartTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.ActivityExecutionLatency,
+		time.Now().Sub(executionStartTime),
+		metrics.High1ms24h,
+	)
 
 	if request == ErrActivityResultPending {
 		return nil
@@ -1190,8 +1235,18 @@ func (atp *activityTaskPoller) ProcessTask(task interface{}) error {
 		return reportErr
 	}
 
-	metricsScope.Timer(metrics.ActivityResponseLatency).Record(time.Now().Sub(responseStartTime))
-	metricsScope.Timer(metrics.ActivityEndToEndLatency).Record(time.Now().Sub(activityTask.pollStartTime))
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.ActivityResponseLatency,
+		time.Now().Sub(responseStartTime),
+		metrics.Default1ms100s,
+	)
+	metrics.EmitLatency(
+		metricsScope,
+		metrics.ActivityEndToEndLatency,
+		time.Now().Sub(activityTask.pollStartTime),
+		metrics.High1ms24h,
+	)
 	return nil
 }
 

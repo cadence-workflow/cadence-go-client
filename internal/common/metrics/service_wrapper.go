@@ -124,7 +124,7 @@ func (w *workflowServiceMetricsWrapper) getOperationScope(scopeName string) *ope
 }
 
 func (s *operationScope) handleError(err error) {
-	s.scope.Timer(CadenceLatency).Record(time.Since(s.startTime))
+	EmitLatency(s.scope, CadenceLatency, time.Since(s.startTime), Default1ms100s)
 	if err != nil {
 		switch err.(type) {
 		case *shared.EntityNotExistsError,

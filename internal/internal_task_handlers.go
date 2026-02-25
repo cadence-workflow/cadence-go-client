@@ -1345,7 +1345,12 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 	if closeDecision != nil {
 		decisions = append(decisions, closeDecision)
 		elapsed := time.Since(workflowContext.workflowStartTime)
-		metricsScope.Timer(metrics.WorkflowEndToEndLatency).Record(elapsed)
+		metrics.EmitLatency(
+			metricsScope,
+			metrics.WorkflowEndToEndLatency,
+			elapsed,
+			metrics.High1ms24h,
+		)
 		forceNewDecision = false
 	}
 
