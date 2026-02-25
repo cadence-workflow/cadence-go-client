@@ -72,14 +72,15 @@ var (
 // makeSubsettableHistogram creates an exponential histogram with the specified parameters.
 //
 // The bucket boundaries are calculated using the formula:
-//   bucket[i] = start × 2^(i / 2^scale)
+//
+//	bucket[i] = start × 2^(i / 2^scale)
 //
 // Parameters:
 //   - scale: Controls bucket density (0-3). Higher scale = more buckets = finer granularity
-//     * scale=0: buckets double every 1 step (growth factor ≈ 2.00×)
-//     * scale=1: buckets double every 2 steps (growth factor ≈ 1.41×)
-//     * scale=2: buckets double every 4 steps (growth factor ≈ 1.19×)
-//     * scale=3: buckets double every 8 steps (growth factor ≈ 1.09×)
+//   - scale=0: buckets double every 1 step (growth factor ≈ 2.00×)
+//   - scale=1: buckets double every 2 steps (growth factor ≈ 1.41×)
+//   - scale=2: buckets double every 4 steps (growth factor ≈ 1.19×)
+//   - scale=3: buckets double every 8 steps (growth factor ≈ 1.09×)
 //   - start: First bucket value (e.g., 1ms). Must be > 0.
 //   - end: Target maximum value. Actual max will exceed this by at least 2x.
 //   - length: Number of buckets. Must be divisible by 2^scale.
@@ -191,7 +192,8 @@ func (s SubsettableHistogram) Buckets() tally.DurationBuckets {
 // This makes it easier to migrate from Timer to Histogram.
 //
 // Example:
-//   RecordTimer(scope, "my-operation-latency", duration, Default1ms100s)
+//
+//	RecordTimer(scope, "my-operation-latency", duration, Default1ms100s)
 func RecordTimer(scope tally.Scope, name string, duration time.Duration, buckets SubsettableHistogram) {
 	scope.Histogram(name+"_ns", buckets.Buckets()).RecordDuration(duration)
 }
@@ -200,9 +202,10 @@ func RecordTimer(scope tally.Scope, name string, duration time.Duration, buckets
 // Call .Stop() on the returned stopwatch to record the duration.
 //
 // Example:
-//   sw := StartTimer(scope, "my-operation-latency", Default1ms100s)
-//   // ... do work ...
-//   sw.Stop()
+//
+//	sw := StartTimer(scope, "my-operation-latency", Default1ms100s)
+//	// ... do work ...
+//	sw.Stop()
 func StartTimer(scope tally.Scope, name string, buckets SubsettableHistogram) tally.Stopwatch {
 	return scope.Histogram(name+"_ns", buckets.Buckets()).Start()
 }
