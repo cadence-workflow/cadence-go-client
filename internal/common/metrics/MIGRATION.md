@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Starting in v1.X.0, all latency metrics automatically emit BOTH timer and histogram formats.**
+**Starting in v1.3.1, all latency metrics automatically emit BOTH timer and histogram formats.**
 
 - Your existing dashboards continue to work (timers)
 - New histogram metrics available (with `_ns` suffix)
@@ -105,7 +105,7 @@ sw.Stop()
 ## Migration Timeline
 
 ### Phase 1: Automatic Dual-Emit (Now)
-- Upgrade to v1.X.0
+- Upgrade to v1.3.1
 - Both metrics automatically emit
 - No code changes needed
 
@@ -115,7 +115,7 @@ sw.Stop()
 3. Compare side-by-side
 4. Switch over when validated
 
-### Phase 3: Timers Removed (Future v2.0+)
+### Phase 3: Timers Removed (Future v1.3.*)
 - Timer emission removed in future major version
 - Plenty of advance notice provided
 
