@@ -30,9 +30,12 @@ import (
 
 	"go.uber.org/cadence/internal/common/testlogger"
 
+	"github.com/gogo/protobuf/jsonpb"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap"
@@ -89,8 +92,22 @@ func (s *WorkersTestSuite) TestWorkflowWorker() {
 	domain := "testDomain"
 	logger, _ := zap.NewDevelopment()
 
-	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil)
-	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).Return(&m.PollForDecisionTaskResponse{}, nil).AnyTimes()
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.DescribeDomainRequest, opts ...yarpc.CallOption) (*m.DescribeDomainResponse, error) {
+		call := yarpc.CallFromContext(ctx) // DescribeDomain does not have yarpc call options
+		require.Nil(s.T(), call)
+		return &m.DescribeDomainResponse{}, nil
+	})
+	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForDecisionTaskRequest, opts ...yarpc.CallOption) (*m.PollForDecisionTaskResponse, error) {
+		call := yarpc.CallFromContext(ctx)
+		require.NotNil(s.T(), call)
+		featureFlagsStr := call.Header(clientFeatureFlagsHeaderName)
+		var unmarshaler jsonpb.Unmarshaler
+		var featureFlags apiv1.FeatureFlags
+		err := unmarshaler.Unmarshal(strings.NewReader(featureFlagsStr), &featureFlags)
+		require.NoError(s.T(), err)
+		s.True(featureFlags.AutoforwardingEnabled)
+		return &m.PollForDecisionTaskResponse{}, nil
+	}).AnyTimes()
 	s.service.EXPECT().RespondDecisionTaskCompleted(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -98,7 +115,11 @@ func (s *WorkersTestSuite) TestWorkflowWorker() {
 		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentDecisionTaskPollers: 5,
-			Logger:                           logger},
+			Logger:                           logger,
+			FeatureFlags: FeatureFlags{
+				AutoforwardingEnabled: true,
+			},
+		},
 		UserContext:       ctx,
 		UserContextCancel: cancel,
 	}

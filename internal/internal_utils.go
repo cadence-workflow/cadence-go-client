@@ -24,7 +24,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -32,10 +31,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gogo/protobuf/jsonpb"
+
 	"go.uber.org/zap"
 
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/yarpc"
 
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -78,6 +80,7 @@ const (
 type (
 	FeatureFlags struct {
 		WorkflowExecutionAlreadyCompletedErrorEnabled bool
+		AutoforwardingEnabled                         bool
 		// Deprecated: use AutoScalerOptions instead
 		PollerAutoScalerEnabled   bool
 		EphemeralTaskListsEnabled bool
@@ -94,29 +97,22 @@ var (
 	}
 )
 
-func fromInternalFeatureFlags(featureFlags FeatureFlags) s.FeatureFlags {
+func fromInternalFeatureFlags(featureFlags FeatureFlags) apiv1.FeatureFlags {
 	// if we are using client-side-only flags in client.FeatureFlags;
 	// don't include them in shared.FeatureFlags and drop them here
-	return s.FeatureFlags{
-		WorkflowExecutionAlreadyCompletedErrorEnabled: common.BoolPtr(featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled),
+	return apiv1.FeatureFlags{
+		WorkflowExecutionAlreadyCompletedErrorEnabled: featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled,
+		AutoforwardingEnabled:                         featureFlags.AutoforwardingEnabled,
 	}
-}
-
-func toInternalFeatureFlags(featureFlags *s.FeatureFlags) FeatureFlags {
-	flags := FeatureFlags{}
-	if featureFlags != nil {
-		if featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled != nil {
-			flags.WorkflowExecutionAlreadyCompletedErrorEnabled = *featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled
-		}
-	}
-	return flags
 }
 
 func featureFlagsHeader(featureFlags FeatureFlags) string {
-	serialized := ""
-	buf, err := json.Marshal(fromInternalFeatureFlags(featureFlags))
-	if err == nil {
-		serialized = string(buf)
+	var marshaler jsonpb.Marshaler
+	flags := fromInternalFeatureFlags(featureFlags)
+	serialized, err := marshaler.MarshalToString(&flags)
+	if err != nil {
+		// fail open silently
+		return ""
 	}
 	return serialized
 }
