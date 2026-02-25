@@ -1349,7 +1349,7 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 			metricsScope,
 			metrics.WorkflowEndToEndLatency,
 			elapsed,
-			metrics.High1ms24h,
+			metrics.VeryHigh1s1mon,
 		)
 		forceNewDecision = false
 	}

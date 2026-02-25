@@ -131,21 +131,41 @@ metrics.RecordTimer(activityScope, metrics.ActivityExecutionLatency, latency, me
 
 ### High1ms24h (112 buckets, scale=2)
 - **Range**: 1ms → ~3 days
-- **Use for**: Long-running operations
-- **Examples**: Workflow end-to-end latency, Long-running activity latency, Scheduled-to-start latency (can be hours/days)
+- **Use for**: Medium-duration operations (hours to days)
+- **Examples**: Long-running activity latency, Scheduled-to-start latency
 
 ```go
-metrics.RecordTimer(scope, metrics.WorkflowEndToEndLatency, latency, metrics.High1ms24h)
+metrics.RecordTimer(scope, metrics.ActivityExecutionLatency, latency, metrics.High1ms24h)
 ```
 
 ### Mid1ms24h (56 buckets, scale=1)
 - **Range**: 1ms → ~3 days
-- **Use for**: Long-running operations with high cardinality
-- **Examples**: Per-workflow-type end-to-end latency
+- **Use for**: Medium-duration operations with high cardinality
+- **Examples**: Per-workflow-type long activity latency
 
 ```go
 workflowScope := scope.Tagged(map[string]string{"workflow_type": workflowType})
-metrics.RecordTimer(workflowScope, metrics.WorkflowEndToEndLatency, latency, metrics.Mid1ms24h)
+metrics.RecordTimer(workflowScope, metrics.ActivityExecutionLatency, latency, metrics.Mid1ms24h)
+```
+
+### VeryHigh1s1mon (100 buckets, scale=2)
+- **Range**: 1 second → ~11 months
+- **Use for**: Long-running workflows (days/weeks/months)
+- **Examples**: Workflow end-to-end latency for workflows that can run for months
+- **Note**: Starts at 1 second (not 1ms) since sub-second precision isn't needed
+
+```go
+metrics.RecordTimer(scope, metrics.WorkflowEndToEndLatency, latency, metrics.VeryHigh1s1mon)
+```
+
+### High1s1mon (50 buckets, scale=1)
+- **Range**: 1 second → ~5 months
+- **Use for**: Long-running workflows with high cardinality
+- **Examples**: Per-workflow-type end-to-end latency for long workflows
+
+```go
+workflowScope := scope.Tagged(map[string]string{"workflow_type": workflowType})
+metrics.RecordTimer(workflowScope, metrics.WorkflowEndToEndLatency, latency, metrics.High1s1mon)
 ```
 
 ## Developer Guide: Using Histogram APIs
@@ -193,7 +213,8 @@ scope.Timer(metrics.WorkflowEndToEndLatency).Record(time.Since(start))
 ```go
 start := time.Now()
 // ... do work ...
-metrics.RecordTimer(scope, metrics.WorkflowEndToEndLatency, time.Since(start), metrics.High1ms24h)
+// Use VeryHigh1s1mon for workflows that can run for days/weeks/months (up to ~11 months)
+metrics.RecordTimer(scope, metrics.WorkflowEndToEndLatency, time.Since(start), metrics.VeryHigh1s1mon)
 ```
 
 ## Complete Migration Examples
@@ -285,8 +306,8 @@ func (w *workflowClient) recordWorkflowCompleted(execution *WorkflowExecution, c
 ```go
 func (w *workflowClient) recordWorkflowCompleted(execution *WorkflowExecution, closeTime time.Time) {
     endToEndLatency := closeTime.Sub(execution.StartTime)
-    // Use High1ms24h for long-running workflows that can take hours/days
-    metrics.RecordTimer(w.metricsScope, metrics.WorkflowEndToEndLatency, endToEndLatency, metrics.High1ms24h)
+    // Use VeryHigh1s1mon for workflows that can run for days/weeks/months (up to ~11 months)
+    metrics.RecordTimer(w.metricsScope, metrics.WorkflowEndToEndLatency, endToEndLatency, metrics.VeryHigh1s1mon)
 }
 ```
 
