@@ -60,7 +60,6 @@ var (
 	// Range: 1ms → ~3 days
 	// Buckets: 112 (scale=2, ~4 buckets per doubling)
 	// Use for: Workflow end-to-end latency, long-running activity latency
-	// NOTE: For workflows running months/years, use VeryHigh1s1y instead
 	High1ms24h = makeSubsettableHistogram(2, time.Millisecond, 24*time.Hour, 112)
 
 	// Mid1ms24h is a lower-resolution version of High1ms24h.
@@ -68,19 +67,6 @@ var (
 	// Buckets: 56 (scale=1, ~2 buckets per doubling)
 	// Use for: When High1ms24h's cardinality is too high
 	Mid1ms24h = High1ms24h.subsetTo(1)
-
-	// VeryHigh1s1mon is for long-running workflows that can take days/weeks/months.
-	// Range: 1 second → ~11 months (covers typical long-running workflow durations)
-	// Buckets: 100 (scale=2, ~4 buckets per doubling)
-	// Use for: Workflow end-to-end latency (workflows running days/weeks/months)
-	// Start at 1s instead of 1ms since sub-second precision isn't needed for long workflows
-	VeryHigh1s1mon = makeSubsettableHistogram(2, time.Second, 30*24*time.Hour, 100)
-
-	// High1s1mon is a lower-resolution version of VeryHigh1s1mon.
-	// Range: 1 second → ~5 months
-	// Buckets: 50 (scale=1, ~2 buckets per doubling)
-	// Use for: Long-running workflows with high cardinality
-	High1s1mon = VeryHigh1s1mon.subsetTo(1)
 )
 
 // makeSubsettableHistogram creates an exponential histogram with the specified parameters.

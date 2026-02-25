@@ -60,18 +60,6 @@ func TestHistogramBuckets(t *testing.T) {
 			wantMin:   56,
 			wantMax:   60,
 		},
-		{
-			name:      "VeryHigh1s1mon",
-			histogram: VeryHigh1s1mon,
-			wantMin:   100,
-			wantMax:   105,
-		},
-		{
-			name:      "High1s1mon",
-			histogram: High1s1mon,
-			wantMin:   50,
-			wantMax:   55,
-		},
 	}
 
 	for _, tt := range tests {
