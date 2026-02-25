@@ -19,7 +19,9 @@ When you upgrade to v1.X.0:
 - **Histogram metrics**: Automatically added (e.g., `cadence-decision-poll-latency_ns`)
 - **No code changes needed**: Dual-emission happens automatically
 
-### Affected Metrics (14 total):
+### Affected Metrics
+
+#### Worker-Level Metrics (13 total):
 1. `DecisionPollLatency` → also emits `DecisionPollLatency_ns`
 2. `DecisionScheduledToStartLatency` → also emits `DecisionScheduledToStartLatency_ns`
 3. `DecisionExecutionLatency` → also emits `DecisionExecutionLatency_ns`
@@ -33,12 +35,25 @@ When you upgrade to v1.X.0:
 11. `LocalActivityExecutionLatency` → also emits `LocalActivityExecutionLatency_ns`
 12. `WorkflowEndToEndLatency` → also emits `WorkflowEndToEndLatency_ns`
 13. `ReplayLatency` → also emits `ReplayLatency_ns`
-14. `CadenceLatency` → also emits `CadenceLatency_ns`
+
+#### Service Call Metrics (49 operations):
+All Cadence service calls emit `CadenceLatency` under their operation scope:
+- `cadence-StartWorkflowExecution.cadence-latency` → also emits `cadence-latency_ns`
+- `cadence-SignalWithStartWorkflowExecution.cadence-latency` → also emits `cadence-latency_ns`
+- `cadence-SignalWorkflowExecution.cadence-latency` → also emits `cadence-latency_ns`
+- `cadence-TerminateWorkflowExecution.cadence-latency` → also emits `cadence-latency_ns`
+- `cadence-DescribeWorkflowExecution.cadence-latency` → also emits `cadence-latency_ns`
+- `cadence-QueryWorkflow.cadence-latency` → also emits `cadence-latency_ns`
+- ... and 43 other service operations
+
+**Total: 62 histogram metrics** (13 worker metrics + 49 service call metrics)
 
 ## Impact
 
 ### Cardinality
-- **+14 histogram metrics** (temporary increase during migration)
+- **+62 histogram metrics** (temporary increase during migration)
+  - 13 worker-level latency metrics
+  - 49 service call latency metrics (one per Cadence service operation)
 - Histograms have `_ns` suffix to distinguish from timers
 - Eventually timers will be removed, returning to original cardinality
 
