@@ -418,25 +418,6 @@ type (
 		// Deprecated: All bugports are always deprecated and may be removed at any time
 		DisableStrictNonDeterminismCheck bool
 	}
-
-	// FeatureFlags contains feature flags for controlling worker behavior
-	FeatureFlags struct {
-		// Optional: Controls how latency metrics are emitted during timer→histogram migration.
-		// Default: metrics.EmitBoth (dual-emit for migration)
-		//
-		// Available modes:
-		//   - metrics.EmitTimersOnly: Only timer metrics (legacy behavior)
-		//   - metrics.EmitBoth: Both timer and histogram metrics (migration/default)
-		//   - metrics.EmitHistogramsOnly: Only histogram metrics (post-migration)
-		//
-		// Example:
-		//   workerOptions := WorkerOptions{
-		//       FeatureFlags: FeatureFlags{
-		//           MetricEmitMode: metrics.EmitHistogramsOnly,
-		//       },
-		//   }
-		MetricEmitMode metrics.MetricEmitMode
-	}
 )
 
 // NonDeterministicWorkflowPolicy is an enum for configuring how client's decision task handler deals with

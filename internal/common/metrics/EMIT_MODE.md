@@ -20,7 +20,6 @@ Configure the emission mode when creating a worker in code:
 
 ```go
 import (
-	"go.uber.org/cadence/client"
 	"go.uber.org/cadence/worker"
 	"go.uber.org/cadence/internal"
 	"go.uber.org/cadence/internal/common/metrics"

@@ -84,6 +84,9 @@ type (
 		// Deprecated: use AutoScalerOptions instead
 		PollerAutoScalerEnabled   bool
 		EphemeralTaskListsEnabled bool
+		// MetricEmitMode controls how latency metrics are emitted (timers, histograms, or both).
+		// Default: metrics.EmitBoth (dual-emit for safe migration)
+		MetricEmitMode metrics.MetricEmitMode
 	}
 )
 
