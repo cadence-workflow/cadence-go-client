@@ -248,10 +248,10 @@ func TestMakeSubsettableHistogramPanics(t *testing.T) {
 	})
 }
 
-func TestRecordTimer(t *testing.T) {
+func TestRecordHistogram(t *testing.T) {
 	scope := tally.NewTestScope("test", nil)
 
-	RecordTimer(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
+	RecordHistogram(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
 
 	snapshot := scope.Snapshot()
 	histograms := snapshot.Histograms()
@@ -265,10 +265,10 @@ func TestRecordTimer(t *testing.T) {
 	assert.NotNil(t, hist.Durations())
 }
 
-func TestStartTimer(t *testing.T) {
+func TestStartHistogram(t *testing.T) {
 	scope := tally.NewTestScope("test", nil)
 
-	sw := StartTimer(scope, "test-metric", Default1ms100s)
+	sw := StartHistogram(scope, "test-metric", Default1ms100s)
 	time.Sleep(10 * time.Millisecond)
 	sw.Stop()
 

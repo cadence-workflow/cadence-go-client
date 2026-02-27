@@ -83,10 +83,10 @@ Currently, the client automatically dual-emits. In a future version when you wan
 
 ```go
 // Simple recording
-metrics.RecordTimer(scope, metrics.DecisionPollLatency, latency, metrics.Default1ms100s)
+metrics.RecordHistogram(scope, metrics.DecisionPollLatency, latency, metrics.Default1ms100s)
 
 // Stopwatch pattern
-sw := metrics.StartTimer(scope, metrics.ActivityExecutionLatency, metrics.Default1ms100s)
+sw := metrics.StartHistogram(scope, metrics.ActivityExecutionLatency, metrics.Default1ms100s)
 // ... do work ...
 sw.Stop()
 ```
@@ -126,7 +126,7 @@ For high-cardinality metrics, use lower-resolution histograms:
 ```go
 // High cardinality - use Low bucket
 activityScope := scope.Tagged(map[string]string{"activity_type": activityType})
-metrics.RecordTimer(activityScope, metrics.ActivityExecutionLatency, latency, metrics.Low1ms100s)
+metrics.RecordHistogram(activityScope, metrics.ActivityExecutionLatency, latency, metrics.Low1ms100s)
 ```
 
 Options for very high cardinality:

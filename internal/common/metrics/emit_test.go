@@ -28,29 +28,96 @@ import (
 	"github.com/uber-go/tally"
 )
 
-func TestEmitLatency_DualEmit(t *testing.T) {
-	scope := tally.NewTestScope("test", nil)
+func TestEmitLatency_DefaultMode(t *testing.T) {
+	// Reset to default (should be EmitBoth)
+	SetEmitMode(EmitBoth)
 
+	scope := tally.NewTestScope("test", nil)
 	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
 
 	snapshot := scope.Snapshot()
 	timers := snapshot.Timers()
 	histograms := snapshot.Histograms()
 
-	// Should have timer
-	timer, ok := timers["test.test-metric+"]
-	assert.True(t, ok, "timer should exist")
-	assert.NotNil(t, timer)
+	// Should have both timer and histogram in default mode
+	timer, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
 
-	// Should have histogram
-	hist, ok := histograms["test.test-metric_ns+"]
-	assert.True(t, ok, "histogram should exist")
+	assert.True(t, timerExists, "timer should exist in EmitBoth (default) mode")
+	assert.NotNil(t, timer)
+	assert.True(t, histExists, "histogram should exist in EmitBoth (default) mode")
 	assert.NotNil(t, hist)
 }
 
-func TestStartLatency_DualEmit(t *testing.T) {
-	scope := tally.NewTestScope("test", nil)
+func TestEmitLatency_DualMode(t *testing.T) {
+	// Set to dual-emit mode (this is also the default)
+	SetEmitMode(EmitBoth)
+	defer SetEmitMode(EmitBoth) // Reset after test
 
+	scope := tally.NewTestScope("test", nil)
+	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
+
+	snapshot := scope.Snapshot()
+	timers := snapshot.Timers()
+	histograms := snapshot.Histograms()
+
+	// Should have both timer and histogram
+	timer, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
+
+	assert.True(t, timerExists, "timer should exist in EmitBoth mode")
+	assert.NotNil(t, timer)
+	assert.True(t, histExists, "histogram should exist in EmitBoth mode")
+	assert.NotNil(t, hist)
+}
+
+func TestEmitLatency_HistogramOnlyMode(t *testing.T) {
+	// Set to histogram-only mode
+	SetEmitMode(EmitHistogramsOnly)
+	defer SetEmitMode(EmitBoth) // Reset after test
+
+	scope := tally.NewTestScope("test", nil)
+	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
+
+	snapshot := scope.Snapshot()
+	timers := snapshot.Timers()
+	histograms := snapshot.Histograms()
+
+	// Should have histogram, not timer
+	_, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
+
+	assert.False(t, timerExists, "timer should not exist in EmitHistogramsOnly mode")
+	assert.True(t, histExists, "histogram should exist in EmitHistogramsOnly mode")
+	assert.NotNil(t, hist)
+}
+
+func TestEmitLatency_TimersOnlyMode(t *testing.T) {
+	// Set to timers-only mode (legacy behavior)
+	SetEmitMode(EmitTimersOnly)
+	defer SetEmitMode(EmitBoth) // Reset after test
+
+	scope := tally.NewTestScope("test", nil)
+	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
+
+	snapshot := scope.Snapshot()
+	timers := snapshot.Timers()
+	histograms := snapshot.Histograms()
+
+	// Should have timer, not histogram
+	timer, timerExists := timers["test.test-metric+"]
+	_, histExists := histograms["test.test-metric_ns+"]
+
+	assert.True(t, timerExists, "timer should exist in EmitTimersOnly mode")
+	assert.NotNil(t, timer)
+	assert.False(t, histExists, "histogram should not exist in EmitTimersOnly mode")
+}
+
+func TestStartLatency_DefaultMode(t *testing.T) {
+	// Reset to default (should be EmitBoth)
+	SetEmitMode(EmitBoth)
+
+	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
 	time.Sleep(10 * time.Millisecond)
 	sw.Stop()
@@ -59,20 +126,62 @@ func TestStartLatency_DualEmit(t *testing.T) {
 	timers := snapshot.Timers()
 	histograms := snapshot.Histograms()
 
-	// Should have timer
-	timer, ok := timers["test.test-metric+"]
-	assert.True(t, ok, "timer should exist")
-	assert.NotNil(t, timer)
+	timer, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
 
-	// Should have histogram
-	hist, ok := histograms["test.test-metric_ns+"]
-	assert.True(t, ok, "histogram should exist")
+	assert.True(t, timerExists, "timer should exist in EmitBoth (default) mode")
+	assert.NotNil(t, timer)
+	assert.True(t, histExists, "histogram should exist in EmitBoth (default) mode")
+	assert.NotNil(t, hist)
+}
+
+func TestStartLatency_DualMode(t *testing.T) {
+	SetEmitMode(EmitBoth)
+	defer SetEmitMode(EmitBoth)
+
+	scope := tally.NewTestScope("test", nil)
+	sw := StartLatency(scope, "test-metric", Default1ms100s)
+	time.Sleep(10 * time.Millisecond)
+	sw.Stop()
+
+	snapshot := scope.Snapshot()
+	timers := snapshot.Timers()
+	histograms := snapshot.Histograms()
+
+	timer, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
+
+	assert.True(t, timerExists, "timer should exist in EmitBoth mode")
+	assert.NotNil(t, timer)
+	assert.True(t, histExists, "histogram should exist in EmitBoth mode")
+	assert.NotNil(t, hist)
+}
+
+func TestStartLatency_HistogramOnlyMode(t *testing.T) {
+	SetEmitMode(EmitHistogramsOnly)
+	defer SetEmitMode(EmitBoth)
+
+	scope := tally.NewTestScope("test", nil)
+	sw := StartLatency(scope, "test-metric", Default1ms100s)
+	time.Sleep(10 * time.Millisecond)
+	sw.Stop()
+
+	snapshot := scope.Snapshot()
+	timers := snapshot.Timers()
+	histograms := snapshot.Histograms()
+
+	_, timerExists := timers["test.test-metric+"]
+	hist, histExists := histograms["test.test-metric_ns+"]
+
+	assert.False(t, timerExists, "timer should not exist in EmitHistogramsOnly mode")
+	assert.True(t, histExists, "histogram should exist in EmitHistogramsOnly mode")
 	assert.NotNil(t, hist)
 }
 
 func TestDualStopwatch_MultipleStops(t *testing.T) {
-	scope := tally.NewTestScope("test", nil)
+	SetEmitMode(EmitBoth)
 
+	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
 	time.Sleep(10 * time.Millisecond)
 	sw.Stop()
@@ -89,36 +198,27 @@ func TestEmitLatency_DifferentHistograms(t *testing.T) {
 		name      string
 		histogram SubsettableHistogram
 	}{
-		{
-			name:      "Default1ms100s",
-			histogram: Default1ms100s,
-		},
-		{
-			name:      "Low1ms100s",
-			histogram: Low1ms100s,
-		},
-		{
-			name:      "High1ms24h",
-			histogram: High1ms24h,
-		},
-		{
-			name:      "Mid1ms24h",
-			histogram: Mid1ms24h,
-		},
+		{"Default1ms100s", Default1ms100s},
+		{"Low1ms100s", Low1ms100s},
+		{"High1ms24h", High1ms24h},
+		{"Mid1ms24h", Mid1ms24h},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scope := tally.NewTestScope("test", nil)
+			SetEmitMode(EmitBoth)
+			defer SetEmitMode(EmitBoth)
 
+			scope := tally.NewTestScope("test", nil)
 			EmitLatency(scope, "test-metric", 50*time.Millisecond, tt.histogram)
 
 			snapshot := scope.Snapshot()
-			histograms := snapshot.Histograms()
+			timer, timerOk := snapshot.Timers()["test.test-metric+"]
+			hist, histOk := snapshot.Histograms()["test.test-metric_ns+"]
 
-			// Should have histogram with correct buckets
-			hist, ok := histograms["test.test-metric_ns+"]
-			assert.True(t, ok, "histogram should exist")
+			assert.True(t, timerOk, "timer should exist")
+			assert.NotNil(t, timer)
+			assert.True(t, histOk, "histogram should exist")
 			assert.NotNil(t, hist)
 		})
 	}

@@ -188,25 +188,25 @@ func (s SubsettableHistogram) Buckets() tally.DurationBuckets {
 	return s.tallyBuckets
 }
 
-// RecordTimer is a convenience helper to record a duration to a histogram.
+// RecordHistogram is a convenience helper to record a duration to a histogram.
 // This makes it easier to migrate from Timer to Histogram.
 //
 // Example:
 //
-//	RecordTimer(scope, "my-operation-latency", duration, Default1ms100s)
-func RecordTimer(scope tally.Scope, name string, duration time.Duration, buckets SubsettableHistogram) {
+//	RecordHistogram(scope, "my-operation-latency", duration, Default1ms100s)
+func RecordHistogram(scope tally.Scope, name string, duration time.Duration, buckets SubsettableHistogram) {
 	scope.Histogram(name+"_ns", buckets.Buckets()).RecordDuration(duration)
 }
 
-// StartTimer returns a stopwatch for timing operations with a histogram.
+// StartHistogram returns a stopwatch for timing operations with a histogram.
 // Call .Stop() on the returned stopwatch to record the duration.
 //
 // Example:
 //
-//	sw := StartTimer(scope, "my-operation-latency", Default1ms100s)
+//	sw := StartHistogram(scope, "my-operation-latency", Default1ms100s)
 //	// ... do work ...
 //	sw.Stop()
-func StartTimer(scope tally.Scope, name string, buckets SubsettableHistogram) tally.Stopwatch {
+func StartHistogram(scope tally.Scope, name string, buckets SubsettableHistogram) tally.Stopwatch {
 	return scope.Histogram(name+"_ns", buckets.Buckets()).Start()
 }
 

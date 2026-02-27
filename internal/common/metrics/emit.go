@@ -26,9 +26,46 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// EmitLatency records latency to both timer and histogram.
-// This helper function supports the dual-emit pattern during migration from timers to histograms.
-// Both timer and histogram metrics are ALWAYS emitted to support gradual dashboard/alert migration.
+// MetricEmitMode controls which metrics are emitted for latency measurements.
+type MetricEmitMode int
+
+const (
+	// EmitTimersOnly emits only timer metrics (legacy OSS behavior)
+	EmitTimersOnly MetricEmitMode = iota
+	// EmitBoth emits both timer and histogram metrics (default for migration)
+	EmitBoth
+	// EmitHistogramsOnly emits only histogram metrics (post-migration)
+	EmitHistogramsOnly
+)
+
+// currentEmitMode is the active emission mode. Default is EmitBoth for migration.
+// This should be set during application initialization (e.g., in init() or before starting workers).
+// It should NOT be changed dynamically after workers have started.
+var currentEmitMode = EmitBoth
+
+// SetEmitMode configures the metric emission strategy.
+// This should be called during application initialization, before any metrics are emitted.
+// Alternatively, use WorkerOptions.FeatureFlags.MetricEmitMode.
+//
+// Example usage:
+//
+//	import "go.uber.org/cadence/internal/common/metrics"
+//
+//	func init() {
+//	    // To use only timers (legacy behavior)
+//	    metrics.SetEmitMode(metrics.EmitTimersOnly)
+//	}
+func SetEmitMode(mode MetricEmitMode) {
+	currentEmitMode = mode
+}
+
+// getCurrentEmitMode returns the current emission mode
+func getCurrentEmitMode() MetricEmitMode {
+	return currentEmitMode
+}
+
+// EmitLatency records latency based on the current emit mode setting.
+// This helper function supports flexible metric emission during timer→histogram migration.
 //
 // Parameters:
 //   - scope: The tally scope to emit metrics to
@@ -40,24 +77,27 @@ import (
 //
 //	EmitLatency(scope, "decision-poll-latency", duration, Default1ms100s)
 func EmitLatency(scope tally.Scope, name string, latency time.Duration, buckets SubsettableHistogram) {
-	// Emit timer (existing behavior, will be deprecated in future release)
-	scope.Timer(name).Record(latency)
-
-	// Emit histogram (new, will replace timers in future release)
-	RecordTimer(scope, name, latency, buckets)
+	switch getCurrentEmitMode() {
+	case EmitTimersOnly:
+		scope.Timer(name).Record(latency)
+	case EmitBoth:
+		scope.Timer(name).Record(latency)
+		RecordHistogram(scope, name, latency, buckets)
+	case EmitHistogramsOnly:
+		RecordHistogram(scope, name, latency, buckets)
+	}
 }
 
-// DualStopwatch is a stopwatch that emits to both timer and histogram.
-// This supports the dual-emit pattern during migration from timers to histograms.
-// Both timer and histogram metrics are ALWAYS recorded to support gradual dashboard/alert migration.
+// DualStopwatch is a stopwatch that emits metrics based on the current emit mode setting.
+// This supports flexible metric emission during timer→histogram migration.
 type DualStopwatch struct {
 	timerSW     tally.Stopwatch
 	histogramSW tally.Stopwatch
+	mode        MetricEmitMode
 }
 
-// StartLatency creates a stopwatch that emits to both timer and histogram.
+// StartLatency creates a stopwatch that emits based on current emit mode setting.
 // Call .Stop() on the returned stopwatch to record the duration.
-// Both timer and histogram metrics are ALWAYS emitted.
 //
 // Parameters:
 //   - scope: The tally scope to emit metrics to
@@ -70,14 +110,31 @@ type DualStopwatch struct {
 //	// ... do work ...
 //	sw.Stop()
 func StartLatency(scope tally.Scope, name string, buckets SubsettableHistogram) *DualStopwatch {
-	return &DualStopwatch{
-		timerSW:     scope.Timer(name).Start(),
-		histogramSW: StartTimer(scope, name, buckets),
+	mode := getCurrentEmitMode()
+	sw := &DualStopwatch{mode: mode}
+
+	switch mode {
+	case EmitTimersOnly:
+		sw.timerSW = scope.Timer(name).Start()
+	case EmitBoth:
+		sw.timerSW = scope.Timer(name).Start()
+		sw.histogramSW = StartHistogram(scope, name, buckets)
+	case EmitHistogramsOnly:
+		sw.histogramSW = StartHistogram(scope, name, buckets)
 	}
+
+	return sw
 }
 
-// Stop records the elapsed time to both timer and histogram.
+// Stop records the elapsed time based on current emit mode setting.
 func (sw *DualStopwatch) Stop() {
-	sw.timerSW.Stop()
-	sw.histogramSW.Stop()
+	switch sw.mode {
+	case EmitTimersOnly:
+		sw.timerSW.Stop()
+	case EmitBoth:
+		sw.timerSW.Stop()
+		sw.histogramSW.Stop()
+	case EmitHistogramsOnly:
+		sw.histogramSW.Stop()
+	}
 }
