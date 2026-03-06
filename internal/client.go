@@ -650,11 +650,7 @@ const (
 
 func getFeatureFlags(options *ClientOptions) FeatureFlags {
 	if options != nil {
-		return FeatureFlags{
-			WorkflowExecutionAlreadyCompletedErrorEnabled: options.FeatureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled,
-			PollerAutoScalerEnabled:                       options.FeatureFlags.PollerAutoScalerEnabled,
-			EphemeralTaskListsEnabled:                     options.FeatureFlags.EphemeralTaskListsEnabled,
-		}
+		return options.FeatureFlags
 	}
 	return FeatureFlags{}
 }
