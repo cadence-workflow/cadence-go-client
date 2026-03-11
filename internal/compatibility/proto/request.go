@@ -700,6 +700,7 @@ func FailoverDomainRequest(t *shared.FailoverDomainRequest) *apiv1.FailoverDomai
 	}
 	request := &apiv1.FailoverDomainRequest{
 		DomainName: t.GetDomainName(),
+		Reason:     t.GetReason(),
 	}
 	if t.DomainActiveClusterName != nil {
 		request.DomainActiveClusterName = *t.DomainActiveClusterName

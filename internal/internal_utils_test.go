@@ -179,3 +179,102 @@ func TestConstructError_TimeoutError(t *testing.T) {
 	require.Equal(t, s.TimeoutTypeHeartbeat, timeoutErr.TimeoutType())
 	require.False(t, timeoutErr.HasDetails())
 }
+
+func TestFeatureFlagsHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		flags    FeatureFlags
+		expected string
+	}{
+		{
+			name:     "all flags disabled",
+			flags:    FeatureFlags{},
+			expected: `{}`,
+		},
+		{
+			name: "WorkflowExecutionAlreadyCompletedErrorEnabled only",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true}`,
+		},
+		{
+			name: "AutoforwardingEnabled only",
+			flags: FeatureFlags{
+				AutoforwardingEnabled: true,
+			},
+			expected: `{"autoforwardingEnabled":true}`,
+		},
+		{
+			name: "multiple flags enabled",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true,"autoforwardingEnabled":true}`,
+		},
+		{
+			name: "client-side-only flags are excluded",
+			flags: FeatureFlags{
+				PollerAutoScalerEnabled:   true,
+				EphemeralTaskListsEnabled: true,
+			},
+			expected: `{}`,
+		},
+		{
+			name: "mixed flags - only server-side flags included",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+				PollerAutoScalerEnabled:                       true,
+				EphemeralTaskListsEnabled:                     true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true,"autoforwardingEnabled":true}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := featureFlagsHeader(tt.flags)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFromInternalFeatureFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input FeatureFlags
+	}{
+		{
+			name:  "empty flags",
+			input: FeatureFlags{},
+		},
+		{
+			name: "all flags set",
+			input: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+				PollerAutoScalerEnabled:                       true,
+				EphemeralTaskListsEnabled:                     true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := fromInternalFeatureFlags(tt.input)
+
+			assert.Equal(t, tt.input.WorkflowExecutionAlreadyCompletedErrorEnabled, result.WorkflowExecutionAlreadyCompletedErrorEnabled)
+			assert.Equal(t, tt.input.AutoforwardingEnabled, result.AutoforwardingEnabled)
+		})
+	}
+}

@@ -56,6 +56,7 @@ func callOptions() []interface{} {
 		gomock.Any(), // library version
 		gomock.Any(), // feature version
 		gomock.Any(), // client name
+		gomock.Any(), // caller type
 		gomock.Any(), // feature flags
 		gomock.Any(), // isolation group
 	}
