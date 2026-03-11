@@ -1321,7 +1321,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  nil,
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  true,
@@ -1362,7 +1362,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  true,
@@ -1407,7 +1407,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  false,

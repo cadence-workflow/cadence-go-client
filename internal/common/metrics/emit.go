@@ -55,7 +55,7 @@ const (
 // This should be set during application initialization (e.g., in init() or before starting workers).
 // It should NOT be changed dynamically after workers have started.
 // Access via atomic operations for thread-safety.
-var currentEmitMode int32 = int32(EmitBoth)
+var currentEmitMode = int32(EmitBoth)
 
 // SetEmitMode configures the metric emission strategy.
 // This should be called during application initialization, before any metrics are emitted.
