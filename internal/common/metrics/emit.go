@@ -18,9 +18,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+// Package metrics provides utilities for emitting latency metrics during the timer→histogram migration.
+//
+// Concurrency Model:
+//   - The global currentEmitMode variable is accessed via atomic operations (atomic.LoadInt32/StoreInt32)
+//     to ensure thread-safety when multiple workers are created concurrently.
+//   - SetEmitMode() is called during worker initialization (newAggregatedWorker) and may be called
+//     concurrently by multiple goroutines creating workers.
+//   - getCurrentEmitMode() is called on every metric emission from worker pollers and activity/decision handlers,
+//     which run concurrently across many goroutines.
+//   - Using atomics ensures proper memory ordering and prevents data races without the overhead of a mutex.
 package metrics
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/uber-go/tally"
@@ -30,8 +41,10 @@ import (
 type MetricEmitMode int
 
 const (
+	// EmitModeUnset indicates the mode has not been explicitly set (will use default)
+	EmitModeUnset MetricEmitMode = iota
 	// EmitTimersOnly emits only timer metrics (legacy OSS behavior)
-	EmitTimersOnly MetricEmitMode = iota
+	EmitTimersOnly
 	// EmitBoth emits both timer and histogram metrics (default for migration)
 	EmitBoth
 	// EmitHistogramsOnly emits only histogram metrics (post-migration)
@@ -41,11 +54,13 @@ const (
 // currentEmitMode is the active emission mode. Default is EmitBoth for migration.
 // This should be set during application initialization (e.g., in init() or before starting workers).
 // It should NOT be changed dynamically after workers have started.
-var currentEmitMode = EmitBoth
+// Access via atomic operations for thread-safety.
+var currentEmitMode int32 = int32(EmitBoth)
 
 // SetEmitMode configures the metric emission strategy.
 // This should be called during application initialization, before any metrics are emitted.
 // Alternatively, use WorkerOptions.FeatureFlags.MetricEmitMode.
+// This function is safe for concurrent use.
 //
 // Example usage:
 //
@@ -56,12 +71,19 @@ var currentEmitMode = EmitBoth
 //	    metrics.SetEmitMode(metrics.EmitTimersOnly)
 //	}
 func SetEmitMode(mode MetricEmitMode) {
-	currentEmitMode = mode
+	atomic.StoreInt32(&currentEmitMode, int32(mode))
 }
 
-// getCurrentEmitMode returns the current emission mode
+// getCurrentEmitMode returns the current emission mode.
+// This function is safe for concurrent use.
 func getCurrentEmitMode() MetricEmitMode {
-	return currentEmitMode
+	return MetricEmitMode(atomic.LoadInt32(&currentEmitMode))
+}
+
+// GetCurrentEmitMode returns the current emission mode (exported for testing).
+// This function is safe for concurrent use.
+func GetCurrentEmitMode() MetricEmitMode {
+	return MetricEmitMode(atomic.LoadInt32(&currentEmitMode))
 }
 
 // EmitLatency records latency based on the current emit mode setting.

@@ -21,6 +21,7 @@
 package metrics
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -222,4 +223,45 @@ func TestEmitLatency_DifferentHistograms(t *testing.T) {
 			assert.NotNil(t, hist)
 		})
 	}
+}
+
+func TestMetricEmitMode_ConcurrentAccess(t *testing.T) {
+	// This test verifies that SetEmitMode and GetCurrentEmitMode are thread-safe
+	// and can be called concurrently without race conditions
+
+	const numGoroutines = 100
+	const iterations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Start multiple goroutines that concurrently read and write the emit mode
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				// Cycle through different modes
+				mode := MetricEmitMode((id + j) % 3)
+				switch mode {
+				case 0:
+					SetEmitMode(EmitTimersOnly)
+				case 1:
+					SetEmitMode(EmitBoth)
+				case 2:
+					SetEmitMode(EmitHistogramsOnly)
+				}
+
+				// Read the mode (may see any valid value due to concurrent writes)
+				currentMode := GetCurrentEmitMode()
+				// Verify it's a valid mode
+				assert.True(t, currentMode >= EmitModeUnset && currentMode <= EmitHistogramsOnly,
+					"Invalid emit mode: %d", currentMode)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Clean up: restore to default
+	SetEmitMode(EmitBoth)
 }

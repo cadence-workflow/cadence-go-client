@@ -47,6 +47,7 @@ import (
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/metrics"
 )
 
 func testInternalWorkerRegister(r *registry) {
@@ -1567,4 +1568,97 @@ func TestGetTaskAutoConfigHint(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAugmentWorkerOptions_MetricEmitMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    WorkerOptions
+		expected metrics.MetricEmitMode
+	}{
+		{
+			name:     "unset defaults to EmitBoth",
+			input:    WorkerOptions{},
+			expected: metrics.EmitBoth,
+		},
+		{
+			name: "explicit EmitModeUnset defaults to EmitBoth",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitModeUnset,
+				},
+			},
+			expected: metrics.EmitBoth,
+		},
+		{
+			name: "explicit EmitTimersOnly is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitTimersOnly,
+				},
+			},
+			expected: metrics.EmitTimersOnly,
+		},
+		{
+			name: "explicit EmitBoth is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitBoth,
+				},
+			},
+			expected: metrics.EmitBoth,
+		},
+		{
+			name: "explicit EmitHistogramsOnly is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitHistogramsOnly,
+				},
+			},
+			expected: metrics.EmitHistogramsOnly,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := AugmentWorkerOptions(tt.input)
+			assert.Equal(t, tt.expected, result.FeatureFlags.MetricEmitMode)
+		})
+	}
+}
+
+func TestNewAggregatedWorker_SetsMetricEmitMode(t *testing.T) {
+	// This test verifies that creating a worker actually sets the global metric emit mode
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockService := workflowservicetest.NewMockClient(mockCtrl)
+
+	// Reset to known state
+	metrics.SetEmitMode(metrics.EmitBoth)
+	initialMode := metrics.GetCurrentEmitMode()
+	assert.Equal(t, metrics.EmitBoth, initialMode)
+
+	// Create worker with EmitTimersOnly
+	_, err := newAggregatedWorker(
+		mockService,
+		"test-domain",
+		"test-tasklist",
+		WorkerOptions{
+			FeatureFlags: FeatureFlags{
+				MetricEmitMode: metrics.EmitTimersOnly,
+			},
+		},
+	)
+
+	// Worker creation may fail due to missing setup, but we only care that SetEmitMode was called
+	// The important part is that the mode was set, not whether worker creation succeeded
+	_ = err // ignore error
+
+	// Verify the mode was set
+	currentMode := metrics.GetCurrentEmitMode()
+	assert.Equal(t, metrics.EmitTimersOnly, currentMode, "newAggregatedWorker should set the global emit mode")
+
+	// Clean up: restore to default
+	metrics.SetEmitMode(metrics.EmitBoth)
 }

@@ -85,7 +85,7 @@ func init() {
 }
 ```
 
-**Note**: WorkerOptions.FeatureFlags takes precedence if both are set.
+**Note**: WorkerOptions.FeatureFlags.MetricEmitMode (Method 1) takes precedence and will override the global setting set by SetEmitMode(). Each worker initializes its emit mode from its own FeatureFlags.MetricEmitMode configuration.
 
 ## Use Cases
 

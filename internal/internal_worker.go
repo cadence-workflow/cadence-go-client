@@ -1028,6 +1028,9 @@ func newAggregatedWorker(
 		return nil, fmt.Errorf("worker options validation error: %w", err)
 	}
 
+	// Wire up MetricEmitMode feature flag to control timer/histogram emission
+	metrics.SetEmitMode(wOptions.FeatureFlags.MetricEmitMode)
+
 	ctx := wOptions.BackgroundActivityContext
 	if ctx == nil {
 		ctx = context.Background()
@@ -1302,6 +1305,11 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 		options.DisableActivityWorker = true
 		options.DisableWorkflowWorker = true
 		options.EnableSessionWorker = false
+	}
+
+	// Set default MetricEmitMode to EmitBoth if not explicitly configured
+	if options.FeatureFlags.MetricEmitMode == metrics.EmitModeUnset {
+		options.FeatureFlags.MetricEmitMode = metrics.EmitBoth
 	}
 
 	return options
