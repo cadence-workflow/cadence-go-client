@@ -39,26 +39,6 @@ All latency metrics now dual-emit:
 3. **Cardinality control** - Can reduce resolution with `subsetTo()`
 4. **Query-time aggregation** - Downsample during queries
 
-## Migrating Dashboards
-
-### Prometheus/Grafana
-```promql
-# Before (Timer)
-histogram_quantile(0.99, rate(cadence_decision_poll_latency_bucket[5m]))
-
-# After (Histogram) - just add _ns suffix
-histogram_quantile(0.99, rate(cadence_decision_poll_latency_ns_bucket[5m]))
-```
-
-### M3/Statsd
-```
-# Before
-cadence.decision-poll-latency.p99
-
-# After - just add _ns suffix
-cadence.decision-poll-latency_ns.p99
-```
-
 ## Histogram Buckets
 
 ### Default1ms100s (80 buckets)
@@ -118,38 +98,6 @@ sw.Stop()
 ### Phase 3: Timers Removed (Future v1.3.*)
 - Timer emission removed in future major version
 - Plenty of advance notice provided
-
-## Cardinality Considerations
-
-For high-cardinality metrics, use lower-resolution histograms:
-
-```go
-// High cardinality - use Low bucket
-activityScope := scope.Tagged(map[string]string{"activity_type": activityType})
-metrics.RecordHistogram(activityScope, metrics.ActivityExecutionLatency, latency, metrics.Low1ms100s)
-```
-
-Options for very high cardinality:
-1. Use Low variants (40-56 buckets)
-2. Sample the metric
-3. Remove some tags
-4. Create custom histogram with fewer buckets
-
-## Advanced: Custom Histograms
-
-If predefined histograms don't fit your needs:
-
-```go
-// For very fast operations (microseconds to milliseconds)
-customFast := makeSubsettableHistogram(
-    2,                    // scale (0-3, higher = more buckets)
-    100*time.Microsecond, // start
-    10*time.Millisecond,  // end
-    40,                   // length
-)
-```
-
-**Note**: Only create custom histograms if truly necessary. Consistency is valuable.
 
 ## Testing
 
