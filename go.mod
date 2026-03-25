@@ -18,7 +18,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/stretchr/testify v1.9.0
 	github.com/uber-go/tally v3.5.8+incompatible
-	github.com/uber/cadence-idl v0.0.0-20260219170204-8b3ad9e7091e
+	github.com/uber/cadence-idl v0.0.0-20260323205247-58602b8d2f8d
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/uber/tchannel-go v1.34.4
 	go.uber.org/atomic v1.11.0
@@ -114,5 +114,3 @@ retract (
 	v0.3.0 // Published accidentally
 	v0.2.0 // Published accidentally
 )
-
-replace github.com/uber/cadence-idl => github.com/c-warren/cadence-idl v0.0.0-20260323215515-a0ee866806ae
