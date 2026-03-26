@@ -1,6 +1,6 @@
 module go.uber.org/cadence/internal/tools
 
-go 1.21
+go 1.23.0
 
 toolchain go1.24.5
 
@@ -61,5 +61,3 @@ require (
 	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/uber/cadence-idl => github.com/c-warren/cadence-idl v0.0.0-20260323215515-a0ee866806ae
