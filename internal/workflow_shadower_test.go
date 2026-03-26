@@ -37,6 +37,7 @@ import (
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+	"go.uber.org/yarpc"
 )
 
 type workflowShadowerSuite struct {
@@ -284,7 +285,7 @@ func (s *workflowShadowerSuite) TestShadowWorkerExitCondition_ExpirationTime() {
 		Executions:    newTestWorkflowExecutions(totalWorkflows),
 		NextPageToken: nil,
 	}, nil).Times(1)
-	s.mockService.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(...interface{}) (*shared.GetWorkflowExecutionHistoryResponse, error) {
+	s.mockService.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) (*shared.GetWorkflowExecutionHistoryResponse, error) {
 		s.testShadower.clock.(*clock.Mock).Add(timePerWorkflow)
 		return &shared.GetWorkflowExecutionHistoryResponse{
 			History: s.testWorkflowHistory,
