@@ -29,9 +29,9 @@ type (
 	activityTrackerNoopImpl struct{}
 )
 
-func (lc *pollerTrackerNoopImpl) Start() Stopper { return &stopperNoopImpl{} }
-func (lc *pollerTrackerNoopImpl) Stats() int32   { return 0 }
-func (r *stopperNoopImpl) Stop()                 {}
+func (lc *pollerTrackerNoopImpl) Start(workerType string) Stopper { return &stopperNoopImpl{} }
+func (lc *pollerTrackerNoopImpl) Stats() Pollers                  { return nil }
+func (r *stopperNoopImpl) Stop()                                  {}
 
 // NewNoopPollerTracker creates a new PollerTracker instance
 func NewNoopPollerTracker() PollerTracker { return &pollerTrackerNoopImpl{} }
