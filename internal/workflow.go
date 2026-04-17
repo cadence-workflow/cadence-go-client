@@ -1845,6 +1845,30 @@ func GetActivityTaskList(ctx Context) *string {
 	return &tl
 }
 
+// GetActivityOptions retrieves ActivityOptions from the context.
+// Returns nil if no activity options have been set on the context.
+func GetActivityOptions(ctx Context) *ActivityOptions {
+	ao := getActivityOptions(ctx)
+	if ao == nil {
+		return nil
+	}
+	opts := ActivityOptions{
+		TaskList:               ao.TaskListName,
+		ScheduleToCloseTimeout: time.Duration(ao.ScheduleToCloseTimeoutSeconds) * time.Second,
+		ScheduleToStartTimeout: time.Duration(ao.ScheduleToStartTimeoutSeconds) * time.Second,
+		StartToCloseTimeout:    time.Duration(ao.StartToCloseTimeoutSeconds) * time.Second,
+		HeartbeatTimeout:       time.Duration(ao.HeartbeatTimeoutSeconds) * time.Second,
+		WaitForCancellation:    ao.WaitForCancellation,
+	}
+	if ao.ActivityID != nil {
+		opts.ActivityID = *ao.ActivityID
+	}
+	if ao.RetryPolicy != nil {
+		opts.RetryPolicy = convertFromThriftRetryPolicy(ao.RetryPolicy)
+	}
+	return &opts
+}
+
 // WithScheduleToCloseTimeout adds a timeout to the copy of the context.
 // The current timeout resolution implementation is in seconds and uses math.Ceil(d.Seconds()) as the duration. But is
 // subjected to change in the future.
