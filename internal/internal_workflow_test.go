@@ -974,6 +974,120 @@ func (s *WorkflowUnitTest) Test_ActivityOptionsWorkflow() {
 	s.Equal("id1 id2", result)
 }
 
+func getActivityOptionsWorkflow(ctx Context) (result string, err error) {
+	ao := ActivityOptions{
+		TaskList:               "test-task-list",
+		ActivityID:             "test-activity-id",
+		ScheduleToCloseTimeout: 10 * time.Second,
+		ScheduleToStartTimeout: 5 * time.Second,
+		StartToCloseTimeout:    7 * time.Second,
+		HeartbeatTimeout:       3 * time.Second,
+		WaitForCancellation:    true,
+		RetryPolicy: &RetryPolicy{
+			InitialInterval:          time.Second,
+			BackoffCoefficient:       2.0,
+			MaximumInterval:          10 * time.Second,
+			ExpirationInterval:       60 * time.Second,
+			MaximumAttempts:          5,
+			NonRetriableErrorReasons: []string{"bad-error"},
+		},
+	}
+	ctx = WithActivityOptions(ctx, ao)
+	got := GetActivityOptions(ctx)
+	if got == nil {
+		return "", fmt.Errorf("GetActivityOptions returned nil")
+	}
+	if got.TaskList != ao.TaskList {
+		return "", fmt.Errorf("TaskList: got %q, want %q", got.TaskList, ao.TaskList)
+	}
+	if got.ActivityID != ao.ActivityID {
+		return "", fmt.Errorf("ActivityID: got %q, want %q", got.ActivityID, ao.ActivityID)
+	}
+	if got.ScheduleToCloseTimeout != ao.ScheduleToCloseTimeout {
+		return "", fmt.Errorf("ScheduleToCloseTimeout: got %v, want %v", got.ScheduleToCloseTimeout, ao.ScheduleToCloseTimeout)
+	}
+	if got.ScheduleToStartTimeout != ao.ScheduleToStartTimeout {
+		return "", fmt.Errorf("ScheduleToStartTimeout: got %v, want %v", got.ScheduleToStartTimeout, ao.ScheduleToStartTimeout)
+	}
+	if got.StartToCloseTimeout != ao.StartToCloseTimeout {
+		return "", fmt.Errorf("StartToCloseTimeout: got %v, want %v", got.StartToCloseTimeout, ao.StartToCloseTimeout)
+	}
+	if got.HeartbeatTimeout != ao.HeartbeatTimeout {
+		return "", fmt.Errorf("HeartbeatTimeout: got %v, want %v", got.HeartbeatTimeout, ao.HeartbeatTimeout)
+	}
+	if got.WaitForCancellation != ao.WaitForCancellation {
+		return "", fmt.Errorf("WaitForCancellation: got %v, want %v", got.WaitForCancellation, ao.WaitForCancellation)
+	}
+	if got.RetryPolicy == nil {
+		return "", fmt.Errorf("RetryPolicy is nil")
+	}
+	if got.RetryPolicy.InitialInterval != ao.RetryPolicy.InitialInterval {
+		return "", fmt.Errorf("RetryPolicy.InitialInterval: got %v, want %v", got.RetryPolicy.InitialInterval, ao.RetryPolicy.InitialInterval)
+	}
+	if got.RetryPolicy.BackoffCoefficient != ao.RetryPolicy.BackoffCoefficient {
+		return "", fmt.Errorf("RetryPolicy.BackoffCoefficient: got %v, want %v", got.RetryPolicy.BackoffCoefficient, ao.RetryPolicy.BackoffCoefficient)
+	}
+	if got.RetryPolicy.MaximumInterval != ao.RetryPolicy.MaximumInterval {
+		return "", fmt.Errorf("RetryPolicy.MaximumInterval: got %v, want %v", got.RetryPolicy.MaximumInterval, ao.RetryPolicy.MaximumInterval)
+	}
+	if got.RetryPolicy.ExpirationInterval != ao.RetryPolicy.ExpirationInterval {
+		return "", fmt.Errorf("RetryPolicy.ExpirationInterval: got %v, want %v", got.RetryPolicy.ExpirationInterval, ao.RetryPolicy.ExpirationInterval)
+	}
+	if got.RetryPolicy.MaximumAttempts != ao.RetryPolicy.MaximumAttempts {
+		return "", fmt.Errorf("RetryPolicy.MaximumAttempts: got %v, want %v", got.RetryPolicy.MaximumAttempts, ao.RetryPolicy.MaximumAttempts)
+	}
+	if len(got.RetryPolicy.NonRetriableErrorReasons) != 1 || got.RetryPolicy.NonRetriableErrorReasons[0] != "bad-error" {
+		return "", fmt.Errorf("RetryPolicy.NonRetriableErrorReasons: got %v, want [bad-error]", got.RetryPolicy.NonRetriableErrorReasons)
+	}
+	return "ok", nil
+}
+
+func (s *WorkflowUnitTest) Test_GetActivityOptions() {
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(getActivityOptionsWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	var result string
+	env.GetWorkflowResult(&result)
+	s.Equal("ok", result)
+}
+
+func getActivityOptionsNilWorkflow(ctx Context) (result string, err error) {
+	// The workflow framework initializes activity options on the root context
+	// (including TaskList from the workflow's task list), so GetActivityOptions
+	// always returns non-nil within a workflow.
+	got := GetActivityOptions(ctx)
+	if got == nil {
+		return "", fmt.Errorf("GetActivityOptions returned nil, expected non-nil with defaults")
+	}
+	if got.ActivityID != "" {
+		return "", fmt.Errorf("ActivityID: got %q, want empty", got.ActivityID)
+	}
+	if got.RetryPolicy != nil {
+		return "", fmt.Errorf("RetryPolicy: got %v, want nil", got.RetryPolicy)
+	}
+	return "defaults", nil
+}
+
+func (s *WorkflowUnitTest) Test_GetActivityOptionsNil() {
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(getActivityOptionsNilWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	var result string
+	env.GetWorkflowResult(&result)
+	s.Equal("defaults", result)
+}
+
+func (s *WorkflowUnitTest) Test_GetActivityOptionsNoContext() {
+	// Background() has no activity options set, so GetActivityOptions returns nil
+	s.Nil(GetActivityOptions(Background()))
+}
+
+func (s *WorkflowUnitTest) Test_ConvertFromThriftRetryPolicyNil() {
+	s.Nil(convertFromThriftRetryPolicy(nil))
+}
+
 const (
 	memoTestKey = "testKey"
 	memoTestVal = "testVal"

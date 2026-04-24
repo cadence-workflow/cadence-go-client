@@ -68,6 +68,12 @@ func GetActivityTaskList(ctx Context) string {
 	return GetInfo(ctx).TaskListName
 }
 
+// GetActivityOptions returns the current ActivityOptions from the context.
+// Returns nil if no activity options have been set on the context.
+func GetActivityOptions(ctx Context) *ActivityOptions {
+	return internal.GetActivityOptions(ctx)
+}
+
 // WithScheduleToCloseTimeout makes a copy of the current context and update
 // the ScheduleToCloseTimeout field in its activity options. An empty activity
 // options will be created if it does not exist in the original context.
