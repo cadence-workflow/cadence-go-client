@@ -118,9 +118,14 @@ func TaskList(t *apiv1.TaskList) *shared.TaskList {
 	if t == nil {
 		return nil
 	}
+	var baseName *string
+	if t.BaseName != "" {
+		baseName = &t.BaseName
+	}
 	return &shared.TaskList{
-		Name: &t.Name,
-		Kind: TaskListKind(t.Kind),
+		Name:     &t.Name,
+		Kind:     TaskListKind(t.Kind),
+		BaseName: baseName,
 	}
 }
 
