@@ -101,8 +101,9 @@ func TaskList(t *shared.TaskList) *apiv1.TaskList {
 		return nil
 	}
 	return &apiv1.TaskList{
-		Name: t.GetName(),
-		Kind: TaskListKind(t.Kind),
+		Name:     t.GetName(),
+		Kind:     TaskListKind(t.Kind),
+		BaseName: t.GetBaseName(),
 	}
 }
 
