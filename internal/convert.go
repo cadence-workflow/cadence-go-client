@@ -21,8 +21,10 @@
 package internal
 
 import (
+	"fmt"
 	"time"
 
+	gogo "github.com/gogo/protobuf/types"
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
@@ -88,4 +90,45 @@ func convertQueryConsistencyLevel(level QueryConsistencyLevel) *s.QueryConsisten
 	default:
 		return nil
 	}
+}
+
+func toProtoTimestamp(t time.Time) *gogo.Timestamp {
+	if t.IsZero() {
+		return nil
+	}
+	ts, err := gogo.TimestampProto(t)
+	if err != nil {
+		// TimestampProto only errors for times outside the valid proto range (~10000 AD).
+		panic(fmt.Sprintf("schedule: timestamp out of range: %v", err))
+	}
+	return ts
+}
+
+func fromProtoTimestamp(ts *gogo.Timestamp) time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	t, err := gogo.TimestampFromProto(ts)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func toProtoDuration(d time.Duration) *gogo.Duration {
+	if d == 0 {
+		return nil
+	}
+	return gogo.DurationProto(d)
+}
+
+func fromProtoDuration(d *gogo.Duration) time.Duration {
+	if d == nil {
+		return 0
+	}
+	result, err := gogo.DurationFromProto(d)
+	if err != nil {
+		return 0
+	}
+	return result
 }

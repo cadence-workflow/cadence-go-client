@@ -21,6 +21,7 @@
 // when adding any, make sure you update the files that it checks in the makefile
 //go:generate mockery --srcpkg . --name Client --output ../mocks
 //go:generate mockery --srcpkg . --name DomainClient --output ../mocks
+//go:generate mockery --srcpkg . --name ScheduleClient --output ../mocks
 
 // Package client contains functions to create Cadence clients used to communicate to Cadence service.
 //
@@ -37,6 +38,8 @@ import (
 	"go.uber.org/cadence/encoded"
 	"go.uber.org/cadence/internal"
 	"go.uber.org/cadence/workflow"
+
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 const (
@@ -491,6 +494,81 @@ type (
 		//	- InternalServiceError
 		Failover(ctx context.Context, request *s.FailoverDomainRequest) error
 	}
+
+	// ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
+	ScheduleOverlapPolicy = internal.ScheduleOverlapPolicy
+
+	// ScheduleCatchUpPolicy controls how missed runs are handled when a schedule resumes after being paused.
+	ScheduleCatchUpPolicy = internal.ScheduleCatchUpPolicy
+
+	// ScheduleSpec defines when a schedule triggers.
+	ScheduleSpec = internal.ScheduleSpec
+
+	// ScheduleStartWorkflowAction describes the workflow to start when the schedule triggers.
+	ScheduleStartWorkflowAction = internal.ScheduleStartWorkflowAction
+
+	// ScheduleAction defines what the schedule does when it triggers.
+	ScheduleAction = internal.ScheduleAction
+
+	// SchedulePolicies controls the runtime behavior of a schedule.
+	SchedulePolicies = internal.SchedulePolicies
+
+	// SchedulePauseInfo records when and why a schedule was paused.
+	SchedulePauseInfo = internal.SchedulePauseInfo
+
+	// ScheduleState is the runtime pause/unpause state of a schedule.
+	ScheduleState = internal.ScheduleState
+
+	// BackfillInfo describes a single active or completed backfill operation.
+	BackfillInfo = internal.BackfillInfo
+
+	// ScheduleInfo contains runtime statistics for a schedule.
+	ScheduleInfo = internal.ScheduleInfo
+
+	// ScheduleListEntry is a summary of a schedule returned by ScheduleClient.List.
+	ScheduleListEntry = internal.ScheduleListEntry
+
+	// CreateScheduleRequest is the request to ScheduleClient.Create.
+	CreateScheduleRequest = internal.CreateScheduleRequest
+
+	// UpdateScheduleRequest is the request to ScheduleClient.Update.
+	UpdateScheduleRequest = internal.UpdateScheduleRequest
+
+	// BackfillRequest triggers workflow runs for a historical time range.
+	BackfillRequest = internal.BackfillRequest
+
+	// DescribeScheduleResponse is returned by ScheduleClient.Describe.
+	DescribeScheduleResponse = internal.DescribeScheduleResponse
+
+	// ListSchedulesResponse is returned by ScheduleClient.List.
+	ListSchedulesResponse = internal.ListSchedulesResponse
+
+	// ScheduleClient is the client for managing Cadence schedules within a domain.
+	ScheduleClient interface {
+		// Create creates a new schedule and returns the server-assigned schedule ID.
+		Create(ctx context.Context, request *CreateScheduleRequest) (string, error)
+
+		// Describe returns the current configuration and state of a schedule.
+		Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error)
+
+		// Update replaces the spec, action, and/or policies of an existing schedule.
+		Update(ctx context.Context, request *UpdateScheduleRequest) error
+
+		// Delete deletes a schedule.
+		Delete(ctx context.Context, scheduleID string) error
+
+		// Pause pauses a running schedule. reason is recorded in the schedule's pause info.
+		Pause(ctx context.Context, scheduleID string, reason string) error
+
+		// Unpause resumes a paused schedule. reason is recorded in the schedule's pause info.
+		Unpause(ctx context.Context, scheduleID string, reason string) error
+
+		// Backfill triggers workflow runs for a historical time range.
+		Backfill(ctx context.Context, scheduleID string, request *BackfillRequest) error
+
+		// List returns all schedules in the domain with optional pagination.
+		List(ctx context.Context, pageSize int32, nextPageToken []byte) (*ListSchedulesResponse, error)
+	}
 )
 
 const (
@@ -529,6 +607,30 @@ const (
 	QueryConsistencyLevelStrong = internal.QueryConsistencyLevelStrong
 )
 
+const (
+	// ScheduleOverlapPolicyUnspecified defers to the server default.
+	ScheduleOverlapPolicyUnspecified = internal.ScheduleOverlapPolicyUnspecified
+	// ScheduleOverlapPolicySkipNew skips the new run if the previous is still active.
+	ScheduleOverlapPolicySkipNew = internal.ScheduleOverlapPolicySkipNew
+	// ScheduleOverlapPolicyBuffer queues new runs and executes them sequentially.
+	ScheduleOverlapPolicyBuffer = internal.ScheduleOverlapPolicyBuffer
+	// ScheduleOverlapPolicyConcurrent allows multiple runs to execute simultaneously.
+	ScheduleOverlapPolicyConcurrent = internal.ScheduleOverlapPolicyConcurrent
+	// ScheduleOverlapPolicyCancelPrevious cancels the active run and starts the new one.
+	ScheduleOverlapPolicyCancelPrevious = internal.ScheduleOverlapPolicyCancelPrevious
+	// ScheduleOverlapPolicyTerminatePrevious terminates the active run and starts the new one.
+	ScheduleOverlapPolicyTerminatePrevious = internal.ScheduleOverlapPolicyTerminatePrevious
+
+	// ScheduleCatchUpPolicyUnspecified defers to the server default.
+	ScheduleCatchUpPolicyUnspecified = internal.ScheduleCatchUpPolicyUnspecified
+	// ScheduleCatchUpPolicySkip discards all missed runs.
+	ScheduleCatchUpPolicySkip = internal.ScheduleCatchUpPolicySkip
+	// ScheduleCatchUpPolicyOne executes at most one missed run on resume.
+	ScheduleCatchUpPolicyOne = internal.ScheduleCatchUpPolicyOne
+	// ScheduleCatchUpPolicyAll executes every missed run on resume.
+	ScheduleCatchUpPolicyAll = internal.ScheduleCatchUpPolicyAll
+)
+
 // NewClient creates an instance of a workflow client
 func NewClient(service workflowserviceclient.Interface, domain string, options *Options) Client {
 	return internal.NewClient(service, domain, options)
@@ -539,11 +641,18 @@ func NewDomainClient(service workflowserviceclient.Interface, options *Options) 
 	return internal.NewDomainClient(service, options)
 }
 
+// NewScheduleClient creates a ScheduleClient that manages schedules in the given domain.
+func NewScheduleClient(service apiv1.ScheduleAPIYARPCClient, domain string, options *Options) ScheduleClient {
+	return internal.NewScheduleClient(service, domain, options)
+}
+
 // make sure if new methods are added to internal.Client they are also added to public Client.
 var _ Client = internal.Client(nil)
 var _ internal.Client = Client(nil)
 var _ DomainClient = internal.DomainClient(nil)
 var _ internal.DomainClient = DomainClient(nil)
+var _ ScheduleClient = internal.ScheduleClient(nil)
+var _ internal.ScheduleClient = ScheduleClient(nil)
 
 // NewValue creates a new encoded.Value which can be used to decode binary data returned by Cadence.  For example:
 // User had Activity.RecordHeartbeat(ctx, "my-heartbeat") and then got response from calling Client.DescribeWorkflowExecution.
