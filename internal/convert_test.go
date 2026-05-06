@@ -312,3 +312,17 @@ func TestProtoDurationRoundTrip(t *testing.T) {
 		assert.Equal(t, d.Nanos, got.Nanos, "iteration %d", i)
 	}
 }
+
+func TestFromProtoTimestamp_InvalidNanos(t *testing.T) {
+	// gogo.TimestampFromProto returns an error when Nanos is out of range.
+	invalid := &gogo.Timestamp{Seconds: 0, Nanos: -1}
+	result := fromProtoTimestamp(invalid)
+	assert.Equal(t, time.Time{}, result)
+}
+
+func TestFromProtoDuration_InvalidNanos(t *testing.T) {
+	// gogo.DurationFromProto returns an error when Nanos is outside [-999999999, 999999999].
+	invalid := &gogo.Duration{Seconds: 0, Nanos: 2000000000}
+	result := fromProtoDuration(invalid)
+	assert.Equal(t, time.Duration(0), result)
+}
