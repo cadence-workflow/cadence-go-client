@@ -494,7 +494,14 @@ type (
 		//	- InternalServiceError
 		Failover(ctx context.Context, request *s.FailoverDomainRequest) error
 	}
+)
 
+// ── Schedule API ──────────────────────────────────────────────────────────────
+// Schedule is a proto-only API with no Thrift equivalent. NewScheduleClient
+// accepts apiv1.ScheduleAPIYARPCClient directly rather than the Thrift-based
+// workflowserviceclient.Interface used by NewClient and NewDomainClient.
+
+type (
 	// ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
 	ScheduleOverlapPolicy = internal.ScheduleOverlapPolicy
 
@@ -620,7 +627,9 @@ const (
 	ScheduleOverlapPolicyCancelPrevious = internal.ScheduleOverlapPolicyCancelPrevious
 	// ScheduleOverlapPolicyTerminatePrevious terminates the active run and starts the new one.
 	ScheduleOverlapPolicyTerminatePrevious = internal.ScheduleOverlapPolicyTerminatePrevious
+)
 
+const (
 	// ScheduleCatchUpPolicyUnspecified defers to the server default.
 	ScheduleCatchUpPolicyUnspecified = internal.ScheduleCatchUpPolicyUnspecified
 	// ScheduleCatchUpPolicySkip discards all missed runs.
@@ -642,11 +651,14 @@ func NewDomainClient(service workflowserviceclient.Interface, options *Options) 
 }
 
 // NewScheduleClient creates a ScheduleClient that manages schedules in the given domain.
+// Unlike NewClient and NewDomainClient, it accepts apiv1.ScheduleAPIYARPCClient directly
+// because the Schedule API is proto-only and has no Thrift equivalent. Obtain the service
+// client with: apiv1.NewScheduleAPIYARPCClient(dispatcher.ClientConfig(cadenceServiceName))
 func NewScheduleClient(service apiv1.ScheduleAPIYARPCClient, domain string, options *Options) ScheduleClient {
 	return internal.NewScheduleClient(service, domain, options)
 }
 
-// make sure if new methods are added to internal.Client they are also added to public Client.
+// Compile-time checks: ensure public interfaces stay in sync with their internal counterparts.
 var _ Client = internal.Client(nil)
 var _ internal.Client = Client(nil)
 var _ DomainClient = internal.DomainClient(nil)

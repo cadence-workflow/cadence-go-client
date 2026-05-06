@@ -226,4 +226,3 @@ func (sc *scheduleClient) List(ctx context.Context, pageSize int32, nextPageToke
 	}
 	return listSchedulesResponseFromProto(protoResp), nil
 }
-
