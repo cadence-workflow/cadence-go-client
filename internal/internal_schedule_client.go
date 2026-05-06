@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-//go:generate mockgen -destination mock_schedule_api_yarpc_client_test.go -package internal github.com/uber/cadence-idl/go/proto/api/v1 ScheduleAPIYARPCClient
+//go:generate mockery --srcpkg github.com/uber/cadence-idl/go/proto/api/v1 --name ScheduleAPIYARPCClient --output . --outpkg internal --filename mock_schedule_api_yarpc_client_test.go --with-expecter
 
 package internal
 

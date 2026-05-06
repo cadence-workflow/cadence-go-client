@@ -26,14 +26,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+	yarpc "go.uber.org/yarpc"
 
 	s "go.uber.org/cadence/.gen/go/shared"
-	"go.uber.org/cadence/internal/common/metrics"
 )
 
 const (
@@ -46,15 +46,13 @@ var errScheduleNonRetryable = &s.BadRequestError{Message: "bad request"}
 
 type scheduleClientTestData struct {
 	sc          ScheduleClient
-	mockService *MockScheduleAPIYARPCClient
+	mockService *ScheduleAPIYARPCClient
 }
 
 func newScheduleClientTestData(t *testing.T) *scheduleClientTestData {
-	ctrl := gomock.NewController(t)
-	mockService := NewMockScheduleAPIYARPCClient(ctrl)
+	mockService := NewScheduleAPIYARPCClient(t)
 	sc := NewScheduleClient(mockService, scheduleTestDomain, &ClientOptions{
-		MetricsScope: metrics.NewTaggedScope(nil),
-		Identity:     scheduleTestIdent,
+		Identity: scheduleTestIdent,
 	})
 	return &scheduleClientTestData{sc: sc, mockService: mockService}
 }
@@ -92,8 +90,8 @@ func TestScheduleClient_Create(t *testing.T) {
 			}
 
 			td.mockService.EXPECT().
-				CreateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.CreateScheduleRequest, _ ...interface{}) {
+				CreateSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.CreateScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 					assert.Equal(t, "0 * * * *", req.Spec.CronExpression)
@@ -210,8 +208,8 @@ func TestScheduleClient_Describe(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.DescribeScheduleRequest, _ ...interface{}) {
+				DescribeSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.DescribeScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 				}).
@@ -246,8 +244,8 @@ func TestScheduleClient_Update(t *testing.T) {
 			}
 
 			td.mockService.EXPECT().
-				UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.UpdateScheduleRequest, _ ...interface{}) {
+				UpdateSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.UpdateScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 					assert.Equal(t, "0 2 * * *", req.Spec.CronExpression)
@@ -273,8 +271,8 @@ func TestScheduleClient_Delete(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				DeleteSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.DeleteScheduleRequest, _ ...interface{}) {
+				DeleteSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.DeleteScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 				}).
@@ -300,8 +298,8 @@ func TestScheduleClient_Pause(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				PauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.PauseScheduleRequest, _ ...interface{}) {
+				PauseSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.PauseScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 					assert.Equal(t, reason, req.Reason)
@@ -329,8 +327,8 @@ func TestScheduleClient_Unpause(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				UnpauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.UnpauseScheduleRequest, _ ...interface{}) {
+				UnpauseSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.UnpauseScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 					assert.Equal(t, reason, req.Reason)
@@ -365,8 +363,8 @@ func TestScheduleClient_Backfill(t *testing.T) {
 			}
 
 			td.mockService.EXPECT().
-				BackfillSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.BackfillScheduleRequest, _ ...interface{}) {
+				BackfillSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.BackfillScheduleRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, scheduleTestID, req.ScheduleId)
 					assert.Equal(t, backfillID, req.BackfillId)
@@ -532,8 +530,8 @@ func TestScheduleClient_List(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				ListSchedules(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *apiv1.ListSchedulesRequest, _ ...interface{}) {
+				ListSchedules(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, req *apiv1.ListSchedulesRequest, _ ...yarpc.CallOption) {
 					assert.Equal(t, scheduleTestDomain, req.Domain)
 					assert.Equal(t, tt.pageSize, req.PageSize)
 					assert.Equal(t, tt.nextPageToken, req.NextPageToken)
