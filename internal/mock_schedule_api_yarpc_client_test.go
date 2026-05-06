@@ -5,8 +5,10 @@ package internal
 import (
 	context "context"
 
-	mock "github.com/stretchr/testify/mock"
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+
+	mock "github.com/stretchr/testify/mock"
+
 	yarpc "go.uber.org/yarpc"
 )
 
