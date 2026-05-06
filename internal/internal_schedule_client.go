@@ -28,10 +28,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/uber-go/tally"
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 
-	"go.uber.org/cadence/internal/common/metrics"
 )
 
 // ScheduleClient is the client for managing Cadence schedules within a domain.
@@ -66,7 +64,6 @@ var _ ScheduleClient = (*scheduleClient)(nil)
 type scheduleClient struct {
 	scheduleService apiv1.ScheduleAPIYARPCClient
 	domain          string
-	metricsScope    *metrics.TaggedScope
 	identity        string
 	dataConverter   DataConverter
 	featureFlags    FeatureFlags
@@ -86,15 +83,9 @@ func NewScheduleClient(service apiv1.ScheduleAPIYARPCClient, domain string, opti
 	} else {
 		dc = getDefaultDataConverter()
 	}
-	var metricScope tally.Scope
-	if options != nil {
-		metricScope = options.MetricsScope
-	}
-	metricScope = tagScope(metricScope, tagDomain, domain, clientImplHeaderName, clientImplHeaderValue, callerTypeHeaderName, callerTypeHeaderValue)
 	return &scheduleClient{
 		scheduleService: service,
 		domain:          domain,
-		metricsScope:    metrics.NewTaggedScope(metricScope),
 		identity:        identity,
 		dataConverter:   dc,
 		featureFlags:    getFeatureFlags(options),
