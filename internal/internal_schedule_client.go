@@ -26,10 +26,10 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
-
 )
 
 // ScheduleClient is the client for managing Cadence schedules within a domain.
@@ -111,6 +111,9 @@ func (sc *scheduleClient) Create(ctx context.Context, request *CreateScheduleReq
 }
 
 func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error) {
+	if scheduleID == "" {
+		return nil, errors.New("Describe: scheduleID is required")
+	}
 	req := &apiv1.DescribeScheduleRequest{
 		Domain:     sc.domain,
 		ScheduleId: scheduleID,
@@ -143,6 +146,9 @@ func (sc *scheduleClient) Update(ctx context.Context, request *UpdateScheduleReq
 }
 
 func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
+	if scheduleID == "" {
+		return errors.New("Delete: scheduleID is required")
+	}
 	req := &apiv1.DeleteScheduleRequest{
 		Domain:     sc.domain,
 		ScheduleId: scheduleID,
@@ -156,6 +162,9 @@ func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 }
 
 func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason string) error {
+	if scheduleID == "" {
+		return errors.New("Pause: scheduleID is required")
+	}
 	req := &apiv1.PauseScheduleRequest{
 		Domain:     sc.domain,
 		ScheduleId: scheduleID,
@@ -171,6 +180,9 @@ func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 }
 
 func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason string) error {
+	if scheduleID == "" {
+		return errors.New("Unpause: scheduleID is required")
+	}
 	req := &apiv1.UnpauseScheduleRequest{
 		Domain:     sc.domain,
 		ScheduleId: scheduleID,
@@ -185,7 +197,10 @@ func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason
 }
 
 func (sc *scheduleClient) Backfill(ctx context.Context, scheduleID string, request *BackfillRequest) error {
-	protoReq := backfillRequestToProto(sc.domain, scheduleID, request)
+	protoReq, err := backfillRequestToProto(sc.domain, scheduleID, request)
+	if err != nil {
+		return err
+	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
@@ -419,6 +434,18 @@ func scheduleRetryPolicyToProto(p *RetryPolicy) *apiv1.RetryPolicy {
 }
 
 func scheduleCreateRequestToProto(domain string, r *CreateScheduleRequest, dc DataConverter) (*apiv1.CreateScheduleRequest, error) {
+	if r == nil {
+		return nil, errors.New("Create: request is required")
+	}
+	if r.ScheduleID == "" {
+		return nil, errors.New("Create: ScheduleID is required")
+	}
+	if r.Spec == nil || r.Spec.CronExpression == "" {
+		return nil, errors.New("Create: Spec.CronExpression is required")
+	}
+	if r.Action == nil || r.Action.StartWorkflow == nil {
+		return nil, errors.New("Create: Action.StartWorkflow is required")
+	}
 	action, err := scheduleActionToProto(r.Action, dc)
 	if err != nil {
 		return nil, err
@@ -443,6 +470,15 @@ func scheduleCreateRequestToProto(domain string, r *CreateScheduleRequest, dc Da
 }
 
 func scheduleUpdateRequestToProto(domain string, r *UpdateScheduleRequest, dc DataConverter) (*apiv1.UpdateScheduleRequest, error) {
+	if r == nil {
+		return nil, errors.New("Update: request is required")
+	}
+	if r.ScheduleID == "" {
+		return nil, errors.New("Update: ScheduleID is required")
+	}
+	if r.Spec == nil && r.Action == nil && r.Policies == nil {
+		return nil, errors.New("Update: at least one of Spec, Action, or Policies must be set")
+	}
 	action, err := scheduleActionToProto(r.Action, dc)
 	if err != nil {
 		return nil, err
@@ -626,7 +662,22 @@ func listSchedulesResponseFromProto(r *apiv1.ListSchedulesResponse) *ListSchedul
 	}
 }
 
-func backfillRequestToProto(domain, scheduleID string, r *BackfillRequest) *apiv1.BackfillScheduleRequest {
+func backfillRequestToProto(domain, scheduleID string, r *BackfillRequest) (*apiv1.BackfillScheduleRequest, error) {
+	if scheduleID == "" {
+		return nil, errors.New("Backfill: scheduleID is required")
+	}
+	if r == nil {
+		return nil, errors.New("Backfill: request is required")
+	}
+	if r.StartTime.IsZero() {
+		return nil, errors.New("Backfill: StartTime is required")
+	}
+	if r.EndTime.IsZero() {
+		return nil, errors.New("Backfill: EndTime is required")
+	}
+	if !r.EndTime.After(r.StartTime) {
+		return nil, errors.New("Backfill: EndTime must be after StartTime")
+	}
 	return &apiv1.BackfillScheduleRequest{
 		Domain:        domain,
 		ScheduleId:    scheduleID,
@@ -634,5 +685,5 @@ func backfillRequestToProto(domain, scheduleID string, r *BackfillRequest) *apiv
 		EndTime:       toProtoTimestamp(r.EndTime),
 		OverlapPolicy: r.OverlapPolicy.toProto(),
 		BackfillId:    r.BackfillID,
-	}
+	}, nil
 }
