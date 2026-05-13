@@ -424,6 +424,78 @@ func TestAPICalls(t *testing.T) {
 			},
 			expectedResponse: &shared.ListFailoverHistoryResponse{},
 		},
+		"BackfillSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().BackfillSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.BackfillScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.BackfillScheduleResponse{},
+		},
+		"CreateSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().CreateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.CreateScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.CreateScheduleResponse{},
+		},
+		"DeleteSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().DeleteSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.DeleteScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.DeleteScheduleResponse{},
+		},
+		"DescribeSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.DescribeScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.DescribeScheduleResponse{},
+		},
+		"ListSchedules": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.ListSchedules(ctx, &shared.ListSchedulesRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().ListSchedules(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.ListSchedulesResponse{}, nil)
+			},
+			expectedResponse: &shared.ListSchedulesResponse{},
+		},
+		"PauseSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().PauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.PauseScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.PauseScheduleResponse{},
+		},
+		"UnpauseSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().UnpauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.UnpauseScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.UnpauseScheduleResponse{},
+		},
+		"UpdateSchedule": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.UpdateScheduleResponse{}, nil)
+			},
+			expectedResponse: &shared.UpdateScheduleResponse{},
+		},
 	}
 
 	for name, td := range tests {

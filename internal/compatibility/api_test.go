@@ -2323,6 +2323,134 @@ func TestScheduleListEntry(t *testing.T) {
 		assert.Equal(t, item, proto.ScheduleListEntry(thrift.ScheduleListEntry(item)))
 	}
 }
+func TestScheduleAction(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleAction{nil, {}, &testdata.ScheduleAction} {
+		assert.Equal(t, item, proto.ScheduleAction(thrift.ScheduleAction(item)))
+	}
+}
+
+// Request converter tests (thrift → proto, one-way)
+
+func TestCreateScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.CreateScheduleRequest(nil))
+	assert.NotNil(t, proto.CreateScheduleRequest(&shared.CreateScheduleRequest{}))
+	domain, id := "test-domain", "my-schedule"
+	result := proto.CreateScheduleRequest(&shared.CreateScheduleRequest{
+		Domain:     &domain,
+		ScheduleId: &id,
+	})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+}
+func TestDescribeScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.DescribeScheduleRequest(nil))
+	assert.NotNil(t, proto.DescribeScheduleRequest(&shared.DescribeScheduleRequest{}))
+	domain, id := "test-domain", "my-schedule"
+	result := proto.DescribeScheduleRequest(&shared.DescribeScheduleRequest{Domain: &domain, ScheduleId: &id})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+}
+func TestUpdateScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.UpdateScheduleRequest(nil))
+	assert.NotNil(t, proto.UpdateScheduleRequest(&shared.UpdateScheduleRequest{}))
+	domain, id := "test-domain", "my-schedule"
+	result := proto.UpdateScheduleRequest(&shared.UpdateScheduleRequest{Domain: &domain, ScheduleId: &id})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+}
+func TestDeleteScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.DeleteScheduleRequest(nil))
+	assert.NotNil(t, proto.DeleteScheduleRequest(&shared.DeleteScheduleRequest{}))
+	domain, id := "test-domain", "my-schedule"
+	result := proto.DeleteScheduleRequest(&shared.DeleteScheduleRequest{Domain: &domain, ScheduleId: &id})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+}
+func TestPauseScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.PauseScheduleRequest(nil))
+	assert.NotNil(t, proto.PauseScheduleRequest(&shared.PauseScheduleRequest{}))
+	domain, id, reason := "test-domain", "my-schedule", "maintenance"
+	result := proto.PauseScheduleRequest(&shared.PauseScheduleRequest{
+		Domain:     &domain,
+		ScheduleId: &id,
+		Reason:     &reason,
+	})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+	assert.Equal(t, reason, result.Reason)
+}
+func TestUnpauseScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.UnpauseScheduleRequest(nil))
+	assert.NotNil(t, proto.UnpauseScheduleRequest(&shared.UnpauseScheduleRequest{}))
+	domain, id, reason := "test-domain", "my-schedule", "resume"
+	result := proto.UnpauseScheduleRequest(&shared.UnpauseScheduleRequest{
+		Domain:     &domain,
+		ScheduleId: &id,
+		Reason:     &reason,
+	})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+	assert.Equal(t, reason, result.Reason)
+}
+func TestBackfillScheduleRequest(t *testing.T) {
+	assert.Nil(t, proto.BackfillScheduleRequest(nil))
+	assert.NotNil(t, proto.BackfillScheduleRequest(&shared.BackfillScheduleRequest{}))
+	domain, id, bfid := "test-domain", "my-schedule", "bf-1"
+	result := proto.BackfillScheduleRequest(&shared.BackfillScheduleRequest{
+		Domain:     &domain,
+		ScheduleId: &id,
+		BackfillId: &bfid,
+	})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, id, result.ScheduleId)
+	assert.Equal(t, bfid, result.BackfillId)
+}
+func TestListSchedulesRequest(t *testing.T) {
+	assert.Nil(t, proto.ListSchedulesRequest(nil))
+	assert.NotNil(t, proto.ListSchedulesRequest(&shared.ListSchedulesRequest{}))
+	domain := "test-domain"
+	pageSize := int32(10)
+	result := proto.ListSchedulesRequest(&shared.ListSchedulesRequest{Domain: &domain, PageSize: &pageSize})
+	assert.Equal(t, domain, result.Domain)
+	assert.Equal(t, pageSize, result.PageSize)
+}
+
+// Response converter tests (proto → thrift, one-way)
+
+func TestCreateScheduleResponse(t *testing.T) {
+	assert.Nil(t, thrift.CreateScheduleResponse(nil))
+	result := thrift.CreateScheduleResponse(&apiv1.CreateScheduleResponse{ScheduleId: "my-id"})
+	assert.Equal(t, "my-id", result.GetScheduleId())
+}
+func TestDescribeScheduleResponse(t *testing.T) {
+	assert.Nil(t, thrift.DescribeScheduleResponse(nil))
+	assert.NotNil(t, thrift.DescribeScheduleResponse(&apiv1.DescribeScheduleResponse{}))
+}
+func TestUpdateScheduleResponse(t *testing.T) {
+	assert.NotNil(t, thrift.UpdateScheduleResponse(nil))
+	assert.NotNil(t, thrift.UpdateScheduleResponse(&apiv1.UpdateScheduleResponse{}))
+}
+func TestDeleteScheduleResponse(t *testing.T) {
+	assert.NotNil(t, thrift.DeleteScheduleResponse(nil))
+	assert.NotNil(t, thrift.DeleteScheduleResponse(&apiv1.DeleteScheduleResponse{}))
+}
+func TestPauseScheduleResponse(t *testing.T) {
+	assert.NotNil(t, thrift.PauseScheduleResponse(nil))
+	assert.NotNil(t, thrift.PauseScheduleResponse(&apiv1.PauseScheduleResponse{}))
+}
+func TestUnpauseScheduleResponse(t *testing.T) {
+	assert.NotNil(t, thrift.UnpauseScheduleResponse(nil))
+	assert.NotNil(t, thrift.UnpauseScheduleResponse(&apiv1.UnpauseScheduleResponse{}))
+}
+func TestBackfillScheduleResponse(t *testing.T) {
+	assert.NotNil(t, thrift.BackfillScheduleResponse(nil))
+	assert.NotNil(t, thrift.BackfillScheduleResponse(&apiv1.BackfillScheduleResponse{}))
+}
+func TestListSchedulesResponse(t *testing.T) {
+	assert.Nil(t, thrift.ListSchedulesResponse(nil))
+	assert.NotNil(t, thrift.ListSchedulesResponse(&apiv1.ListSchedulesResponse{}))
+}
+
 func TestTaskIDBlock(t *testing.T) {
 	for _, item := range []*apiv1.TaskIDBlock{nil, {}, &testdata.TaskIDBlock} {
 		assert.Equal(t, item, proto.TaskIDBlock(thrift.TaskIDBlock(item)))
