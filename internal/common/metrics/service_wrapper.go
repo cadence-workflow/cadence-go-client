@@ -96,6 +96,14 @@ const (
 	scopeDeleteDomain                              = CadenceMetricsPrefix + "DeleteDomain"
 	scopeNameFailoverDomain                        = CadenceMetricsPrefix + "FailoverDomain"
 	scopeNameListFailoverHistory                   = CadenceMetricsPrefix + "ListFailoverHistory"
+	scopeNameBackfillSchedule                      = CadenceMetricsPrefix + "BackfillSchedule"
+	scopeNameCreateSchedule                        = CadenceMetricsPrefix + "CreateSchedule"
+	scopeNameDeleteSchedule                        = CadenceMetricsPrefix + "DeleteSchedule"
+	scopeNameDescribeSchedule                      = CadenceMetricsPrefix + "DescribeSchedule"
+	scopeNameListSchedules                         = CadenceMetricsPrefix + "ListSchedules"
+	scopeNamePauseSchedule                         = CadenceMetricsPrefix + "PauseSchedule"
+	scopeNameUnpauseSchedule                       = CadenceMetricsPrefix + "UnpauseSchedule"
+	scopeNameUpdateSchedule                        = CadenceMetricsPrefix + "UpdateSchedule"
 )
 
 // NewWorkflowServiceWrapper creates a new wrapper to WorkflowService that will emit metrics for each service call.
@@ -465,6 +473,62 @@ func (w *workflowServiceMetricsWrapper) FailoverDomain(ctx context.Context, requ
 func (w *workflowServiceMetricsWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
 	scope := w.getOperationScope(scopeNameListFailoverHistory)
 	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameBackfillSchedule)
+	result, err := w.service.BackfillSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameCreateSchedule)
+	result, err := w.service.CreateSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameDeleteSchedule)
+	result, err := w.service.DeleteSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameDescribeSchedule)
+	result, err := w.service.DescribeSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	scope := w.getOperationScope(scopeNameListSchedules)
+	result, err := w.service.ListSchedules(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNamePauseSchedule)
+	result, err := w.service.PauseSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameUnpauseSchedule)
+	result, err := w.service.UnpauseSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameUpdateSchedule)
+	result, err := w.service.UpdateSchedule(ctx, Request, opts...)
 	scope.handleError(err)
 	return result, err
 }

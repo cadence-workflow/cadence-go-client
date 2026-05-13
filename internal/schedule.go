@@ -93,9 +93,13 @@ type ScheduleStartWorkflowAction struct {
 	RetryPolicy *RetryPolicy
 	// Memo is additional metadata attached to each triggered workflow run. Optional.
 	// Values are encoded using the DataConverter configured on the ScheduleClient.
+	// Note: Memo is not populated when reading back via DescribeSchedule, because
+	// the encoded bytes cannot be decoded without the original DataConverter.
 	Memo map[string]interface{}
 	// SearchAttributes are indexed attributes attached to each triggered workflow run. Optional.
 	// Values are JSON-encoded.
+	// Note: SearchAttributes is not populated when reading back via DescribeSchedule,
+	// because the encoded bytes cannot be decoded without the original DataConverter.
 	SearchAttributes map[string]interface{}
 }
 

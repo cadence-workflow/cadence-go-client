@@ -21,7 +21,6 @@
 // when adding any, make sure you update the files that it checks in the makefile
 //go:generate mockery --srcpkg . --name Client --output ../mocks
 //go:generate mockery --srcpkg . --name DomainClient --output ../mocks
-//go:generate mockery --srcpkg . --name ScheduleClient --output ../mocks
 
 // Package client contains functions to create Cadence clients used to communicate to Cadence service.
 //
@@ -38,8 +37,6 @@ import (
 	"go.uber.org/cadence/encoded"
 	"go.uber.org/cadence/internal"
 	"go.uber.org/cadence/workflow"
-
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 const (
@@ -458,6 +455,9 @@ type (
 		//  - ServiceBusyError
 		//  - EntityNotExistError
 		RefreshWorkflowTasks(ctx context.Context, workflowID, runID string) error
+
+		// NewScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
+		NewScheduleClient() ScheduleClient
 	}
 
 	// DomainClient is the client for managing operations on the domain.
@@ -497,9 +497,6 @@ type (
 )
 
 // ── Schedule API ──────────────────────────────────────────────────────────────
-// Schedule is a proto-only API with no Thrift equivalent. NewScheduleClient
-// accepts apiv1.ScheduleAPIYARPCClient directly rather than the Thrift-based
-// workflowserviceclient.Interface used by NewClient and NewDomainClient.
 
 type (
 	// ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
@@ -551,31 +548,7 @@ type (
 	ListSchedulesResponse = internal.ListSchedulesResponse
 
 	// ScheduleClient is the client for managing Cadence schedules within a domain.
-	ScheduleClient interface {
-		// Create creates a new schedule and returns the server-assigned schedule ID.
-		Create(ctx context.Context, request *CreateScheduleRequest) (string, error)
-
-		// Describe returns the current configuration and state of a schedule.
-		Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error)
-
-		// Update replaces the spec, action, and/or policies of an existing schedule.
-		Update(ctx context.Context, request *UpdateScheduleRequest) error
-
-		// Delete deletes a schedule.
-		Delete(ctx context.Context, scheduleID string) error
-
-		// Pause pauses a running schedule. reason is recorded in the schedule's pause info.
-		Pause(ctx context.Context, scheduleID string, reason string) error
-
-		// Unpause resumes a paused schedule. reason is recorded in the schedule's pause info.
-		Unpause(ctx context.Context, scheduleID string, reason string) error
-
-		// Backfill triggers workflow runs for a historical time range.
-		Backfill(ctx context.Context, scheduleID string, request *BackfillRequest) error
-
-		// List returns all schedules in the domain with optional pagination.
-		List(ctx context.Context, pageSize int32, nextPageToken []byte) (*ListSchedulesResponse, error)
-	}
+	ScheduleClient = internal.ScheduleClient
 )
 
 const (
@@ -650,21 +623,11 @@ func NewDomainClient(service workflowserviceclient.Interface, options *Options) 
 	return internal.NewDomainClient(service, options)
 }
 
-// NewScheduleClient creates a ScheduleClient that manages schedules in the given domain.
-// Unlike NewClient and NewDomainClient, it accepts apiv1.ScheduleAPIYARPCClient directly
-// because the Schedule API is proto-only and has no Thrift equivalent. Obtain the service
-// client with: apiv1.NewScheduleAPIYARPCClient(dispatcher.ClientConfig(cadenceServiceName))
-func NewScheduleClient(service apiv1.ScheduleAPIYARPCClient, domain string, options *Options) ScheduleClient {
-	return internal.NewScheduleClient(service, domain, options)
-}
-
 // Compile-time checks: ensure public interfaces stay in sync with their internal counterparts.
 var _ Client = internal.Client(nil)
 var _ internal.Client = Client(nil)
 var _ DomainClient = internal.DomainClient(nil)
 var _ internal.DomainClient = DomainClient(nil)
-var _ ScheduleClient = internal.ScheduleClient(nil)
-var _ internal.ScheduleClient = ScheduleClient(nil)
 
 // NewValue creates a new encoded.Value which can be used to decode binary data returned by Cadence.  For example:
 // User had Activity.RecordHeartbeat(ctx, "my-heartbeat") and then got response from calling Client.DescribeWorkflowExecution.

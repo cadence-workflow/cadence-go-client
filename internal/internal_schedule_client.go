@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-//go:generate mockery --srcpkg github.com/uber/cadence-idl/go/proto/api/v1 --name ScheduleAPIYARPCClient --output . --outpkg internal --filename mock_schedule_api_yarpc_client_test.go --with-expecter
+//go:generate mockery --srcpkg . --name ScheduleClient --output ../mocks --with-expecter
 
 package internal
 
@@ -27,7 +27,9 @@ import (
 	"context"
 	"errors"
 
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
+	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
+	shared "go.uber.org/cadence/.gen/go/shared"
+	"go.uber.org/cadence/internal/common"
 )
 
 // ScheduleClient is the client for managing Cadence schedules within a domain.
@@ -60,38 +62,26 @@ type ScheduleClient interface {
 var _ ScheduleClient = (*scheduleClient)(nil)
 
 type scheduleClient struct {
-	scheduleService apiv1.ScheduleAPIYARPCClient
+	workflowService workflowserviceclient.Interface
 	domain          string
 	identity        string
 	dataConverter   DataConverter
 	featureFlags    FeatureFlags
 }
 
-// NewScheduleClient creates a ScheduleClient that manages schedules in the given domain.
-func NewScheduleClient(service apiv1.ScheduleAPIYARPCClient, domain string, options *ClientOptions) ScheduleClient {
-	var identity string
-	if options == nil || options.Identity == "" {
-		identity = getWorkerIdentity("")
-	} else {
-		identity = options.Identity
-	}
-	var dc DataConverter
-	if options != nil && options.DataConverter != nil {
-		dc = options.DataConverter
-	} else {
-		dc = getDefaultDataConverter()
-	}
+// NewScheduleClient implements Client. It returns a ScheduleClient scoped to this client's domain and connection.
+func (wc *workflowClient) NewScheduleClient() ScheduleClient {
 	return &scheduleClient{
-		scheduleService: service,
-		domain:          domain,
-		identity:        identity,
-		dataConverter:   dc,
-		featureFlags:    getFeatureFlags(options),
+		workflowService: wc.workflowService,
+		domain:          wc.domain,
+		identity:        wc.identity,
+		dataConverter:   wc.dataConverter,
+		featureFlags:    wc.featureFlags,
 	}
 }
 
 func (sc *scheduleClient) Create(ctx context.Context, request *CreateScheduleRequest) (string, error) {
-	protoReq, err := scheduleCreateRequestToProto(sc.domain, request, sc.dataConverter)
+	thriftReq, err := scheduleCreateRequestToThrift(sc.domain, request, sc.dataConverter)
 	if err != nil {
 		return "", err
 	}
@@ -99,9 +89,9 @@ func (sc *scheduleClient) Create(ctx context.Context, request *CreateScheduleReq
 	err = retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		resp, rpcErr := sc.scheduleService.CreateSchedule(tchCtx, protoReq, opt...)
+		resp, rpcErr := sc.workflowService.CreateSchedule(tchCtx, thriftReq, opt...)
 		if rpcErr == nil && resp != nil {
-			scheduleID = resp.ScheduleId
+			scheduleID = resp.GetScheduleId()
 		}
 		return rpcErr
 	})
@@ -112,33 +102,33 @@ func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*Des
 	if scheduleID == "" {
 		return nil, errors.New("Describe: scheduleID is required")
 	}
-	req := &apiv1.DescribeScheduleRequest{
-		Domain:     sc.domain,
-		ScheduleId: scheduleID,
+	req := &shared.DescribeScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
 	}
-	var protoResp *apiv1.DescribeScheduleResponse
+	var thriftResp *shared.DescribeScheduleResponse
 	err := retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
 		var rpcErr error
-		protoResp, rpcErr = sc.scheduleService.DescribeSchedule(tchCtx, req, opt...)
+		thriftResp, rpcErr = sc.workflowService.DescribeSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 	if err != nil {
 		return nil, err
 	}
-	return describeScheduleResponseFromProto(protoResp), nil
+	return describeScheduleResponseFromThrift(thriftResp), nil
 }
 
 func (sc *scheduleClient) Update(ctx context.Context, request *UpdateScheduleRequest) error {
-	protoReq, err := scheduleUpdateRequestToProto(sc.domain, request, sc.dataConverter)
+	thriftReq, err := scheduleUpdateRequestToThrift(sc.domain, request, sc.dataConverter)
 	if err != nil {
 		return err
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.scheduleService.UpdateSchedule(tchCtx, protoReq, opt...)
+		_, rpcErr := sc.workflowService.UpdateSchedule(tchCtx, thriftReq, opt...)
 		return rpcErr
 	})
 }
@@ -147,14 +137,14 @@ func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 	if scheduleID == "" {
 		return errors.New("Delete: scheduleID is required")
 	}
-	req := &apiv1.DeleteScheduleRequest{
-		Domain:     sc.domain,
-		ScheduleId: scheduleID,
+	req := &shared.DeleteScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.scheduleService.DeleteSchedule(tchCtx, req, opt...)
+		_, rpcErr := sc.workflowService.DeleteSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 }
@@ -163,16 +153,16 @@ func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 	if scheduleID == "" {
 		return errors.New("Pause: scheduleID is required")
 	}
-	req := &apiv1.PauseScheduleRequest{
-		Domain:     sc.domain,
-		ScheduleId: scheduleID,
-		Reason:     reason,
-		Identity:   sc.identity,
+	req := &shared.PauseScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
+		Reason:     common.StringPtr(reason),
+		Identity:   common.StringPtr(sc.identity),
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.scheduleService.PauseSchedule(tchCtx, req, opt...)
+		_, rpcErr := sc.workflowService.PauseSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 }
@@ -181,48 +171,48 @@ func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason
 	if scheduleID == "" {
 		return errors.New("Unpause: scheduleID is required")
 	}
-	req := &apiv1.UnpauseScheduleRequest{
-		Domain:     sc.domain,
-		ScheduleId: scheduleID,
-		Reason:     reason,
+	req := &shared.UnpauseScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
+		Reason:     common.StringPtr(reason),
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.scheduleService.UnpauseSchedule(tchCtx, req, opt...)
+		_, rpcErr := sc.workflowService.UnpauseSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 }
 
 func (sc *scheduleClient) Backfill(ctx context.Context, scheduleID string, request *BackfillRequest) error {
-	protoReq, err := backfillRequestToProto(sc.domain, scheduleID, request)
+	thriftReq, err := backfillRequestToThrift(sc.domain, scheduleID, request)
 	if err != nil {
 		return err
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.scheduleService.BackfillSchedule(tchCtx, protoReq, opt...)
+		_, rpcErr := sc.workflowService.BackfillSchedule(tchCtx, thriftReq, opt...)
 		return rpcErr
 	})
 }
 
 func (sc *scheduleClient) List(ctx context.Context, pageSize int32, nextPageToken []byte) (*ListSchedulesResponse, error) {
-	req := &apiv1.ListSchedulesRequest{
-		Domain:        sc.domain,
-		PageSize:      pageSize,
+	req := &shared.ListSchedulesRequest{
+		Domain:        common.StringPtr(sc.domain),
+		PageSize:      common.Int32Ptr(pageSize),
 		NextPageToken: nextPageToken,
 	}
-	var protoResp *apiv1.ListSchedulesResponse
+	var thriftResp *shared.ListSchedulesResponse
 	err := retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
 		var rpcErr error
-		protoResp, rpcErr = sc.scheduleService.ListSchedules(tchCtx, req, opt...)
+		thriftResp, rpcErr = sc.workflowService.ListSchedules(tchCtx, req, opt...)
 		return rpcErr
 	})
 	if err != nil {
 		return nil, err
 	}
-	return listSchedulesResponseFromProto(protoResp), nil
+	return listSchedulesResponseFromThrift(thriftResp), nil
 }

@@ -2220,6 +2220,109 @@ func TestSupportedClientVersions(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+func TestScheduleSpec(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleSpec{nil, {}, &testdata.ScheduleSpec} {
+		assert.Equal(t, item, proto.ScheduleSpec(thrift.ScheduleSpec(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ScheduleSpec,
+		proto.ScheduleSpec,
+		FuzzOptions{},
+	)
+}
+func TestSchedulePauseInfo(t *testing.T) {
+	for _, item := range []*apiv1.SchedulePauseInfo{nil, {}, &testdata.SchedulePauseInfo} {
+		assert.Equal(t, item, proto.SchedulePauseInfo(thrift.SchedulePauseInfo(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SchedulePauseInfo,
+		proto.SchedulePauseInfo,
+		FuzzOptions{},
+	)
+}
+func TestScheduleState(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleState{nil, {}, &testdata.ScheduleState} {
+		assert.Equal(t, item, proto.ScheduleState(thrift.ScheduleState(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ScheduleState,
+		proto.ScheduleState,
+		FuzzOptions{},
+	)
+}
+func TestSchedulePolicies(t *testing.T) {
+	for _, item := range []*apiv1.SchedulePolicies{nil, {}, &testdata.SchedulePolicies} {
+		assert.Equal(t, item, proto.SchedulePolicies(thrift.SchedulePolicies(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SchedulePolicies,
+		proto.SchedulePolicies,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.ScheduleOverlapPolicy, c fuzz.Continue) {
+					validValues := []apiv1.ScheduleOverlapPolicy{
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_INVALID,
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_SKIP_NEW,
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_BUFFER,
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_CONCURRENT,
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_CANCEL_PREVIOUS,
+						apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_TERMINATE_PREVIOUS,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+				func(e *apiv1.ScheduleCatchUpPolicy, c fuzz.Continue) {
+					validValues := []apiv1.ScheduleCatchUpPolicy{
+						apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_INVALID,
+						apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_SKIP,
+						apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_ONE,
+						apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_ALL,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
+		},
+	)
+}
+func TestScheduleStartWorkflowAction(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleAction_StartWorkflowAction{nil, {}, &testdata.ScheduleStartWorkflowAction} {
+		assert.Equal(t, item, proto.ScheduleStartWorkflowAction(thrift.ScheduleStartWorkflowAction(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.ScheduleStartWorkflowAction,
+		proto.ScheduleStartWorkflowAction,
+		FuzzOptions{
+			ExcludedFields: []string{
+				"TaskList", // GoFuzz has issues with complex nested types
+			},
+		},
+	)
+}
+func TestBackfillInfo(t *testing.T) {
+	for _, item := range []*apiv1.BackfillInfo{nil, {}, &testdata.BackfillInfo} {
+		assert.Equal(t, item, proto.BackfillInfo(thrift.BackfillInfo(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.BackfillInfo,
+		proto.BackfillInfo,
+		FuzzOptions{},
+	)
+}
+func TestScheduleInfo(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleInfo{nil, {}, &testdata.ScheduleInfo} {
+		assert.Equal(t, item, proto.ScheduleInfo(thrift.ScheduleInfo(item)))
+	}
+}
+func TestScheduleListEntry(t *testing.T) {
+	for _, item := range []*apiv1.ScheduleListEntry{nil, {}, &testdata.ScheduleListEntry} {
+		assert.Equal(t, item, proto.ScheduleListEntry(thrift.ScheduleListEntry(item)))
+	}
+}
 func TestTaskIDBlock(t *testing.T) {
 	for _, item := range []*apiv1.TaskIDBlock{nil, {}, &testdata.TaskIDBlock} {
 		assert.Equal(t, item, proto.TaskIDBlock(thrift.TaskIDBlock(item)))

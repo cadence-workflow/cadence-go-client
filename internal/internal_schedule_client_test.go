@@ -26,15 +26,14 @@ import (
 	"testing"
 	"time"
 
-	gogo "github.com/gogo/protobuf/types"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
-	yarpc "go.uber.org/yarpc"
-
+	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	s "go.uber.org/cadence/.gen/go/shared"
+	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/backoff"
 )
 
 const (
@@ -49,23 +48,16 @@ var errScheduleNonRetryable = &s.BadRequestError{Message: "bad request"}
 
 type scheduleClientTestData struct {
 	sc          ScheduleClient
-	mockService *ScheduleAPIYARPCClient
+	mockService *workflowservicetest.MockClient
 }
 
 func newScheduleClientTestData(t *testing.T) *scheduleClientTestData {
-	mockService := NewScheduleAPIYARPCClient(t)
-	sc := NewScheduleClient(mockService, scheduleTestDomain, &ClientOptions{
+	ctrl := gomock.NewController(t)
+	mockService := workflowservicetest.NewMockClient(ctrl)
+	sc := NewClient(mockService, scheduleTestDomain, &ClientOptions{
 		Identity: scheduleTestIdent,
-	})
+	}).NewScheduleClient()
 	return &scheduleClientTestData{sc: sc, mockService: mockService}
-}
-
-func mustProtoTimestamp(t time.Time) *gogo.Timestamp {
-	ts, err := gogo.TimestampProto(t)
-	if err != nil {
-		panic(err)
-	}
-	return ts
 }
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -80,8 +72,8 @@ func TestNewScheduleClient(t *testing.T) {
 	}
 	for _, tt := range testcases {
 		t.Run(tt.name, func(t *testing.T) {
-			mockService := NewScheduleAPIYARPCClient(t)
-			sc := NewScheduleClient(mockService, "domain", tt.options)
+			ctrl := gomock.NewController(t)
+			sc := NewClient(workflowservicetest.NewMockClient(ctrl), "domain", tt.options).NewScheduleClient()
 			require.NotNil(t, sc)
 		})
 	}
@@ -106,21 +98,24 @@ func TestScheduleClient_Create(t *testing.T) {
 	testcases := []struct {
 		name               string
 		request            *CreateScheduleRequest
-		rpcResponse        *apiv1.CreateScheduleResponse
+		rpcResponse        *s.CreateScheduleResponse
 		rpcError           error
 		expectedScheduleID string
-		verify             func(*testing.T, *apiv1.CreateScheduleRequest)
+		verify             func(*testing.T, *s.CreateScheduleRequest)
 	}{
 		{
 			name:               "success - basic",
 			request:            basicRequest(),
-			rpcResponse:        &apiv1.CreateScheduleResponse{ScheduleId: scheduleTestID},
+			rpcResponse:        &s.CreateScheduleResponse{ScheduleId: common.StringPtr(scheduleTestID)},
 			expectedScheduleID: scheduleTestID,
-			verify: func(t *testing.T, req *apiv1.CreateScheduleRequest) {
-				assert.Equal(t, scheduleTestDomain, req.Domain)
-				assert.Equal(t, scheduleTestID, req.ScheduleId)
-				assert.Equal(t, "0 * * * *", req.Spec.CronExpression)
-				assert.Equal(t, "my-workflow", req.Action.StartWorkflow.WorkflowType.Name)
+			verify: func(t *testing.T, req *s.CreateScheduleRequest) {
+				assert.Equal(t, scheduleTestDomain, req.GetDomain())
+				assert.Equal(t, scheduleTestID, req.GetScheduleId())
+				require.NotNil(t, req.Spec)
+				assert.Equal(t, "0 * * * *", req.Spec.GetCronExpression())
+				require.NotNil(t, req.Action)
+				require.NotNil(t, req.Action.StartWorkflow)
+				assert.Equal(t, "my-workflow", req.Action.StartWorkflow.WorkflowType.GetName())
 			},
 		},
 		{
@@ -147,19 +142,22 @@ func TestScheduleClient_Create(t *testing.T) {
 				Memo:             map[string]interface{}{"m": "mv"},
 				SearchAttributes: map[string]interface{}{"sa": "sav"},
 			},
-			rpcResponse:        &apiv1.CreateScheduleResponse{ScheduleId: scheduleTestID},
+			rpcResponse:        &s.CreateScheduleResponse{ScheduleId: common.StringPtr(scheduleTestID)},
 			expectedScheduleID: scheduleTestID,
-			verify: func(t *testing.T, req *apiv1.CreateScheduleRequest) {
+			verify: func(t *testing.T, req *s.CreateScheduleRequest) {
 				assert.NotNil(t, req.Memo)
 				assert.NotNil(t, req.SearchAttributes)
 				require.NotNil(t, req.Policies)
-				assert.Equal(t, apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_BUFFER, req.Policies.OverlapPolicy)
-				assert.Equal(t, apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_ONE, req.Policies.CatchUpPolicy)
-				assert.True(t, req.Policies.PauseOnFailure)
+				require.NotNil(t, req.Policies.OverlapPolicy)
+				assert.Equal(t, s.ScheduleOverlapPolicyBuffer, *req.Policies.OverlapPolicy)
+				require.NotNil(t, req.Policies.CatchUpPolicy)
+				assert.Equal(t, s.ScheduleCatchUpPolicyOne, *req.Policies.CatchUpPolicy)
+				assert.Equal(t, true, req.Policies.GetPauseOnFailure())
 				require.NotNil(t, req.Action.StartWorkflow.RetryPolicy)
-				assert.Equal(t, int32(3), req.Action.StartWorkflow.RetryPolicy.MaximumAttempts)
-				require.NotNil(t, req.Action.StartWorkflow.Input)
-				assert.Equal(t, []byte(`"hello"`), req.Action.StartWorkflow.Input.Data)
+				assert.Equal(t, int32(3), req.Action.StartWorkflow.RetryPolicy.GetMaximumAttempts())
+				// zero BackoffCoefficient must be defaulted, not sent as 0
+				assert.Equal(t, backoff.DefaultBackoffCoefficient, req.Action.StartWorkflow.RetryPolicy.GetBackoffCoefficient())
+				assert.Equal(t, []byte(`"hello"`), req.Action.StartWorkflow.Input)
 			},
 		},
 		{
@@ -167,14 +165,43 @@ func TestScheduleClient_Create(t *testing.T) {
 			request:  basicRequest(),
 			rpcError: errScheduleNonRetryable,
 		},
+		{
+			name: "sub-second retry interval is ceiling'd to 1 second",
+			request: &CreateScheduleRequest{
+				ScheduleID: scheduleTestID,
+				Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+				Action: &ScheduleAction{
+					StartWorkflow: &ScheduleStartWorkflowAction{
+						WorkflowType: "my-workflow",
+						TaskList:     "my-task-list",
+						RetryPolicy: &RetryPolicy{
+							InitialInterval:    500 * time.Millisecond,
+							MaximumInterval:    1500 * time.Millisecond,
+							ExpirationInterval: 100 * time.Millisecond,
+							BackoffCoefficient: 1.5,
+						},
+					},
+				},
+			},
+			rpcResponse:        &s.CreateScheduleResponse{ScheduleId: common.StringPtr(scheduleTestID)},
+			expectedScheduleID: scheduleTestID,
+			verify: func(t *testing.T, req *s.CreateScheduleRequest) {
+				rp := req.Action.StartWorkflow.RetryPolicy
+				require.NotNil(t, rp)
+				assert.Equal(t, int32(1), rp.GetInitialIntervalInSeconds())  // ceil(0.5) = 1
+				assert.Equal(t, int32(2), rp.GetMaximumIntervalInSeconds())  // ceil(1.5) = 2
+				assert.Equal(t, int32(1), rp.GetExpirationIntervalInSeconds()) // ceil(0.1) = 1
+				assert.Equal(t, 1.5, rp.GetBackoffCoefficient())
+			},
+		},
 	}
 
 	for _, tt := range testcases {
 		t.Run(tt.name, func(t *testing.T) {
 			td := newScheduleClientTestData(t)
 			td.mockService.EXPECT().
-				CreateSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.CreateScheduleRequest, _ ...yarpc.CallOption) {
+				CreateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.CreateScheduleRequest, _ ...interface{}) {
 					if tt.verify != nil {
 						tt.verify(t, req)
 					}
@@ -352,11 +379,11 @@ func TestScheduleClient_Describe(t *testing.T) {
 	testcases := []struct {
 		name        string
 		rpcError    error
-		rpcResponse *apiv1.DescribeScheduleResponse
+		rpcResponse *s.DescribeScheduleResponse
 	}{
 		{
 			name:        "success",
-			rpcResponse: &apiv1.DescribeScheduleResponse{},
+			rpcResponse: &s.DescribeScheduleResponse{},
 		},
 		{
 			name:     "rpc failure",
@@ -369,10 +396,10 @@ func TestScheduleClient_Describe(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				DescribeSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.DescribeScheduleRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, scheduleTestID, req.ScheduleId)
+				DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.DescribeScheduleRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, scheduleTestID, req.GetScheduleId())
 				}).
 				Return(tt.rpcResponse, tt.rpcError)
 
@@ -398,71 +425,84 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
-	startTs := mustProtoTimestamp(start)
-	endTs := mustProtoTimestamp(end)
+	startNano := start.UnixNano()
+	endNano := end.UnixNano()
+	jitterSec := int32(300)
+	exSec := int32(3600)
+	taskSec := int32(10)
+	totalRuns := int64(42)
+	runsCompleted := int32(3)
+	runsTotal := int32(5)
+	paused := true
+	coeff := 2.0
+	maxAttempts := int32(3)
+	bufferLimit := int32(5)
+	concurrencyLimit := int32(2)
+	catchUpWindowSec := int32(86400)
+	pauseOnFailure := true
 
-	protoResp := &apiv1.DescribeScheduleResponse{
-		Spec: &apiv1.ScheduleSpec{
-			CronExpression: "0 * * * *",
-			StartTime:      startTs,
-			EndTime:        endTs,
-			Jitter:         gogo.DurationProto(5 * time.Minute),
+	overlapPolicy := s.ScheduleOverlapPolicyBuffer
+	catchUpPolicy := s.ScheduleCatchUpPolicyOne
+
+	thriftResp := &s.DescribeScheduleResponse{
+		Spec: &s.ScheduleSpec{
+			CronExpression:  common.StringPtr("0 * * * *"),
+			StartTimeNano:   &startNano,
+			EndTimeNano:     &endNano,
+			JitterInSeconds: &jitterSec,
 		},
-		Action: &apiv1.ScheduleAction{
-			StartWorkflow: &apiv1.ScheduleAction_StartWorkflowAction{
-				WorkflowType:                 &apiv1.WorkflowType{Name: "my-workflow"},
-				TaskList:                     &apiv1.TaskList{Name: "my-task-list"},
-				Input:                        &apiv1.Payload{Data: []byte("input")},
-				WorkflowIdPrefix:             "prefix-",
-				ExecutionStartToCloseTimeout: gogo.DurationProto(time.Hour),
-				TaskStartToCloseTimeout:      gogo.DurationProto(10 * time.Second),
-				RetryPolicy: &apiv1.RetryPolicy{
-					InitialInterval:    gogo.DurationProto(time.Second),
-					BackoffCoefficient: 2.0,
-					MaximumInterval:    gogo.DurationProto(time.Minute),
-					MaximumAttempts:    3,
+		Action: &s.ScheduleAction{
+			StartWorkflow: &s.ScheduleStartWorkflowAction{
+				WorkflowType:                        &s.WorkflowType{Name: common.StringPtr("my-workflow")},
+				TaskList:                            &s.TaskList{Name: common.StringPtr("my-task-list")},
+				Input:                               []byte("input"),
+				WorkflowIdPrefix:                    common.StringPtr("prefix-"),
+				ExecutionStartToCloseTimeoutSeconds: &exSec,
+				TaskStartToCloseTimeoutSeconds:      &taskSec,
+				RetryPolicy: &s.RetryPolicy{
+					InitialIntervalInSeconds:    common.Int32Ptr(1),
+					BackoffCoefficient:          &coeff,
+					MaximumIntervalInSeconds:    common.Int32Ptr(60),
+					MaximumAttempts:             &maxAttempts,
 				},
 			},
 		},
-		Policies: &apiv1.SchedulePolicies{
-			OverlapPolicy:    apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_BUFFER,
-			CatchUpPolicy:    apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_ONE,
-			CatchUpWindow:    gogo.DurationProto(24 * time.Hour),
-			PauseOnFailure:   true,
-			BufferLimit:      5,
-			ConcurrencyLimit: 2,
+		Policies: &s.SchedulePolicies{
+			OverlapPolicy:          &overlapPolicy,
+			CatchUpPolicy:          &catchUpPolicy,
+			CatchUpWindowInSeconds: &catchUpWindowSec,
+			PauseOnFailure:         &pauseOnFailure,
+			BufferLimit:            &bufferLimit,
+			ConcurrencyLimit:       &concurrencyLimit,
 		},
-		State: &apiv1.ScheduleState{
-			Paused: true,
-			PauseInfo: &apiv1.SchedulePauseInfo{
-				Reason:   "maintenance",
-				PausedAt: startTs,
-				PausedBy: "user",
+		State: &s.ScheduleState{
+			Paused: &paused,
+			PauseInfo: &s.SchedulePauseInfo{
+				Reason:         common.StringPtr("maintenance"),
+				PausedTimeNano: &startNano,
 			},
 		},
-		Info: &apiv1.ScheduleInfo{
-			LastRunTime:    startTs,
-			NextRunTime:    endTs,
-			TotalRuns:      42,
-			CreateTime:     startTs,
-			LastUpdateTime: endTs,
-			OngoingBackfills: []*apiv1.BackfillInfo{
+		Info: &s.ScheduleInfo{
+			LastRunTimeNano:    &startNano,
+			NextRunTimeNano:    &endNano,
+			TotalRuns:          &totalRuns,
+			CreateTimeNano:     &startNano,
+			LastUpdateTimeNano: &endNano,
+			OngoingBackfills: []*s.BackfillInfo{
 				{
-					BackfillId:    "bf-1",
-					StartTime:     startTs,
-					EndTime:       endTs,
-					RunsCompleted: 3,
-					RunsTotal:     5,
+					BackfillId:    common.StringPtr("bf-1"),
+					StartTimeNano: &startNano,
+					EndTimeNano:   &endNano,
+					RunsCompleted: &runsCompleted,
+					RunsTotal:     &runsTotal,
 				},
 			},
 		},
-		Memo:             &apiv1.Memo{Fields: map[string]*apiv1.Payload{"m": {Data: []byte("mv")}}},
-		SearchAttributes: &apiv1.SearchAttributes{IndexedFields: map[string]*apiv1.Payload{"sa": {Data: []byte(`"sav"`)}}},
 	}
 
 	td.mockService.EXPECT().
-		DescribeSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(protoResp, nil)
+		DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(thriftResp, nil)
 
 	resp, err := td.sc.Describe(context.Background(), scheduleTestID)
 	require.NoError(t, err)
@@ -472,7 +512,7 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	assert.Equal(t, "0 * * * *", resp.Spec.CronExpression)
 	assert.Equal(t, start, resp.Spec.StartTime)
 	assert.Equal(t, end, resp.Spec.EndTime)
-	assert.Equal(t, 5*time.Minute, resp.Spec.Jitter)
+	assert.Equal(t, 300*time.Second, resp.Spec.Jitter)
 
 	require.NotNil(t, resp.Action)
 	sw := resp.Action.StartWorkflow
@@ -501,7 +541,6 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	require.NotNil(t, resp.State.PauseInfo)
 	assert.Equal(t, "maintenance", resp.State.PauseInfo.Reason)
 	assert.Equal(t, start, resp.State.PauseInfo.PausedAt)
-	assert.Equal(t, "user", resp.State.PauseInfo.PausedBy)
 
 	require.NotNil(t, resp.Info)
 	assert.Equal(t, start, resp.Info.LastRunTime)
@@ -514,9 +553,6 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	assert.Equal(t, end, bf.EndTime)
 	assert.Equal(t, int32(3), bf.RunsCompleted)
 	assert.Equal(t, int32(5), bf.RunsTotal)
-
-	assert.Equal(t, []byte("mv"), resp.Memo["m"])
-	assert.Equal(t, []byte(`"sav"`), resp.SearchAttributes["sa"])
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -526,7 +562,7 @@ func TestScheduleClient_Update(t *testing.T) {
 		name     string
 		request  *UpdateScheduleRequest
 		rpcError error
-		verify   func(*testing.T, *apiv1.UpdateScheduleRequest)
+		verify   func(*testing.T, *s.UpdateScheduleRequest)
 	}{
 		{
 			name: "success - spec only",
@@ -534,10 +570,11 @@ func TestScheduleClient_Update(t *testing.T) {
 				ScheduleID: scheduleTestID,
 				Spec:       &ScheduleSpec{CronExpression: "0 2 * * *"},
 			},
-			verify: func(t *testing.T, req *apiv1.UpdateScheduleRequest) {
-				assert.Equal(t, scheduleTestDomain, req.Domain)
-				assert.Equal(t, scheduleTestID, req.ScheduleId)
-				assert.Equal(t, "0 2 * * *", req.Spec.CronExpression)
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
+				assert.Equal(t, scheduleTestDomain, req.GetDomain())
+				assert.Equal(t, scheduleTestID, req.GetScheduleId())
+				require.NotNil(t, req.Spec)
+				assert.Equal(t, "0 2 * * *", req.Spec.GetCronExpression())
 			},
 		},
 		{
@@ -552,7 +589,7 @@ func TestScheduleClient_Update(t *testing.T) {
 				},
 				SearchAttributes: map[string]interface{}{"attr": "val"},
 			},
-			verify: func(t *testing.T, req *apiv1.UpdateScheduleRequest) {
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
 				assert.NotNil(t, req.Action)
 				assert.NotNil(t, req.SearchAttributes)
 			},
@@ -572,13 +609,13 @@ func TestScheduleClient_Update(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				UpdateSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.UpdateScheduleRequest, _ ...yarpc.CallOption) {
+				UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.UpdateScheduleRequest, _ ...interface{}) {
 					if tt.verify != nil {
 						tt.verify(t, req)
 					}
 				}).
-				Return(&apiv1.UpdateScheduleResponse{}, tt.rpcError)
+				Return(&s.UpdateScheduleResponse{}, tt.rpcError)
 
 			assert.Equal(t, tt.rpcError, td.sc.Update(context.Background(), tt.request))
 		})
@@ -687,12 +724,12 @@ func TestScheduleClient_Delete(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				DeleteSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.DeleteScheduleRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, scheduleTestID, req.ScheduleId)
+				DeleteSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.DeleteScheduleRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, scheduleTestID, req.GetScheduleId())
 				}).
-				Return(&apiv1.DeleteScheduleResponse{}, tt.rpcError)
+				Return(&s.DeleteScheduleResponse{}, tt.rpcError)
 
 			assert.Equal(t, tt.rpcError, td.sc.Delete(context.Background(), scheduleTestID))
 		})
@@ -721,14 +758,14 @@ func TestScheduleClient_Pause(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				PauseSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.PauseScheduleRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, scheduleTestID, req.ScheduleId)
-					assert.Equal(t, reason, req.Reason)
-					assert.Equal(t, scheduleTestIdent, req.Identity)
+				PauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.PauseScheduleRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, scheduleTestID, req.GetScheduleId())
+					assert.Equal(t, reason, req.GetReason())
+					assert.Equal(t, scheduleTestIdent, req.GetIdentity())
 				}).
-				Return(&apiv1.PauseScheduleResponse{}, tt.rpcError)
+				Return(&s.PauseScheduleResponse{}, tt.rpcError)
 
 			assert.Equal(t, tt.rpcError, td.sc.Pause(context.Background(), scheduleTestID, reason))
 		})
@@ -757,13 +794,13 @@ func TestScheduleClient_Unpause(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				UnpauseSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.UnpauseScheduleRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, scheduleTestID, req.ScheduleId)
-					assert.Equal(t, reason, req.Reason)
+				UnpauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.UnpauseScheduleRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, scheduleTestID, req.GetScheduleId())
+					assert.Equal(t, reason, req.GetReason())
 				}).
-				Return(&apiv1.UnpauseScheduleResponse{}, tt.rpcError)
+				Return(&s.UnpauseScheduleResponse{}, tt.rpcError)
 
 			assert.Equal(t, tt.rpcError, td.sc.Unpause(context.Background(), scheduleTestID, reason))
 		})
@@ -800,13 +837,13 @@ func TestScheduleClient_Backfill(t *testing.T) {
 			}
 
 			td.mockService.EXPECT().
-				BackfillSchedule(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.BackfillScheduleRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, scheduleTestID, req.ScheduleId)
-					assert.Equal(t, backfillID, req.BackfillId)
+				BackfillSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.BackfillScheduleRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, scheduleTestID, req.GetScheduleId())
+					assert.Equal(t, backfillID, req.GetBackfillId())
 				}).
-				Return(&apiv1.BackfillScheduleResponse{}, tt.rpcError)
+				Return(&s.BackfillScheduleResponse{}, tt.rpcError)
 
 			assert.Equal(t, tt.rpcError, td.sc.Backfill(context.Background(), scheduleTestID, request))
 		})
@@ -876,29 +913,30 @@ func TestScheduleClient_Backfill_Validation(t *testing.T) {
 // ── List ──────────────────────────────────────────────────────────────────────
 
 func TestScheduleClient_List(t *testing.T) {
+	paused := true
 	testcases := []struct {
 		name          string
 		rpcError      error
-		rpcResponse   *apiv1.ListSchedulesResponse
+		rpcResponse   *s.ListSchedulesResponse
 		pageSize      int32
 		nextPageToken []byte
 		verify        func(*testing.T, *ListSchedulesResponse)
 	}{
 		{
 			name:          "success - empty response",
-			rpcResponse:   &apiv1.ListSchedulesResponse{},
+			rpcResponse:   &s.ListSchedulesResponse{},
 			pageSize:      10,
 			nextPageToken: []byte("token"),
 		},
 		{
 			name: "success - with entries",
-			rpcResponse: &apiv1.ListSchedulesResponse{
-				Schedules: []*apiv1.ScheduleListEntry{
+			rpcResponse: &s.ListSchedulesResponse{
+				Schedules: []*s.ScheduleListEntry{
 					{
-						ScheduleId:     "sched-1",
-						WorkflowType:   &apiv1.WorkflowType{Name: "my-workflow"},
-						CronExpression: "0 * * * *",
-						State:          &apiv1.ScheduleState{Paused: true},
+						ScheduleId:     common.StringPtr("sched-1"),
+						WorkflowType:   &s.WorkflowType{Name: common.StringPtr("my-workflow")},
+						CronExpression: common.StringPtr("0 * * * *"),
+						State:          &s.ScheduleState{Paused: &paused},
 					},
 				},
 				NextPageToken: []byte("next-token"),
@@ -926,10 +964,10 @@ func TestScheduleClient_List(t *testing.T) {
 			td := newScheduleClientTestData(t)
 
 			td.mockService.EXPECT().
-				ListSchedules(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Run(func(_ context.Context, req *apiv1.ListSchedulesRequest, _ ...yarpc.CallOption) {
-					assert.Equal(t, scheduleTestDomain, req.Domain)
-					assert.Equal(t, tt.pageSize, req.PageSize)
+				ListSchedules(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *s.ListSchedulesRequest, _ ...interface{}) {
+					assert.Equal(t, scheduleTestDomain, req.GetDomain())
+					assert.Equal(t, tt.pageSize, req.GetPageSize())
 					assert.Equal(t, tt.nextPageToken, req.NextPageToken)
 				}).
 				Return(tt.rpcResponse, tt.rpcError)
