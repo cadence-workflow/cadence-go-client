@@ -27,6 +27,19 @@ import (
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
+// AdapterOption configures optional capabilities of NewThrift2ProtoAdapter.
+type AdapterOption func(*adapterOptions)
+
+type adapterOptions struct {
+	schedule apiv1.ScheduleAPIYARPCClient
+}
+
+// WithScheduleClient enables the schedule RPCs in the adapter.
+// Without this option, all schedule methods return an error.
+func WithScheduleClient(c apiv1.ScheduleAPIYARPCClient) AdapterOption {
+	return func(o *adapterOptions) { o.schedule = c }
+}
+
 // NewThrift2ProtoAdapter creates an adapter for mapping calls from Thrift to Protobuf types.
 // This is intended to be used as compatibility layer for older client version to be able to
 // communicate with newer cadence server using GRPC.
@@ -35,7 +48,11 @@ func NewThrift2ProtoAdapter(
 	workflow apiv1.WorkflowAPIYARPCClient,
 	worker apiv1.WorkerAPIYARPCClient,
 	visibility apiv1.VisibilityAPIYARPCClient,
-	schedule apiv1.ScheduleAPIYARPCClient,
+	opts ...AdapterOption,
 ) workflowserviceclient.Interface {
-	return internal.NewThrift2ProtoAdapter(domain, workflow, worker, visibility, schedule)
+	o := &adapterOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return internal.NewThrift2ProtoAdapter(domain, workflow, worker, visibility, o.schedule)
 }

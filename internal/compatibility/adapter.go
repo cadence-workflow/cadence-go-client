@@ -285,42 +285,70 @@ func (a thrift2protoAdapter) ListFailoverHistory(ctx context.Context, request *s
 	return thrift.ListFailoverHistoryResponse(response), thrift.Error(err)
 }
 
+var errScheduleClientNotConfigured = &shared.BadRequestError{
+	Message: "schedule API not configured: provide a ScheduleAPIYARPCClient when constructing the adapter",
+}
+
 func (a thrift2protoAdapter) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.BackfillSchedule(ctx, proto.BackfillScheduleRequest(Request), opts...)
 	return thrift.BackfillScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.CreateSchedule(ctx, proto.CreateScheduleRequest(Request), opts...)
 	return thrift.CreateScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.DeleteSchedule(ctx, proto.DeleteScheduleRequest(Request), opts...)
 	return thrift.DeleteScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.DescribeSchedule(ctx, proto.DescribeScheduleRequest(Request), opts...)
 	return thrift.DescribeScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.ListSchedules(ctx, proto.ListSchedulesRequest(Request), opts...)
 	return thrift.ListSchedulesResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.PauseSchedule(ctx, proto.PauseScheduleRequest(Request), opts...)
 	return thrift.PauseScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.UnpauseSchedule(ctx, proto.UnpauseScheduleRequest(Request), opts...)
 	return thrift.UnpauseScheduleResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
 	response, err := a.schedule.UpdateSchedule(ctx, proto.UpdateScheduleRequest(Request), opts...)
 	return thrift.UpdateScheduleResponse(response), thrift.Error(err)
 }

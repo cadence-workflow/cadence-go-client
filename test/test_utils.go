@@ -153,7 +153,8 @@ func newGRPCAdapterClient(
 		apiv1.NewWorkflowAPIYARPCClient(clientConfig),
 		apiv1.NewWorkerAPIYARPCClient(clientConfig),
 		apiv1.NewVisibilityAPIYARPCClient(clientConfig),
-		apiv1.NewScheduleAPIYARPCClient(clientConfig))
+		compatibility.WithScheduleClient(apiv1.NewScheduleAPIYARPCClient(clientConfig)),
+	)
 	return &rpcClient{Interface: adapter, dispatcher: dispatcher}, nil
 }
 
