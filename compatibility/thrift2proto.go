@@ -35,6 +35,7 @@ func NewThrift2ProtoAdapter(
 	workflow apiv1.WorkflowAPIYARPCClient,
 	worker apiv1.WorkerAPIYARPCClient,
 	visibility apiv1.VisibilityAPIYARPCClient,
+	schedule apiv1.ScheduleAPIYARPCClient,
 ) workflowserviceclient.Interface {
-	return internal.NewThrift2ProtoAdapter(domain, workflow, worker, visibility)
+	return internal.NewThrift2ProtoAdapter(domain, workflow, worker, visibility, schedule)
 }

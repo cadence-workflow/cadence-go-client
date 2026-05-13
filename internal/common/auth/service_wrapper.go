@@ -541,3 +541,75 @@ func (w *workflowServiceAuthWrapper) ListFailoverHistory(ctx context.Context, re
 	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
 	return result, err
 }
+
+func (w *workflowServiceAuthWrapper) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.BackfillSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.CreateSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.DeleteSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.DescribeSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.ListSchedules(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.PauseSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.UnpauseSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.UpdateSchedule(ctx, Request, opts...)
+}
