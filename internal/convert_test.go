@@ -168,4 +168,3 @@ func TestConvertQueryConsistencyLevel(t *testing.T) {
 		})
 	}
 }
-

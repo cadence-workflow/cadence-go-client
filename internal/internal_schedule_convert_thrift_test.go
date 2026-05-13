@@ -88,9 +88,9 @@ func TestScheduleOverlapPolicyUnknownValues(t *testing.T) {
 func TestDurationToThriftSeconds(t *testing.T) {
 	assert.Nil(t, durationToThriftSeconds(0), "zero duration must return nil")
 	assert.Equal(t, int32(1), *durationToThriftSeconds(time.Second))
-	assert.Equal(t, int32(1), *durationToThriftSeconds(500*time.Millisecond), "sub-second must ceil to 1")
-	assert.Equal(t, int32(2), *durationToThriftSeconds(1500*time.Millisecond), "1.5s must ceil to 2")
-	assert.Equal(t, int32(60), *durationToThriftSeconds(60*time.Second))
+	assert.Equal(t, int32(1), *durationToThriftSeconds(500 * time.Millisecond), "sub-second must ceil to 1")
+	assert.Equal(t, int32(2), *durationToThriftSeconds(1500 * time.Millisecond), "1.5s must ceil to 2")
+	assert.Equal(t, int32(60), *durationToThriftSeconds(60 * time.Second))
 }
 
 func TestDurationRoundTrip(t *testing.T) {
@@ -250,10 +250,10 @@ func TestScheduleInfoFromThrift(t *testing.T) {
 	endNs := int64(1_800_000_000_000_000_000)
 	total := int64(42)
 	in := &s.ScheduleInfo{
-		LastRunTimeNano:  &startNs,
-		NextRunTimeNano:  &endNs,
-		TotalRuns:        &total,
-		CreateTimeNano:   &startNs,
+		LastRunTimeNano:    &startNs,
+		NextRunTimeNano:    &endNs,
+		TotalRuns:          &total,
+		CreateTimeNano:     &startNs,
 		LastUpdateTimeNano: &endNs,
 		OngoingBackfills: []*s.BackfillInfo{
 			{BackfillId: common.StringPtr("bf-1")},

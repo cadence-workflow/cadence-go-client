@@ -188,8 +188,8 @@ func TestScheduleClient_Create(t *testing.T) {
 			verify: func(t *testing.T, req *s.CreateScheduleRequest) {
 				rp := req.Action.StartWorkflow.RetryPolicy
 				require.NotNil(t, rp)
-				assert.Equal(t, int32(1), rp.GetInitialIntervalInSeconds())  // ceil(0.5) = 1
-				assert.Equal(t, int32(2), rp.GetMaximumIntervalInSeconds())  // ceil(1.5) = 2
+				assert.Equal(t, int32(1), rp.GetInitialIntervalInSeconds())    // ceil(0.5) = 1
+				assert.Equal(t, int32(2), rp.GetMaximumIntervalInSeconds())    // ceil(1.5) = 2
 				assert.Equal(t, int32(1), rp.GetExpirationIntervalInSeconds()) // ceil(0.1) = 1
 				assert.Equal(t, 1.5, rp.GetBackoffCoefficient())
 			},
@@ -460,10 +460,10 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 				ExecutionStartToCloseTimeoutSeconds: &exSec,
 				TaskStartToCloseTimeoutSeconds:      &taskSec,
 				RetryPolicy: &s.RetryPolicy{
-					InitialIntervalInSeconds:    common.Int32Ptr(1),
-					BackoffCoefficient:          &coeff,
-					MaximumIntervalInSeconds:    common.Int32Ptr(60),
-					MaximumAttempts:             &maxAttempts,
+					InitialIntervalInSeconds: common.Int32Ptr(1),
+					BackoffCoefficient:       &coeff,
+					MaximumIntervalInSeconds: common.Int32Ptr(60),
+					MaximumAttempts:          &maxAttempts,
 				},
 			},
 		},

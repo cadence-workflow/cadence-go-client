@@ -15,6 +15,14 @@ type ScheduleClient struct {
 	mock.Mock
 }
 
+type ScheduleClient_Expecter struct {
+	mock *mock.Mock
+}
+
+func (_m *ScheduleClient) EXPECT() *ScheduleClient_Expecter {
+	return &ScheduleClient_Expecter{mock: &_m.Mock}
+}
+
 // Backfill provides a mock function with given fields: ctx, scheduleID, request
 func (_m *ScheduleClient) Backfill(ctx context.Context, scheduleID string, request *internal.BackfillRequest) error {
 	ret := _m.Called(ctx, scheduleID, request)
@@ -31,6 +39,36 @@ func (_m *ScheduleClient) Backfill(ctx context.Context, scheduleID string, reque
 	}
 
 	return r0
+}
+
+// ScheduleClient_Backfill_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Backfill'
+type ScheduleClient_Backfill_Call struct {
+	*mock.Call
+}
+
+// Backfill is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scheduleID string
+//   - request *internal.BackfillRequest
+func (_e *ScheduleClient_Expecter) Backfill(ctx interface{}, scheduleID interface{}, request interface{}) *ScheduleClient_Backfill_Call {
+	return &ScheduleClient_Backfill_Call{Call: _e.mock.On("Backfill", ctx, scheduleID, request)}
+}
+
+func (_c *ScheduleClient_Backfill_Call) Run(run func(ctx context.Context, scheduleID string, request *internal.BackfillRequest)) *ScheduleClient_Backfill_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(*internal.BackfillRequest))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Backfill_Call) Return(_a0 error) *ScheduleClient_Backfill_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ScheduleClient_Backfill_Call) RunAndReturn(run func(context.Context, string, *internal.BackfillRequest) error) *ScheduleClient_Backfill_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Create provides a mock function with given fields: ctx, request
@@ -61,6 +99,35 @@ func (_m *ScheduleClient) Create(ctx context.Context, request *internal.CreateSc
 	return r0, r1
 }
 
+// ScheduleClient_Create_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Create'
+type ScheduleClient_Create_Call struct {
+	*mock.Call
+}
+
+// Create is a helper method to define mock.On call
+//   - ctx context.Context
+//   - request *internal.CreateScheduleRequest
+func (_e *ScheduleClient_Expecter) Create(ctx interface{}, request interface{}) *ScheduleClient_Create_Call {
+	return &ScheduleClient_Create_Call{Call: _e.mock.On("Create", ctx, request)}
+}
+
+func (_c *ScheduleClient_Create_Call) Run(run func(ctx context.Context, request *internal.CreateScheduleRequest)) *ScheduleClient_Create_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*internal.CreateScheduleRequest))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Create_Call) Return(_a0 string, _a1 error) *ScheduleClient_Create_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ScheduleClient_Create_Call) RunAndReturn(run func(context.Context, *internal.CreateScheduleRequest) (string, error)) *ScheduleClient_Create_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Delete provides a mock function with given fields: ctx, scheduleID
 func (_m *ScheduleClient) Delete(ctx context.Context, scheduleID string) error {
 	ret := _m.Called(ctx, scheduleID)
@@ -77,6 +144,35 @@ func (_m *ScheduleClient) Delete(ctx context.Context, scheduleID string) error {
 	}
 
 	return r0
+}
+
+// ScheduleClient_Delete_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Delete'
+type ScheduleClient_Delete_Call struct {
+	*mock.Call
+}
+
+// Delete is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scheduleID string
+func (_e *ScheduleClient_Expecter) Delete(ctx interface{}, scheduleID interface{}) *ScheduleClient_Delete_Call {
+	return &ScheduleClient_Delete_Call{Call: _e.mock.On("Delete", ctx, scheduleID)}
+}
+
+func (_c *ScheduleClient_Delete_Call) Run(run func(ctx context.Context, scheduleID string)) *ScheduleClient_Delete_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Delete_Call) Return(_a0 error) *ScheduleClient_Delete_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ScheduleClient_Delete_Call) RunAndReturn(run func(context.Context, string) error) *ScheduleClient_Delete_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Describe provides a mock function with given fields: ctx, scheduleID
@@ -109,6 +205,35 @@ func (_m *ScheduleClient) Describe(ctx context.Context, scheduleID string) (*int
 	return r0, r1
 }
 
+// ScheduleClient_Describe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Describe'
+type ScheduleClient_Describe_Call struct {
+	*mock.Call
+}
+
+// Describe is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scheduleID string
+func (_e *ScheduleClient_Expecter) Describe(ctx interface{}, scheduleID interface{}) *ScheduleClient_Describe_Call {
+	return &ScheduleClient_Describe_Call{Call: _e.mock.On("Describe", ctx, scheduleID)}
+}
+
+func (_c *ScheduleClient_Describe_Call) Run(run func(ctx context.Context, scheduleID string)) *ScheduleClient_Describe_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Describe_Call) Return(_a0 *internal.DescribeScheduleResponse, _a1 error) *ScheduleClient_Describe_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ScheduleClient_Describe_Call) RunAndReturn(run func(context.Context, string) (*internal.DescribeScheduleResponse, error)) *ScheduleClient_Describe_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // List provides a mock function with given fields: ctx, pageSize, nextPageToken
 func (_m *ScheduleClient) List(ctx context.Context, pageSize int32, nextPageToken []byte) (*internal.ListSchedulesResponse, error) {
 	ret := _m.Called(ctx, pageSize, nextPageToken)
@@ -139,6 +264,36 @@ func (_m *ScheduleClient) List(ctx context.Context, pageSize int32, nextPageToke
 	return r0, r1
 }
 
+// ScheduleClient_List_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'List'
+type ScheduleClient_List_Call struct {
+	*mock.Call
+}
+
+// List is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pageSize int32
+//   - nextPageToken []byte
+func (_e *ScheduleClient_Expecter) List(ctx interface{}, pageSize interface{}, nextPageToken interface{}) *ScheduleClient_List_Call {
+	return &ScheduleClient_List_Call{Call: _e.mock.On("List", ctx, pageSize, nextPageToken)}
+}
+
+func (_c *ScheduleClient_List_Call) Run(run func(ctx context.Context, pageSize int32, nextPageToken []byte)) *ScheduleClient_List_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int32), args[2].([]byte))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_List_Call) Return(_a0 *internal.ListSchedulesResponse, _a1 error) *ScheduleClient_List_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ScheduleClient_List_Call) RunAndReturn(run func(context.Context, int32, []byte) (*internal.ListSchedulesResponse, error)) *ScheduleClient_List_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Pause provides a mock function with given fields: ctx, scheduleID, reason
 func (_m *ScheduleClient) Pause(ctx context.Context, scheduleID string, reason string) error {
 	ret := _m.Called(ctx, scheduleID, reason)
@@ -155,6 +310,36 @@ func (_m *ScheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 	}
 
 	return r0
+}
+
+// ScheduleClient_Pause_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Pause'
+type ScheduleClient_Pause_Call struct {
+	*mock.Call
+}
+
+// Pause is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scheduleID string
+//   - reason string
+func (_e *ScheduleClient_Expecter) Pause(ctx interface{}, scheduleID interface{}, reason interface{}) *ScheduleClient_Pause_Call {
+	return &ScheduleClient_Pause_Call{Call: _e.mock.On("Pause", ctx, scheduleID, reason)}
+}
+
+func (_c *ScheduleClient_Pause_Call) Run(run func(ctx context.Context, scheduleID string, reason string)) *ScheduleClient_Pause_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Pause_Call) Return(_a0 error) *ScheduleClient_Pause_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ScheduleClient_Pause_Call) RunAndReturn(run func(context.Context, string, string) error) *ScheduleClient_Pause_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Unpause provides a mock function with given fields: ctx, scheduleID, reason
@@ -175,6 +360,36 @@ func (_m *ScheduleClient) Unpause(ctx context.Context, scheduleID string, reason
 	return r0
 }
 
+// ScheduleClient_Unpause_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Unpause'
+type ScheduleClient_Unpause_Call struct {
+	*mock.Call
+}
+
+// Unpause is a helper method to define mock.On call
+//   - ctx context.Context
+//   - scheduleID string
+//   - reason string
+func (_e *ScheduleClient_Expecter) Unpause(ctx interface{}, scheduleID interface{}, reason interface{}) *ScheduleClient_Unpause_Call {
+	return &ScheduleClient_Unpause_Call{Call: _e.mock.On("Unpause", ctx, scheduleID, reason)}
+}
+
+func (_c *ScheduleClient_Unpause_Call) Run(run func(ctx context.Context, scheduleID string, reason string)) *ScheduleClient_Unpause_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Unpause_Call) Return(_a0 error) *ScheduleClient_Unpause_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ScheduleClient_Unpause_Call) RunAndReturn(run func(context.Context, string, string) error) *ScheduleClient_Unpause_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function with given fields: ctx, request
 func (_m *ScheduleClient) Update(ctx context.Context, request *internal.UpdateScheduleRequest) error {
 	ret := _m.Called(ctx, request)
@@ -191,6 +406,35 @@ func (_m *ScheduleClient) Update(ctx context.Context, request *internal.UpdateSc
 	}
 
 	return r0
+}
+
+// ScheduleClient_Update_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Update'
+type ScheduleClient_Update_Call struct {
+	*mock.Call
+}
+
+// Update is a helper method to define mock.On call
+//   - ctx context.Context
+//   - request *internal.UpdateScheduleRequest
+func (_e *ScheduleClient_Expecter) Update(ctx interface{}, request interface{}) *ScheduleClient_Update_Call {
+	return &ScheduleClient_Update_Call{Call: _e.mock.On("Update", ctx, request)}
+}
+
+func (_c *ScheduleClient_Update_Call) Run(run func(ctx context.Context, request *internal.UpdateScheduleRequest)) *ScheduleClient_Update_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*internal.UpdateScheduleRequest))
+	})
+	return _c
+}
+
+func (_c *ScheduleClient_Update_Call) Return(_a0 error) *ScheduleClient_Update_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ScheduleClient_Update_Call) RunAndReturn(run func(context.Context, *internal.UpdateScheduleRequest) error) *ScheduleClient_Update_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // NewScheduleClient creates a new instance of ScheduleClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

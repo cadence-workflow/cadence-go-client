@@ -278,4 +278,3 @@ func ScheduleListEntry(t *shared.ScheduleListEntry) *apiv1.ScheduleListEntry {
 		CronExpression: t.GetCronExpression(),
 	}
 }
-
