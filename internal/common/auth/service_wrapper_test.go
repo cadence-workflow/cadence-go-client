@@ -779,3 +779,131 @@ func (s *serviceWrapperSuite) TestListFailoverHistoryInvalidToken() {
 	_, err := sw.ListFailoverHistory(ctx, &shared.ListFailoverHistoryRequest{})
 	s.EqualError(err, "error")
 }
+
+func (s *serviceWrapperSuite) TestBackfillScheduleValidToken() {
+	s.Service.EXPECT().BackfillSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestBackfillScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestCreateScheduleValidToken() {
+	s.Service.EXPECT().CreateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestCreateScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestDeleteScheduleValidToken() {
+	s.Service.EXPECT().DeleteSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestDeleteScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestDescribeScheduleValidToken() {
+	s.Service.EXPECT().DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestDescribeScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestListSchedulesValidToken() {
+	s.Service.EXPECT().ListSchedules(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ListSchedules(ctx, &shared.ListSchedulesRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestListSchedulesInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ListSchedules(ctx, &shared.ListSchedulesRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestPauseScheduleValidToken() {
+	s.Service.EXPECT().PauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestPauseScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestUnpauseScheduleValidToken() {
+	s.Service.EXPECT().UnpauseSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestUnpauseScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
+	s.EqualError(err, "error")
+}
+
+func (s *serviceWrapperSuite) TestUpdateScheduleValidToken() {
+	s.Service.EXPECT().UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestUpdateScheduleInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
+	s.EqualError(err, "error")
+}
