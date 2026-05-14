@@ -2427,23 +2427,23 @@ func TestDescribeScheduleResponse(t *testing.T) {
 	assert.NotNil(t, thrift.DescribeScheduleResponse(&apiv1.DescribeScheduleResponse{}))
 }
 func TestUpdateScheduleResponse(t *testing.T) {
-	assert.NotNil(t, thrift.UpdateScheduleResponse(nil))
+	assert.Nil(t, thrift.UpdateScheduleResponse(nil))
 	assert.NotNil(t, thrift.UpdateScheduleResponse(&apiv1.UpdateScheduleResponse{}))
 }
 func TestDeleteScheduleResponse(t *testing.T) {
-	assert.NotNil(t, thrift.DeleteScheduleResponse(nil))
+	assert.Nil(t, thrift.DeleteScheduleResponse(nil))
 	assert.NotNil(t, thrift.DeleteScheduleResponse(&apiv1.DeleteScheduleResponse{}))
 }
 func TestPauseScheduleResponse(t *testing.T) {
-	assert.NotNil(t, thrift.PauseScheduleResponse(nil))
+	assert.Nil(t, thrift.PauseScheduleResponse(nil))
 	assert.NotNil(t, thrift.PauseScheduleResponse(&apiv1.PauseScheduleResponse{}))
 }
 func TestUnpauseScheduleResponse(t *testing.T) {
-	assert.NotNil(t, thrift.UnpauseScheduleResponse(nil))
+	assert.Nil(t, thrift.UnpauseScheduleResponse(nil))
 	assert.NotNil(t, thrift.UnpauseScheduleResponse(&apiv1.UnpauseScheduleResponse{}))
 }
 func TestBackfillScheduleResponse(t *testing.T) {
-	assert.NotNil(t, thrift.BackfillScheduleResponse(nil))
+	assert.Nil(t, thrift.BackfillScheduleResponse(nil))
 	assert.NotNil(t, thrift.BackfillScheduleResponse(&apiv1.BackfillScheduleResponse{}))
 }
 func TestListSchedulesResponse(t *testing.T) {
