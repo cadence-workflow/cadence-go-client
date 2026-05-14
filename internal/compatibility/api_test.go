@@ -2359,11 +2359,21 @@ func TestCreateScheduleRequest(t *testing.T) {
 	assert.NotNil(t, proto.CreateScheduleRequest(&shared.CreateScheduleRequest{}))
 	domain, id := "test-domain", "my-schedule"
 	result := proto.CreateScheduleRequest(&shared.CreateScheduleRequest{
-		Domain:     &domain,
-		ScheduleId: &id,
+		Domain:           &domain,
+		ScheduleId:       &id,
+		Spec:             thrift.ScheduleSpec(&testdata.ScheduleSpec),
+		Action:           thrift.ScheduleAction(&testdata.ScheduleAction),
+		Policies:         thrift.SchedulePolicies(&testdata.SchedulePolicies),
+		Memo:             thrift.Memo(&testdata.Memo),
+		SearchAttributes: thrift.SearchAttributes(&testdata.SearchAttributes),
 	})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, id, result.ScheduleId)
+	assert.Equal(t, testdata.ScheduleSpec.CronExpression, result.Spec.CronExpression)
+	assert.NotNil(t, result.Action)
+	assert.Equal(t, testdata.SchedulePolicies.PauseOnFailure, result.Policies.PauseOnFailure)
+	assert.NotNil(t, result.Memo)
+	assert.NotNil(t, result.SearchAttributes)
 }
 func TestDescribeScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.DescribeScheduleRequest(nil))
@@ -2377,9 +2387,20 @@ func TestUpdateScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.UpdateScheduleRequest(nil))
 	assert.NotNil(t, proto.UpdateScheduleRequest(&shared.UpdateScheduleRequest{}))
 	domain, id := "test-domain", "my-schedule"
-	result := proto.UpdateScheduleRequest(&shared.UpdateScheduleRequest{Domain: &domain, ScheduleId: &id})
+	result := proto.UpdateScheduleRequest(&shared.UpdateScheduleRequest{
+		Domain:           &domain,
+		ScheduleId:       &id,
+		Spec:             thrift.ScheduleSpec(&testdata.ScheduleSpec),
+		Action:           thrift.ScheduleAction(&testdata.ScheduleAction),
+		Policies:         thrift.SchedulePolicies(&testdata.SchedulePolicies),
+		SearchAttributes: thrift.SearchAttributes(&testdata.SearchAttributes),
+	})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, id, result.ScheduleId)
+	assert.Equal(t, testdata.ScheduleSpec.CronExpression, result.Spec.CronExpression)
+	assert.NotNil(t, result.Action)
+	assert.Equal(t, testdata.SchedulePolicies.PauseOnFailure, result.Policies.PauseOnFailure)
+	assert.NotNil(t, result.SearchAttributes)
 }
 func TestDeleteScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.DeleteScheduleRequest(nil))
@@ -2408,14 +2429,17 @@ func TestUnpauseScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.UnpauseScheduleRequest(nil))
 	assert.NotNil(t, proto.UnpauseScheduleRequest(&shared.UnpauseScheduleRequest{}))
 	domain, id, reason := "test-domain", "my-schedule", "resume"
+	catchUpPolicy := shared.ScheduleCatchUpPolicySkip
 	result := proto.UnpauseScheduleRequest(&shared.UnpauseScheduleRequest{
-		Domain:     &domain,
-		ScheduleId: &id,
-		Reason:     &reason,
+		Domain:        &domain,
+		ScheduleId:    &id,
+		Reason:        &reason,
+		CatchUpPolicy: &catchUpPolicy,
 	})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, id, result.ScheduleId)
 	assert.Equal(t, reason, result.Reason)
+	assert.Equal(t, apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_SKIP, result.CatchUpPolicy)
 }
 func TestBackfillScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.BackfillScheduleRequest(nil))
@@ -2444,9 +2468,11 @@ func TestListSchedulesRequest(t *testing.T) {
 	assert.NotNil(t, proto.ListSchedulesRequest(&shared.ListSchedulesRequest{}))
 	domain := "test-domain"
 	pageSize := int32(10)
-	result := proto.ListSchedulesRequest(&shared.ListSchedulesRequest{Domain: &domain, PageSize: &pageSize})
+	token := []byte("page-token")
+	result := proto.ListSchedulesRequest(&shared.ListSchedulesRequest{Domain: &domain, PageSize: &pageSize, NextPageToken: token})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, pageSize, result.PageSize)
+	assert.Equal(t, token, result.NextPageToken)
 }
 
 // Response converter tests (proto → thrift, one-way)
@@ -2499,6 +2525,14 @@ func TestBackfillScheduleResponse(t *testing.T) {
 func TestListSchedulesResponse(t *testing.T) {
 	assert.Nil(t, thrift.ListSchedulesResponse(nil))
 	assert.NotNil(t, thrift.ListSchedulesResponse(&apiv1.ListSchedulesResponse{}))
+	token := []byte("next-page-token")
+	result := thrift.ListSchedulesResponse(&apiv1.ListSchedulesResponse{
+		Schedules:     []*apiv1.ScheduleListEntry{&testdata.ScheduleListEntry},
+		NextPageToken: token,
+	})
+	assert.Len(t, result.Schedules, 1)
+	assert.Equal(t, testdata.ScheduleListEntry.ScheduleId, result.Schedules[0].GetScheduleId())
+	assert.Equal(t, token, result.NextPageToken)
 }
 
 func TestTaskIDBlock(t *testing.T) {
