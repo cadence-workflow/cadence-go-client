@@ -51,23 +51,38 @@ func DescribeScheduleResponse(t *apiv1.DescribeScheduleResponse) *shared.Describ
 	}
 }
 
-func UpdateScheduleResponse(_ *apiv1.UpdateScheduleResponse) *shared.UpdateScheduleResponse {
+func UpdateScheduleResponse(t *apiv1.UpdateScheduleResponse) *shared.UpdateScheduleResponse {
+	if t == nil {
+		return nil
+	}
 	return &shared.UpdateScheduleResponse{}
 }
 
-func DeleteScheduleResponse(_ *apiv1.DeleteScheduleResponse) *shared.DeleteScheduleResponse {
+func DeleteScheduleResponse(t *apiv1.DeleteScheduleResponse) *shared.DeleteScheduleResponse {
+	if t == nil {
+		return nil
+	}
 	return &shared.DeleteScheduleResponse{}
 }
 
-func PauseScheduleResponse(_ *apiv1.PauseScheduleResponse) *shared.PauseScheduleResponse {
+func PauseScheduleResponse(t *apiv1.PauseScheduleResponse) *shared.PauseScheduleResponse {
+	if t == nil {
+		return nil
+	}
 	return &shared.PauseScheduleResponse{}
 }
 
-func UnpauseScheduleResponse(_ *apiv1.UnpauseScheduleResponse) *shared.UnpauseScheduleResponse {
+func UnpauseScheduleResponse(t *apiv1.UnpauseScheduleResponse) *shared.UnpauseScheduleResponse {
+	if t == nil {
+		return nil
+	}
 	return &shared.UnpauseScheduleResponse{}
 }
 
-func BackfillScheduleResponse(_ *apiv1.BackfillScheduleResponse) *shared.BackfillScheduleResponse {
+func BackfillScheduleResponse(t *apiv1.BackfillScheduleResponse) *shared.BackfillScheduleResponse {
+	if t == nil {
+		return nil
+	}
 	return &shared.BackfillScheduleResponse{}
 }
 
