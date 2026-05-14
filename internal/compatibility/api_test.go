@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	protobuf "github.com/gogo/protobuf/proto"
 	gogo "github.com/gogo/protobuf/types"
@@ -2317,16 +2318,38 @@ func TestScheduleInfo(t *testing.T) {
 	for _, item := range []*apiv1.ScheduleInfo{nil, {}, &testdata.ScheduleInfo} {
 		assert.Equal(t, item, proto.ScheduleInfo(thrift.ScheduleInfo(item)))
 	}
+
+	runFuzzTest(t,
+		thrift.ScheduleInfo,
+		proto.ScheduleInfo,
+		FuzzOptions{},
+	)
 }
 func TestScheduleListEntry(t *testing.T) {
 	for _, item := range []*apiv1.ScheduleListEntry{nil, {}, &testdata.ScheduleListEntry} {
 		assert.Equal(t, item, proto.ScheduleListEntry(thrift.ScheduleListEntry(item)))
 	}
+
+	runFuzzTest(t,
+		thrift.ScheduleListEntry,
+		proto.ScheduleListEntry,
+		FuzzOptions{},
+	)
 }
 func TestScheduleAction(t *testing.T) {
 	for _, item := range []*apiv1.ScheduleAction{nil, {}, &testdata.ScheduleAction} {
 		assert.Equal(t, item, proto.ScheduleAction(thrift.ScheduleAction(item)))
 	}
+
+	runFuzzTest(t,
+		thrift.ScheduleAction,
+		proto.ScheduleAction,
+		FuzzOptions{
+			ExcludedFields: []string{
+				"TaskList", // GoFuzz has issues with complex nested types
+			},
+		},
+	)
 }
 
 // Request converter tests (thrift → proto, one-way)
@@ -2369,15 +2392,17 @@ func TestDeleteScheduleRequest(t *testing.T) {
 func TestPauseScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.PauseScheduleRequest(nil))
 	assert.NotNil(t, proto.PauseScheduleRequest(&shared.PauseScheduleRequest{}))
-	domain, id, reason := "test-domain", "my-schedule", "maintenance"
+	domain, id, reason, identity := "test-domain", "my-schedule", "maintenance", "worker-1"
 	result := proto.PauseScheduleRequest(&shared.PauseScheduleRequest{
 		Domain:     &domain,
 		ScheduleId: &id,
 		Reason:     &reason,
+		Identity:   &identity,
 	})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, id, result.ScheduleId)
 	assert.Equal(t, reason, result.Reason)
+	assert.Equal(t, identity, result.Identity)
 }
 func TestUnpauseScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.UnpauseScheduleRequest(nil))
@@ -2396,14 +2421,23 @@ func TestBackfillScheduleRequest(t *testing.T) {
 	assert.Nil(t, proto.BackfillScheduleRequest(nil))
 	assert.NotNil(t, proto.BackfillScheduleRequest(&shared.BackfillScheduleRequest{}))
 	domain, id, bfid := "test-domain", "my-schedule", "bf-1"
+	startNano := int64(1_000_000_000) // 1 second in nanoseconds
+	endNano := int64(2_000_000_000)
+	overlapPolicy := shared.ScheduleOverlapPolicySkipNew
 	result := proto.BackfillScheduleRequest(&shared.BackfillScheduleRequest{
-		Domain:     &domain,
-		ScheduleId: &id,
-		BackfillId: &bfid,
+		Domain:        &domain,
+		ScheduleId:    &id,
+		BackfillId:    &bfid,
+		StartTimeNano: &startNano,
+		EndTimeNano:   &endNano,
+		OverlapPolicy: &overlapPolicy,
 	})
 	assert.Equal(t, domain, result.Domain)
 	assert.Equal(t, id, result.ScheduleId)
 	assert.Equal(t, bfid, result.BackfillId)
+	assert.Equal(t, startNano, result.StartTime.Seconds*int64(time.Second)+int64(result.StartTime.Nanos))
+	assert.Equal(t, endNano, result.EndTime.Seconds*int64(time.Second)+int64(result.EndTime.Nanos))
+	assert.Equal(t, apiv1.ScheduleOverlapPolicy_SCHEDULE_OVERLAP_POLICY_SKIP_NEW, result.OverlapPolicy)
 }
 func TestListSchedulesRequest(t *testing.T) {
 	assert.Nil(t, proto.ListSchedulesRequest(nil))
@@ -2425,6 +2459,22 @@ func TestCreateScheduleResponse(t *testing.T) {
 func TestDescribeScheduleResponse(t *testing.T) {
 	assert.Nil(t, thrift.DescribeScheduleResponse(nil))
 	assert.NotNil(t, thrift.DescribeScheduleResponse(&apiv1.DescribeScheduleResponse{}))
+	result := thrift.DescribeScheduleResponse(&apiv1.DescribeScheduleResponse{
+		Spec:             &testdata.ScheduleSpec,
+		Action:           &testdata.ScheduleAction,
+		Policies:         &testdata.SchedulePolicies,
+		State:            &testdata.ScheduleState,
+		Info:             &testdata.ScheduleInfo,
+		Memo:             &testdata.Memo,
+		SearchAttributes: &testdata.SearchAttributes,
+	})
+	assert.Equal(t, testdata.ScheduleSpec.CronExpression, result.Spec.GetCronExpression())
+	assert.Equal(t, testdata.SchedulePolicies.PauseOnFailure, result.Policies.GetPauseOnFailure())
+	assert.Equal(t, testdata.ScheduleState.Paused, result.State.GetPaused())
+	assert.Equal(t, testdata.ScheduleInfo.TotalRuns, result.Info.GetTotalRuns())
+	assert.NotNil(t, result.Action)
+	assert.NotNil(t, result.Memo)
+	assert.NotNil(t, result.SearchAttributes)
 }
 func TestUpdateScheduleResponse(t *testing.T) {
 	assert.Nil(t, thrift.UpdateScheduleResponse(nil))
