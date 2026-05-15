@@ -595,6 +595,19 @@ func TestScheduleClient_Update(t *testing.T) {
 			},
 		},
 		{
+			name: "success - search attributes only",
+			request: &UpdateScheduleRequest{
+				ScheduleID:       scheduleTestID,
+				SearchAttributes: map[string]interface{}{"env": "prod"},
+			},
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
+				assert.Nil(t, req.Spec)
+				assert.Nil(t, req.Action)
+				assert.Nil(t, req.Policies)
+				assert.NotNil(t, req.SearchAttributes)
+			},
+		},
+		{
 			name: "rpc failure",
 			request: &UpdateScheduleRequest{
 				ScheduleID: scheduleTestID,
@@ -658,7 +671,15 @@ func TestScheduleClient_Update_Validation(t *testing.T) {
 				r.Policies = nil
 				return r
 			}(),
-			wantErr: "Update: at least one of Spec, Action, or Policies must be set",
+			wantErr: "Update: at least one of Spec, Action, Policies, or SearchAttributes must be set",
+		},
+		{
+			name: "all fields nil including empty SearchAttributes",
+			request: &UpdateScheduleRequest{
+				ScheduleID:       scheduleTestID,
+				SearchAttributes: map[string]interface{}{},
+			},
+			wantErr: "Update: at least one of Spec, Action, Policies, or SearchAttributes must be set",
 		},
 	}
 
@@ -847,9 +868,10 @@ func TestScheduleClient_Backfill(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			td := newScheduleClientTestData(t)
 			request := &BackfillRequest{
-				StartTime:  start,
-				EndTime:    end,
-				BackfillID: backfillID,
+				StartTime:     start,
+				EndTime:       end,
+				BackfillID:    backfillID,
+				OverlapPolicy: ScheduleOverlapPolicyBuffer,
 			}
 
 			td.mockService.EXPECT().
@@ -858,6 +880,10 @@ func TestScheduleClient_Backfill(t *testing.T) {
 					assert.Equal(t, scheduleTestDomain, req.GetDomain())
 					assert.Equal(t, scheduleTestID, req.GetScheduleId())
 					assert.Equal(t, backfillID, req.GetBackfillId())
+					assert.Equal(t, start.UnixNano(), req.GetStartTimeNano())
+					assert.Equal(t, end.UnixNano(), req.GetEndTimeNano())
+					require.NotNil(t, req.OverlapPolicy)
+					assert.Equal(t, s.ScheduleOverlapPolicyBuffer, *req.OverlapPolicy)
 				}).
 				Return(&s.BackfillScheduleResponse{}, tt.rpcError)
 

@@ -305,8 +305,8 @@ func scheduleUpdateRequestToThrift(domain string, r *UpdateScheduleRequest, dc D
 	if r.ScheduleID == "" {
 		return nil, errors.New("Update: ScheduleID is required")
 	}
-	if r.Spec == nil && r.Action == nil && r.Policies == nil {
-		return nil, errors.New("Update: at least one of Spec, Action, or Policies must be set")
+	if r.Spec == nil && r.Action == nil && r.Policies == nil && len(r.SearchAttributes) == 0 {
+		return nil, errors.New("Update: at least one of Spec, Action, Policies, or SearchAttributes must be set")
 	}
 	action, err := scheduleActionToThrift(r.Action, dc)
 	if err != nil {
