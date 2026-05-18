@@ -342,17 +342,17 @@ func (_c *ScheduleClient_Pause_Call) RunAndReturn(run func(context.Context, stri
 	return _c
 }
 
-// Unpause provides a mock function with given fields: ctx, scheduleID, reason
-func (_m *ScheduleClient) Unpause(ctx context.Context, scheduleID string, reason string) error {
-	ret := _m.Called(ctx, scheduleID, reason)
+// Unpause provides a mock function with given fields: ctx, scheduleID, reason, catchUpPolicy
+func (_m *ScheduleClient) Unpause(ctx context.Context, scheduleID string, reason string, catchUpPolicy internal.ScheduleCatchUpPolicy) error {
+	ret := _m.Called(ctx, scheduleID, reason, catchUpPolicy)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Unpause")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, scheduleID, reason)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, internal.ScheduleCatchUpPolicy) error); ok {
+		r0 = rf(ctx, scheduleID, reason, catchUpPolicy)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -369,13 +369,14 @@ type ScheduleClient_Unpause_Call struct {
 //   - ctx context.Context
 //   - scheduleID string
 //   - reason string
-func (_e *ScheduleClient_Expecter) Unpause(ctx interface{}, scheduleID interface{}, reason interface{}) *ScheduleClient_Unpause_Call {
-	return &ScheduleClient_Unpause_Call{Call: _e.mock.On("Unpause", ctx, scheduleID, reason)}
+//   - catchUpPolicy internal.ScheduleCatchUpPolicy
+func (_e *ScheduleClient_Expecter) Unpause(ctx interface{}, scheduleID interface{}, reason interface{}, catchUpPolicy interface{}) *ScheduleClient_Unpause_Call {
+	return &ScheduleClient_Unpause_Call{Call: _e.mock.On("Unpause", ctx, scheduleID, reason, catchUpPolicy)}
 }
 
-func (_c *ScheduleClient_Unpause_Call) Run(run func(ctx context.Context, scheduleID string, reason string)) *ScheduleClient_Unpause_Call {
+func (_c *ScheduleClient_Unpause_Call) Run(run func(ctx context.Context, scheduleID string, reason string, catchUpPolicy internal.ScheduleCatchUpPolicy)) *ScheduleClient_Unpause_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(internal.ScheduleCatchUpPolicy))
 	})
 	return _c
 }
@@ -385,7 +386,7 @@ func (_c *ScheduleClient_Unpause_Call) Return(_a0 error) *ScheduleClient_Unpause
 	return _c
 }
 
-func (_c *ScheduleClient_Unpause_Call) RunAndReturn(run func(context.Context, string, string) error) *ScheduleClient_Unpause_Call {
+func (_c *ScheduleClient_Unpause_Call) RunAndReturn(run func(context.Context, string, string, internal.ScheduleCatchUpPolicy) error) *ScheduleClient_Unpause_Call {
 	_c.Call.Return(run)
 	return _c
 }

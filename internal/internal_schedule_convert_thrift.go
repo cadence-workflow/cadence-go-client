@@ -35,22 +35,28 @@ import (
 // ── Enum converters ──────────────────────────────────────────────────────────
 
 func scheduleOverlapPolicyToThrift(p ScheduleOverlapPolicy) *shared.ScheduleOverlapPolicy {
-	var v shared.ScheduleOverlapPolicy
 	switch p {
+	case ScheduleOverlapPolicyUnspecified:
+		return nil
 	case ScheduleOverlapPolicySkipNew:
-		v = shared.ScheduleOverlapPolicySkipNew
+		v := shared.ScheduleOverlapPolicySkipNew
+		return &v
 	case ScheduleOverlapPolicyBuffer:
-		v = shared.ScheduleOverlapPolicyBuffer
+		v := shared.ScheduleOverlapPolicyBuffer
+		return &v
 	case ScheduleOverlapPolicyConcurrent:
-		v = shared.ScheduleOverlapPolicyConcurrent
+		v := shared.ScheduleOverlapPolicyConcurrent
+		return &v
 	case ScheduleOverlapPolicyCancelPrevious:
-		v = shared.ScheduleOverlapPolicyCancelPrevious
+		v := shared.ScheduleOverlapPolicyCancelPrevious
+		return &v
 	case ScheduleOverlapPolicyTerminatePrevious:
-		v = shared.ScheduleOverlapPolicyTerminatePrevious
+		v := shared.ScheduleOverlapPolicyTerminatePrevious
+		return &v
 	default:
-		v = shared.ScheduleOverlapPolicyInvalid
+		v := shared.ScheduleOverlapPolicyInvalid
+		return &v
 	}
-	return &v
 }
 
 func scheduleOverlapPolicyFromThrift(p *shared.ScheduleOverlapPolicy) ScheduleOverlapPolicy {
@@ -74,18 +80,22 @@ func scheduleOverlapPolicyFromThrift(p *shared.ScheduleOverlapPolicy) ScheduleOv
 }
 
 func scheduleCatchUpPolicyToThrift(p ScheduleCatchUpPolicy) *shared.ScheduleCatchUpPolicy {
-	var v shared.ScheduleCatchUpPolicy
 	switch p {
+	case ScheduleCatchUpPolicyUnspecified:
+		return nil
 	case ScheduleCatchUpPolicySkip:
-		v = shared.ScheduleCatchUpPolicySkip
+		v := shared.ScheduleCatchUpPolicySkip
+		return &v
 	case ScheduleCatchUpPolicyOne:
-		v = shared.ScheduleCatchUpPolicyOne
+		v := shared.ScheduleCatchUpPolicyOne
+		return &v
 	case ScheduleCatchUpPolicyAll:
-		v = shared.ScheduleCatchUpPolicyAll
+		v := shared.ScheduleCatchUpPolicyAll
+		return &v
 	default:
-		v = shared.ScheduleCatchUpPolicyInvalid
+		v := shared.ScheduleCatchUpPolicyInvalid
+		return &v
 	}
-	return &v
 }
 
 func scheduleCatchUpPolicyFromThrift(p *shared.ScheduleCatchUpPolicy) ScheduleCatchUpPolicy {
@@ -230,7 +240,7 @@ func schedulePoliciesToThrift(p *SchedulePolicies) *shared.SchedulePolicies {
 		OverlapPolicy:          scheduleOverlapPolicyToThrift(p.OverlapPolicy),
 		CatchUpPolicy:          scheduleCatchUpPolicyToThrift(p.CatchUpPolicy),
 		CatchUpWindowInSeconds: durationToThriftSeconds(p.CatchUpWindow),
-		PauseOnFailure:         &p.PauseOnFailure,
+		PauseOnFailure:         p.PauseOnFailure,
 		BufferLimit:            common.Int32Ptr(p.BufferLimit),
 		ConcurrencyLimit:       common.Int32Ptr(p.ConcurrencyLimit),
 	}
@@ -414,7 +424,7 @@ func schedulePoliciesFromThrift(p *shared.SchedulePolicies) *SchedulePolicies {
 		OverlapPolicy:    scheduleOverlapPolicyFromThrift(p.OverlapPolicy),
 		CatchUpPolicy:    scheduleCatchUpPolicyFromThrift(p.CatchUpPolicy),
 		CatchUpWindow:    thriftSecondsToDuration(p.CatchUpWindowInSeconds),
-		PauseOnFailure:   p.GetPauseOnFailure(),
+		PauseOnFailure:   p.PauseOnFailure,
 		BufferLimit:      p.GetBufferLimit(),
 		ConcurrencyLimit: p.GetConcurrencyLimit(),
 	}

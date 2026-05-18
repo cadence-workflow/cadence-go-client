@@ -120,7 +120,8 @@ type SchedulePolicies struct {
 	// Zero means the server uses its configured default.
 	CatchUpWindow time.Duration
 	// PauseOnFailure automatically pauses the schedule if a triggered workflow run fails.
-	PauseOnFailure bool
+	// Use nil to leave the server's current value unchanged on Update; use common.BoolPtr(true/false) to set explicitly.
+	PauseOnFailure *bool
 	// BufferLimit caps the number of buffered runs when OverlapPolicy is Buffer (0 = unlimited).
 	BufferLimit int32
 	// ConcurrencyLimit caps the number of concurrent runs when OverlapPolicy is Concurrent (0 = unlimited).

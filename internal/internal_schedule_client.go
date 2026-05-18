@@ -50,7 +50,9 @@ type ScheduleClient interface {
 	Pause(ctx context.Context, scheduleID string, reason string) error
 
 	// Unpause resumes a paused schedule. reason is recorded in the schedule's pause info.
-	Unpause(ctx context.Context, scheduleID string, reason string) error
+	// catchUpPolicy overrides the schedule's configured catch-up policy for this unpause only;
+	// pass ScheduleCatchUpPolicyUnspecified to defer to the schedule's configured policy.
+	Unpause(ctx context.Context, scheduleID string, reason string, catchUpPolicy ScheduleCatchUpPolicy) error
 
 	// Backfill triggers workflow runs for a historical time range.
 	Backfill(ctx context.Context, scheduleID string, request *BackfillRequest) error
@@ -167,14 +169,15 @@ func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 	})
 }
 
-func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason string) error {
+func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason string, catchUpPolicy ScheduleCatchUpPolicy) error {
 	if scheduleID == "" {
 		return errors.New("Unpause: scheduleID is required")
 	}
 	req := &shared.UnpauseScheduleRequest{
-		Domain:     common.StringPtr(sc.domain),
-		ScheduleId: common.StringPtr(scheduleID),
-		Reason:     common.StringPtr(reason),
+		Domain:        common.StringPtr(sc.domain),
+		ScheduleId:    common.StringPtr(scheduleID),
+		Reason:        common.StringPtr(reason),
+		CatchUpPolicy: scheduleCatchUpPolicyToThrift(catchUpPolicy),
 	}
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
