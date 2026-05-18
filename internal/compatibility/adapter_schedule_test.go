@@ -22,6 +22,7 @@ package compatibility
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -66,56 +67,71 @@ func TestAdapterScheduleNilGuard(t *testing.T) {
 	a := thrift2protoAdapter{} // schedule is nil
 	ctx := context.Background()
 
+	checkErr := func(err error) {
+		t.Helper()
+		assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+		var badReqErr *shared.BadRequestError
+		assert.True(t, errors.As(err, &badReqErr), "expected *shared.BadRequestError, got %T", err)
+	}
+
 	_, err := a.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.ListSchedules(ctx, &shared.ListSchedulesRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 
 	_, err = a.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
-	assert.True(t, strings.Contains(err.Error(), "schedule API not configured"))
+	checkErr(err)
 }
 
 func TestAdapterScheduleDelegates(t *testing.T) {
 	a := thrift2protoAdapter{schedule: &scheduleStub{}}
 	ctx := context.Background()
 
-	_, err := a.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
+	resp, err := a.BackfillSchedule(ctx, &shared.BackfillScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, resp)
 
-	_, err = a.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
+	cresp, err := a.CreateSchedule(ctx, &shared.CreateScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, cresp)
 
-	_, err = a.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
+	dresp, err := a.DeleteSchedule(ctx, &shared.DeleteScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, dresp)
 
-	_, err = a.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
+	desresp, err := a.DescribeSchedule(ctx, &shared.DescribeScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, desresp)
 
-	_, err = a.ListSchedules(ctx, &shared.ListSchedulesRequest{})
+	lresp, err := a.ListSchedules(ctx, &shared.ListSchedulesRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, lresp)
 
-	_, err = a.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
+	presp, err := a.PauseSchedule(ctx, &shared.PauseScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, presp)
 
-	_, err = a.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
+	uresp, err := a.UnpauseSchedule(ctx, &shared.UnpauseScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, uresp)
 
-	_, err = a.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
+	upresp, err := a.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, upresp)
 }
