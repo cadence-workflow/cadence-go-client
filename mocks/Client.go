@@ -441,6 +441,26 @@ func (_m *Client) ListWorkflow(ctx context.Context, request *shared.ListWorkflow
 	return r0, r1
 }
 
+// NewScheduleClient provides a mock function with no fields
+func (_m *Client) NewScheduleClient() internal.ScheduleClient {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for NewScheduleClient")
+	}
+
+	var r0 internal.ScheduleClient
+	if rf, ok := ret.Get(0).(func() internal.ScheduleClient); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(internal.ScheduleClient)
+		}
+	}
+
+	return r0
+}
+
 // QueryWorkflow provides a mock function with given fields: ctx, workflowID, runID, queryType, args
 func (_m *Client) QueryWorkflow(ctx context.Context, workflowID string, runID string, queryType string, args ...interface{}) (internal.Value, error) {
 	var _ca []interface{}

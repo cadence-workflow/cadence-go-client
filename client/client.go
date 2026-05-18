@@ -455,6 +455,9 @@ type (
 		//  - ServiceBusyError
 		//  - EntityNotExistError
 		RefreshWorkflowTasks(ctx context.Context, workflowID, runID string) error
+
+		// NewScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
+		NewScheduleClient() ScheduleClient
 	}
 
 	// DomainClient is the client for managing operations on the domain.
@@ -493,6 +496,61 @@ type (
 	}
 )
 
+// ── Schedule API ──────────────────────────────────────────────────────────────
+
+type (
+	// ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
+	ScheduleOverlapPolicy = internal.ScheduleOverlapPolicy
+
+	// ScheduleCatchUpPolicy controls how missed runs are handled when a schedule resumes after being paused.
+	ScheduleCatchUpPolicy = internal.ScheduleCatchUpPolicy
+
+	// ScheduleSpec defines when a schedule triggers.
+	ScheduleSpec = internal.ScheduleSpec
+
+	// ScheduleStartWorkflowAction describes the workflow to start when the schedule triggers.
+	ScheduleStartWorkflowAction = internal.ScheduleStartWorkflowAction
+
+	// ScheduleAction defines what the schedule does when it triggers.
+	ScheduleAction = internal.ScheduleAction
+
+	// SchedulePolicies controls the runtime behavior of a schedule.
+	SchedulePolicies = internal.SchedulePolicies
+
+	// SchedulePauseInfo records when and why a schedule was paused.
+	SchedulePauseInfo = internal.SchedulePauseInfo
+
+	// ScheduleState is the runtime pause/unpause state of a schedule.
+	ScheduleState = internal.ScheduleState
+
+	// BackfillInfo describes a single active or completed backfill operation.
+	BackfillInfo = internal.BackfillInfo
+
+	// ScheduleInfo contains runtime statistics for a schedule.
+	ScheduleInfo = internal.ScheduleInfo
+
+	// ScheduleListEntry is a summary of a schedule returned by ScheduleClient.List.
+	ScheduleListEntry = internal.ScheduleListEntry
+
+	// CreateScheduleRequest is the request to ScheduleClient.Create.
+	CreateScheduleRequest = internal.CreateScheduleRequest
+
+	// UpdateScheduleRequest is the request to ScheduleClient.Update.
+	UpdateScheduleRequest = internal.UpdateScheduleRequest
+
+	// BackfillRequest triggers workflow runs for a historical time range.
+	BackfillRequest = internal.BackfillRequest
+
+	// DescribeScheduleResponse is returned by ScheduleClient.Describe.
+	DescribeScheduleResponse = internal.DescribeScheduleResponse
+
+	// ListSchedulesResponse is returned by ScheduleClient.List.
+	ListSchedulesResponse = internal.ListSchedulesResponse
+
+	// ScheduleClient is the client for managing Cadence schedules within a domain.
+	ScheduleClient = internal.ScheduleClient
+)
+
 const (
 	// WorkflowIDReusePolicyAllowDuplicateFailedOnly allow start a workflow execution
 	// when workflow not running, and the last execution close state is in
@@ -529,6 +587,32 @@ const (
 	QueryConsistencyLevelStrong = internal.QueryConsistencyLevelStrong
 )
 
+const (
+	// ScheduleOverlapPolicyUnspecified defers to the server default.
+	ScheduleOverlapPolicyUnspecified = internal.ScheduleOverlapPolicyUnspecified
+	// ScheduleOverlapPolicySkipNew skips the new run if the previous is still active.
+	ScheduleOverlapPolicySkipNew = internal.ScheduleOverlapPolicySkipNew
+	// ScheduleOverlapPolicyBuffer queues new runs and executes them sequentially.
+	ScheduleOverlapPolicyBuffer = internal.ScheduleOverlapPolicyBuffer
+	// ScheduleOverlapPolicyConcurrent allows multiple runs to execute simultaneously.
+	ScheduleOverlapPolicyConcurrent = internal.ScheduleOverlapPolicyConcurrent
+	// ScheduleOverlapPolicyCancelPrevious cancels the active run and starts the new one.
+	ScheduleOverlapPolicyCancelPrevious = internal.ScheduleOverlapPolicyCancelPrevious
+	// ScheduleOverlapPolicyTerminatePrevious terminates the active run and starts the new one.
+	ScheduleOverlapPolicyTerminatePrevious = internal.ScheduleOverlapPolicyTerminatePrevious
+)
+
+const (
+	// ScheduleCatchUpPolicyUnspecified defers to the server default.
+	ScheduleCatchUpPolicyUnspecified = internal.ScheduleCatchUpPolicyUnspecified
+	// ScheduleCatchUpPolicySkip discards all missed runs.
+	ScheduleCatchUpPolicySkip = internal.ScheduleCatchUpPolicySkip
+	// ScheduleCatchUpPolicyOne executes at most one missed run on resume.
+	ScheduleCatchUpPolicyOne = internal.ScheduleCatchUpPolicyOne
+	// ScheduleCatchUpPolicyAll executes every missed run on resume.
+	ScheduleCatchUpPolicyAll = internal.ScheduleCatchUpPolicyAll
+)
+
 // NewClient creates an instance of a workflow client
 func NewClient(service workflowserviceclient.Interface, domain string, options *Options) Client {
 	return internal.NewClient(service, domain, options)
@@ -539,7 +623,7 @@ func NewDomainClient(service workflowserviceclient.Interface, options *Options) 
 	return internal.NewDomainClient(service, options)
 }
 
-// make sure if new methods are added to internal.Client they are also added to public Client.
+// Compile-time checks: ensure public interfaces stay in sync with their internal counterparts.
 var _ Client = internal.Client(nil)
 var _ internal.Client = Client(nil)
 var _ DomainClient = internal.DomainClient(nil)
