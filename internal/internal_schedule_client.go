@@ -35,6 +35,11 @@ import (
 // ScheduleClient is the client for managing Cadence schedules within a domain.
 type ScheduleClient interface {
 	// Create creates a new schedule and returns the server-assigned schedule ID.
+	//
+	// Create is not idempotent. If the server processes the request successfully but the
+	// response is lost (e.g. due to a network failure), the automatic retry will receive a
+	// BadRequestError indicating the schedule already exists. Callers should call Describe
+	// after a Create failure to determine whether the schedule was actually created.
 	Create(ctx context.Context, request *CreateScheduleRequest) (string, error)
 
 	// Describe returns the current configuration and state of a schedule.

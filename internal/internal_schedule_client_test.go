@@ -137,6 +137,7 @@ func TestScheduleClient_Create(t *testing.T) {
 					OverlapPolicy:  ScheduleOverlapPolicyBuffer,
 					CatchUpPolicy:  ScheduleCatchUpPolicyOne,
 					PauseOnFailure: common.BoolPtr(true),
+					PauseOnFailure: common.BoolPtr(true),
 					BufferLimit:    5,
 				},
 				Memo:             map[string]interface{}{"m": "mv"},
@@ -533,6 +534,7 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	assert.Equal(t, ScheduleCatchUpPolicyOne, resp.Policies.CatchUpPolicy)
 	assert.Equal(t, 24*time.Hour, resp.Policies.CatchUpWindow)
 	assert.Equal(t, common.BoolPtr(true), resp.Policies.PauseOnFailure)
+	assert.Equal(t, common.BoolPtr(true), resp.Policies.PauseOnFailure)
 	assert.Equal(t, int32(5), resp.Policies.BufferLimit)
 	assert.Equal(t, int32(2), resp.Policies.ConcurrencyLimit)
 
@@ -803,24 +805,29 @@ func TestScheduleClient_Pause_Validation(t *testing.T) {
 func TestScheduleClient_Unpause(t *testing.T) {
 	const reason = "resuming after maintenance"
 	allPolicy := s.ScheduleCatchUpPolicyAll
+	allPolicy := s.ScheduleCatchUpPolicyAll
 	testcases := []struct {
 		name          string
+		reason        string
 		catchUpPolicy ScheduleCatchUpPolicy
 		wantCUP       *s.ScheduleCatchUpPolicy
 		rpcError      error
 	}{
 		{
 			name:          "success - unspecified policy omitted on wire",
+			reason:        reason,
 			catchUpPolicy: ScheduleCatchUpPolicyUnspecified,
 			wantCUP:       nil,
 		},
 		{
 			name:          "success - catch-up policy All",
+			reason:        reason,
 			catchUpPolicy: ScheduleCatchUpPolicyAll,
 			wantCUP:       &allPolicy,
 		},
 		{
 			name:     "rpc failure",
+			reason:   reason,
 			rpcError: errScheduleNonRetryable,
 		},
 	}
@@ -834,18 +841,19 @@ func TestScheduleClient_Unpause(t *testing.T) {
 				Do(func(_ context.Context, req *s.UnpauseScheduleRequest, _ ...interface{}) {
 					assert.Equal(t, scheduleTestDomain, req.GetDomain())
 					assert.Equal(t, scheduleTestID, req.GetScheduleId())
-					assert.Equal(t, reason, req.GetReason())
+					assert.Equal(t, tt.reason, req.GetReason())
 					assert.Equal(t, tt.wantCUP, req.CatchUpPolicy)
 				}).
 				Return(&s.UnpauseScheduleResponse{}, tt.rpcError)
 
-			assert.Equal(t, tt.rpcError, td.sc.Unpause(context.Background(), scheduleTestID, reason, tt.catchUpPolicy))
+			assert.Equal(t, tt.rpcError, td.sc.Unpause(context.Background(), scheduleTestID, tt.reason, tt.catchUpPolicy))
 		})
 	}
 }
 
 func TestScheduleClient_Unpause_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
+	require.EqualError(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), "Unpause: scheduleID is required")
 	require.EqualError(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), "Unpause: scheduleID is required")
 }
 
