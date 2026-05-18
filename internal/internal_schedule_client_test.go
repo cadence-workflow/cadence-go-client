@@ -137,7 +137,6 @@ func TestScheduleClient_Create(t *testing.T) {
 					OverlapPolicy:  ScheduleOverlapPolicyBuffer,
 					CatchUpPolicy:  ScheduleCatchUpPolicyOne,
 					PauseOnFailure: common.BoolPtr(true),
-					PauseOnFailure: common.BoolPtr(true),
 					BufferLimit:    5,
 				},
 				Memo:             map[string]interface{}{"m": "mv"},
@@ -804,7 +803,6 @@ func TestScheduleClient_Pause_Validation(t *testing.T) {
 
 func TestScheduleClient_Unpause(t *testing.T) {
 	const reason = "resuming after maintenance"
-	allPolicy := s.ScheduleCatchUpPolicyAll
 	allPolicy := s.ScheduleCatchUpPolicyAll
 	testcases := []struct {
 		name          string
