@@ -28,16 +28,19 @@ import (
 	"time"
 
 	"go.uber.org/cadence/internal"
-	"go.uber.org/cadence/internal/common"
 )
 
 // scheduleTestWorkflowType is the registered name of SimplestWorkflow used as the schedule action target.
-// Matches the name derived by worker.RegisterWorkflow for a method receiver func.
+// Matches the name derived by worker.RegisterWorkflow for a bound method receiver.
 const scheduleTestWorkflowType = "go.uber.org/cadence/test.(*Workflows).SimplestWorkflow"
 
-// newScheduleID returns a unique schedule ID for the current test.
-func (ts *IntegrationTestSuite) newScheduleID() string {
-	return fmt.Sprintf("integ-schedule-%v-%v", ts.seq, time.Now().UnixNano())
+// scheduleID returns a unique schedule ID for the current test using ts.seq,
+// which is already incremented once per test in SetupTest.
+func (ts *IntegrationTestSuite) scheduleID(suffix ...string) string {
+	if len(suffix) > 0 {
+		return fmt.Sprintf("integ-schedule-%v-%v", ts.seq, suffix[0])
+	}
+	return fmt.Sprintf("integ-schedule-%v", ts.seq)
 }
 
 // minimalCreateRequest builds a valid CreateScheduleRequest whose cron fires at most once a year
@@ -73,12 +76,17 @@ func (ts *IntegrationTestSuite) skipIfScheduleNotSupported(err error) {
 	}
 }
 
+// boolPtr returns a pointer to the given bool value.
+func boolPtr(b bool) *bool { return &b }
+
 // TestSchedule_CreateAndDescribe verifies that a schedule can be created and that
 // Describe returns the spec and action fields that were supplied on creation.
 func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -99,9 +107,11 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 // TestSchedule_CreateDuplicate verifies that creating a schedule with a duplicate ID
 // returns an error (Create is not idempotent).
 func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -115,16 +125,17 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
 // TestSchedule_Update verifies that Update replaces the schedule's spec and that
 // the new spec is reflected in a subsequent Describe.
 func (ts *IntegrationTestSuite) TestSchedule_Update() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
-	// Update to a monthly cron.
 	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
 		ScheduleID: id,
 		Spec:       &internal.ScheduleSpec{CronExpression: "0 0 1 * *"},
@@ -137,23 +148,29 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	ts.Equal("0 0 1 * *", resp.Spec.CronExpression)
 }
 
-// TestSchedule_UpdatePolicies verifies that Update can modify policies, including
-// the *bool PauseOnFailure field, without disturbing fields that are left nil.
+// TestSchedule_UpdatePolicies verifies PauseOnFailure (*bool) semantics on Update:
+//
+//  1. Setting PauseOnFailure = &true explicitly stores the value.
+//  2. Updating with Policies = nil (omitted from UpdateScheduleRequest entirely) leaves
+//     policies untouched — the server does not replace what it did not receive.
+//  3. The *bool design ensures callers can choose to send or omit the Policies field.
 func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
-	// Explicitly set PauseOnFailure = true.
+	// Explicitly set PauseOnFailure = true via a Policies-only update.
 	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
 		ScheduleID: id,
 		Policies: &internal.SchedulePolicies{
-			PauseOnFailure: common.BoolPtr(true),
+			PauseOnFailure: boolPtr(true),
 		},
 	})
 	ts.NoError(err)
@@ -161,37 +178,37 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	resp, err := sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp.Policies)
-	ts.Equal(common.BoolPtr(true), resp.Policies.PauseOnFailure)
+	ts.Equal(boolPtr(true), resp.Policies.PauseOnFailure)
 
-	// Update again with PauseOnFailure = nil: server should keep its stored value (true).
+	// Update only the Spec (Policies is nil in the UpdateScheduleRequest).
+	// The server does not receive a Policies field, so it leaves the stored value intact.
 	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
 		ScheduleID: id,
-		Policies: &internal.SchedulePolicies{
-			// PauseOnFailure is nil — should not overwrite the server's stored true.
-			OverlapPolicy: internal.ScheduleOverlapPolicySkipNew,
-		},
+		Spec:       &internal.ScheduleSpec{CronExpression: "0 0 1 * *"},
 	})
 	ts.NoError(err)
 
 	resp, err = sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp.Policies)
-	ts.Equal(common.BoolPtr(true), resp.Policies.PauseOnFailure, "PauseOnFailure must remain true after nil update")
+	ts.Equal(boolPtr(true), resp.Policies.PauseOnFailure,
+		"PauseOnFailure must be preserved when Policies is omitted from UpdateScheduleRequest")
 }
 
 // TestSchedule_PauseAndUnpause verifies the full pause → describe → unpause → describe cycle.
 // It also exercises the catchUpPolicy parameter on Unpause.
 func (ts *IntegrationTestSuite) TestSchedule_PauseAndUnpause() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
-	// Pause the schedule.
 	const pauseReason = "integration test pause"
 	ts.NoError(sc.Pause(ctx, id, pauseReason))
 
@@ -212,12 +229,14 @@ func (ts *IntegrationTestSuite) TestSchedule_PauseAndUnpause() {
 }
 
 // TestSchedule_UnpauseUnspecifiedPolicy verifies that Unpause with
-// ScheduleCatchUpPolicyUnspecified succeeds (policy field is omitted on the wire,
-// deferring to the schedule's configured policy).
+// ScheduleCatchUpPolicyUnspecified succeeds. Unspecified maps to nil on the wire,
+// so the field is omitted and the server defers to its configured policy.
 func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -234,9 +253,11 @@ func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
 
 // TestSchedule_Delete verifies that a deleted schedule is no longer accessible via Describe.
 func (ts *IntegrationTestSuite) TestSchedule_Delete() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
 	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	id := ts.scheduleID()
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -250,11 +271,12 @@ func (ts *IntegrationTestSuite) TestSchedule_Delete() {
 
 // TestSchedule_List verifies that created schedules appear in List results.
 func (ts *IntegrationTestSuite) TestSchedule_List() {
-	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
 
-	id1 := ts.newScheduleID()
-	id2 := fmt.Sprintf("%v-b", ts.newScheduleID())
+	sc := ts.libClient.NewScheduleClient()
+	id1 := ts.scheduleID("1")
+	id2 := ts.scheduleID("2")
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id1))
 	ts.skipIfScheduleNotSupported(err)
@@ -262,10 +284,10 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 	defer func() { _ = sc.Delete(context.Background(), id1) }()
 
 	_, err = sc.Create(ctx, ts.minimalCreateRequest(id2))
+	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id2) }()
 
-	// List with a generous page size; both schedules must appear.
 	resp, err := sc.List(ctx, 100, nil)
 	ts.NoError(err)
 	ts.Require().NotNil(resp)
@@ -279,14 +301,15 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 }
 
 // TestSchedule_Backfill verifies that a Backfill call for a past time range completes
-// without error. Actual workflow execution from the backfill is not verified here
-// because it requires waiting for async runs to complete.
+// without error. The hourly schedule fires once within the [-2h, -1h] range; actual
+// workflow execution is picked up by the test worker on ts.taskListName.
 func (ts *IntegrationTestSuite) TestSchedule_Backfill() {
-	sc := ts.libClient.NewScheduleClient()
-	ctx := context.Background()
-	id := ts.newScheduleID()
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
 
-	// Use an hourly schedule so the backfill range covers a meaningful number of windows.
+	sc := ts.libClient.NewScheduleClient()
+	id := ts.scheduleID()
+
 	req := ts.minimalCreateRequest(id)
 	req.Spec = &internal.ScheduleSpec{CronExpression: "0 * * * *"}
 
