@@ -36,13 +36,20 @@ import (
 // Matches the name derived by worker.RegisterWorkflow for a bound method receiver.
 const scheduleTestWorkflowType = "go.uber.org/cadence/test.(*Workflows).SimplestWorkflow"
 
-// scheduleID returns a unique schedule ID for the current test using ts.seq,
-// which is already incremented once per test in SetupTest.
+// scheduleRunID is captured once when the package loads. Each docker compose retry attempt starts
+// a fresh go test process at a different wall-clock nanosecond, so schedule IDs are unique across
+// retry attempts even when the Cadence server retains state between retries on the same CI runner.
+// os.Getpid() is not safe here: Docker containers reset PID namespaces from 1, so PIDs are
+// identical across retry runs.
+var scheduleRunID = time.Now().UnixNano()
+
+// scheduleID returns a unique schedule ID for the current test using ts.seq (per-test counter)
+// and scheduleRunID (per-process start, avoids collisions across CI retry attempts).
 func (ts *IntegrationTestSuite) scheduleID(suffix ...string) string {
 	if len(suffix) > 0 {
-		return fmt.Sprintf("integ-schedule-%v-%v", ts.seq, suffix[0])
+		return fmt.Sprintf("integ-schedule-%v-%v-%v", scheduleRunID, ts.seq, suffix[0])
 	}
-	return fmt.Sprintf("integ-schedule-%v", ts.seq)
+	return fmt.Sprintf("integ-schedule-%v-%v", scheduleRunID, ts.seq)
 }
 
 // minimalCreateRequest builds a valid CreateScheduleRequest whose cron fires at most once a year
