@@ -76,8 +76,8 @@ type scheduleClient struct {
 	featureFlags    FeatureFlags
 }
 
-// NewScheduleClient implements Client. It returns a ScheduleClient scoped to this client's domain and connection.
-func (wc *workflowClient) NewScheduleClient() ScheduleClient {
+// ScheduleClient implements Client. It returns a ScheduleClient scoped to this client's domain and connection.
+func (wc *workflowClient) ScheduleClient() ScheduleClient {
 	return &scheduleClient{
 		workflowService: wc.workflowService,
 		domain:          wc.domain,

@@ -441,12 +441,12 @@ func (_m *Client) ListWorkflow(ctx context.Context, request *shared.ListWorkflow
 	return r0, r1
 }
 
-// NewScheduleClient provides a mock function with no fields
-func (_m *Client) NewScheduleClient() internal.ScheduleClient {
+// ScheduleClient provides a mock function with no fields
+func (_m *Client) ScheduleClient() internal.ScheduleClient {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for NewScheduleClient")
+		panic("no return value specified for ScheduleClient")
 	}
 
 	var r0 internal.ScheduleClient

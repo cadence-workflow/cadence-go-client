@@ -83,7 +83,7 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -110,7 +110,7 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -130,7 +130,7 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -162,7 +162,7 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -207,7 +207,7 @@ func (ts *IntegrationTestSuite) TestSchedule_PauseAndUnpause() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -243,7 +243,7 @@ func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -270,7 +270,7 @@ func (ts *IntegrationTestSuite) TestSchedule_Delete() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	// Clean up any schedule left over from a previous (failed or retried) run.
@@ -297,7 +297,7 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id1 := ts.scheduleID("1")
 	id2 := ts.scheduleID("2")
 
@@ -338,7 +338,7 @@ func (ts *IntegrationTestSuite) TestSchedule_Backfill() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	sc := ts.libClient.NewScheduleClient()
+	sc := ts.libClient.ScheduleClient()
 	id := ts.scheduleID()
 
 	req := ts.minimalCreateRequest(id)

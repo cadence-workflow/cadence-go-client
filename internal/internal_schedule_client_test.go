@@ -56,13 +56,13 @@ func newScheduleClientTestData(t *testing.T) *scheduleClientTestData {
 	mockService := workflowservicetest.NewMockClient(ctrl)
 	sc := NewClient(mockService, scheduleTestDomain, &ClientOptions{
 		Identity: scheduleTestIdent,
-	}).NewScheduleClient()
+	}).ScheduleClient()
 	return &scheduleClientTestData{sc: sc, mockService: mockService}
 }
 
 // ── Constructor ───────────────────────────────────────────────────────────────
 
-func TestNewScheduleClient(t *testing.T) {
+func TestScheduleClient(t *testing.T) {
 	testcases := []struct {
 		name    string
 		options *ClientOptions
@@ -73,7 +73,7 @@ func TestNewScheduleClient(t *testing.T) {
 	for _, tt := range testcases {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			sc := NewClient(workflowservicetest.NewMockClient(ctrl), "domain", tt.options).NewScheduleClient()
+			sc := NewClient(workflowservicetest.NewMockClient(ctrl), "domain", tt.options).ScheduleClient()
 			require.NotNil(t, sc)
 		})
 	}
