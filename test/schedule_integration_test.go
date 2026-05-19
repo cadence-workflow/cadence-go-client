@@ -23,18 +23,22 @@ package test
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
-	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal"
 )
 
-// scheduleTestWorkflowType is the registered name of SimplestWorkflow used as the schedule action target.
-// Matches the name derived by worker.RegisterWorkflow for a bound method receiver.
-const scheduleTestWorkflowType = "go.uber.org/cadence/test.(*Workflows).SimplestWorkflow"
+// scheduleTestWorkflowType is the registered name of SimplestWorkflow, derived the same way
+// the SDK does internally (runtime.FuncForPC + strip the "-fm" bound-method suffix).
+// Using reflect keeps this in sync if the function is renamed — a rename is a compile error here.
+var scheduleTestWorkflowType = strings.TrimSuffix(
+	runtime.FuncForPC(reflect.ValueOf((*Workflows)(nil).SimplestWorkflow).Pointer()).Name(),
+	"-fm",
+)
 
 // scheduleRunID is captured once when the package loads. Each docker compose retry attempt starts
 // a fresh go test process at a different wall-clock nanosecond, so schedule IDs are unique across
@@ -70,31 +74,6 @@ func (ts *IntegrationTestSuite) minimalCreateRequest(id string) *internal.Create
 	}
 }
 
-// skipIfScheduleNotSupported skips the test when the server indicates the schedule
-// feature is unavailable (e.g. the feature flag is not enabled in the test cluster).
-func (ts *IntegrationTestSuite) skipIfScheduleNotSupported(err error) {
-	if err == nil {
-		return
-	}
-	// FeatureNotEnabledError is the explicit Cadence type for disabled feature flags.
-	var featureErr *shared.FeatureNotEnabledError
-	if errors.As(err, &featureErr) {
-		ts.T().Skipf("schedule feature not enabled on this server: %v", err)
-		return
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "not supported") ||
-		strings.Contains(msg, "not implemented") ||
-		strings.Contains(msg, "not enabled") ||
-		strings.Contains(msg, "feature") ||
-		strings.Contains(msg, "not configured") ||
-		strings.Contains(msg, "no handler") ||
-		strings.Contains(msg, "unknown method") ||
-		strings.Contains(msg, "unknown procedure") {
-		ts.T().Skipf("schedule feature not supported on this server: %v", err)
-	}
-}
-
 // boolPtr returns a pointer to the given bool value.
 func boolPtr(b bool) *bool { return &b }
 
@@ -111,7 +90,6 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -139,7 +117,6 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -160,7 +137,6 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -193,7 +169,6 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -239,7 +214,6 @@ func (ts *IntegrationTestSuite) TestSchedule_PauseAndUnpause() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -276,7 +250,6 @@ func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
@@ -288,7 +261,11 @@ func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
 	ts.False(resp.State.Paused)
 }
 
-// TestSchedule_Delete verifies that a deleted schedule is no longer accessible via Describe.
+// TestSchedule_Delete verifies that a deleted schedule no longer appears in List results.
+// Deletion is verified via List (not Describe) because the server keeps the completed
+// scheduler workflow queryable after deletion, so Describe returns nil error indefinitely.
+// waitForWorkflowFinish blocks until the underlying scheduler workflow exits,
+// since DeleteSchedule is async: it signals the workflow and returns immediately.
 func (ts *IntegrationTestSuite) TestSchedule_Delete() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -300,13 +277,19 @@ func (ts *IntegrationTestSuite) TestSchedule_Delete() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 
 	ts.NoError(sc.Delete(ctx, id))
 
-	_, err = sc.Describe(ctx, id)
-	ts.Error(err, "Describe after Delete must return an error")
+	// Wait for the scheduler workflow to exit before checking List.
+	// The server workflow ID is "cadence-scheduler:<scheduleID>".
+	ts.NoError(ts.waitForWorkflowFinish("cadence-scheduler:"+id, ""))
+
+	listResp, err := sc.List(ctx, 100, nil)
+	ts.NoError(err)
+	for _, s := range listResp.Schedules {
+		ts.NotEqual(id, s.ScheduleID, "deleted schedule must not appear in List")
+	}
 }
 
 // TestSchedule_List verifies that created schedules appear in List results.
@@ -323,12 +306,10 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 	_ = sc.Delete(ctx, id2)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id1))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id1) }()
 
 	_, err = sc.Create(ctx, ts.minimalCreateRequest(id2))
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id2) }()
 
@@ -361,7 +342,6 @@ func (ts *IntegrationTestSuite) TestSchedule_Backfill() {
 	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, req)
-	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
