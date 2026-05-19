@@ -313,13 +313,19 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id2) }()
 
-	resp, err := sc.List(ctx, 100, nil)
-	ts.NoError(err)
-	ts.Require().NotNil(resp)
-
-	found := make(map[string]bool)
-	for _, s := range resp.Schedules {
-		found[s.ScheduleID] = true
+	// Create is async: the scheduler workflow may not be indexed by List immediately.
+	// Poll until both schedules appear or the test context expires.
+	var found map[string]bool
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
+		resp, err := sc.List(ctx, 100, nil)
+		ts.NoError(err)
+		found = make(map[string]bool)
+		for _, s := range resp.Schedules {
+			found[s.ScheduleID] = true
+		}
+		if found[id1] && found[id2] {
+			break
+		}
 	}
 	ts.True(found[id1], "schedule %v not found in list", id1)
 	ts.True(found[id2], "schedule %v not found in list", id2)
