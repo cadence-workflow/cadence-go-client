@@ -23,10 +23,12 @@ package test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal"
 )
 
@@ -67,11 +69,21 @@ func (ts *IntegrationTestSuite) skipIfScheduleNotSupported(err error) {
 	if err == nil {
 		return
 	}
+	// FeatureNotEnabledError is the explicit Cadence type for disabled feature flags.
+	var featureErr *shared.FeatureNotEnabledError
+	if errors.As(err, &featureErr) {
+		ts.T().Skipf("schedule feature not enabled on this server: %v", err)
+		return
+	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "not supported") ||
 		strings.Contains(msg, "not implemented") ||
 		strings.Contains(msg, "not enabled") ||
-		strings.Contains(msg, "feature") {
+		strings.Contains(msg, "feature") ||
+		strings.Contains(msg, "not configured") ||
+		strings.Contains(msg, "no handler") ||
+		strings.Contains(msg, "unknown method") ||
+		strings.Contains(msg, "unknown procedure") {
 		ts.T().Skipf("schedule feature not supported on this server: %v", err)
 	}
 }
@@ -87,6 +99,9 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
+
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -113,6 +128,9 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
 
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
+
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
@@ -130,6 +148,9 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
+
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -160,6 +181,9 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
+
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
@@ -204,6 +228,9 @@ func (ts *IntegrationTestSuite) TestSchedule_PauseAndUnpause() {
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
 
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
+
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
@@ -238,6 +265,9 @@ func (ts *IntegrationTestSuite) TestSchedule_UnpauseUnspecifiedPolicy() {
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
 
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
+
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
@@ -259,6 +289,9 @@ func (ts *IntegrationTestSuite) TestSchedule_Delete() {
 	sc := ts.libClient.NewScheduleClient()
 	id := ts.scheduleID()
 
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
+
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
 	ts.skipIfScheduleNotSupported(err)
 	ts.NoError(err)
@@ -277,6 +310,10 @@ func (ts *IntegrationTestSuite) TestSchedule_List() {
 	sc := ts.libClient.NewScheduleClient()
 	id1 := ts.scheduleID("1")
 	id2 := ts.scheduleID("2")
+
+	// Clean up any schedules left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id1)
+	_ = sc.Delete(ctx, id2)
 
 	_, err := sc.Create(ctx, ts.minimalCreateRequest(id1))
 	ts.skipIfScheduleNotSupported(err)
@@ -312,6 +349,9 @@ func (ts *IntegrationTestSuite) TestSchedule_Backfill() {
 
 	req := ts.minimalCreateRequest(id)
 	req.Spec = &internal.ScheduleSpec{CronExpression: "0 * * * *"}
+
+	// Clean up any schedule left over from a previous (failed or retried) run.
+	_ = sc.Delete(ctx, id)
 
 	_, err := sc.Create(ctx, req)
 	ts.skipIfScheduleNotSupported(err)
