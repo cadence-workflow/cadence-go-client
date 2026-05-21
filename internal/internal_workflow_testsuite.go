@@ -1129,7 +1129,7 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 
 		// check if a retry is needed
 		if request, ok := result.(*shared.RespondActivityTaskFailedRequest); ok && parameters.RetryPolicy != nil {
-			p := fromThriftRetryPolicy(parameters.RetryPolicy)
+			p := convertFromThriftRetryPolicy(parameters.RetryPolicy)
 			backoff := getRetryBackoffWithNowTime(p, task.GetAttempt(), *request.Reason, env.Now(), expireTime)
 			if backoff > 0 {
 				// need a retry
@@ -1160,23 +1160,12 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 	return
 }
 
-func fromThriftRetryPolicy(p *shared.RetryPolicy) *RetryPolicy {
-	return &RetryPolicy{
-		InitialInterval:          time.Second * time.Duration(p.GetInitialIntervalInSeconds()),
-		BackoffCoefficient:       p.GetBackoffCoefficient(),
-		MaximumInterval:          time.Second * time.Duration(p.GetMaximumIntervalInSeconds()),
-		ExpirationInterval:       time.Second * time.Duration(p.GetExpirationIntervalInSeconds()),
-		MaximumAttempts:          p.GetMaximumAttempts(),
-		NonRetriableErrorReasons: p.NonRetriableErrorReasons,
-	}
-}
-
 func getRetryBackoffFromThriftRetryPolicy(tp *shared.RetryPolicy, attempt int32, errReason string, now, expireTime time.Time) time.Duration {
 	if tp == nil {
 		return noRetryBackoff
 	}
 
-	p := fromThriftRetryPolicy(tp)
+	p := convertFromThriftRetryPolicy(tp)
 	return getRetryBackoffWithNowTime(p, attempt, errReason, now, expireTime)
 }
 

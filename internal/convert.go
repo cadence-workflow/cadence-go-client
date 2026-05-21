@@ -21,6 +21,8 @@
 package internal
 
 import (
+	"time"
+
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
@@ -42,6 +44,20 @@ func convertRetryPolicy(retryPolicy *RetryPolicy) *s.RetryPolicy {
 		thriftRetryPolicy.BackoffCoefficient = common.Float64Ptr(backoff.DefaultBackoffCoefficient)
 	}
 	return &thriftRetryPolicy
+}
+
+func convertFromThriftRetryPolicy(p *s.RetryPolicy) *RetryPolicy {
+	if p == nil {
+		return nil
+	}
+	return &RetryPolicy{
+		InitialInterval:          time.Second * time.Duration(p.GetInitialIntervalInSeconds()),
+		BackoffCoefficient:       p.GetBackoffCoefficient(),
+		MaximumInterval:          time.Second * time.Duration(p.GetMaximumIntervalInSeconds()),
+		ExpirationInterval:       time.Second * time.Duration(p.GetExpirationIntervalInSeconds()),
+		MaximumAttempts:          p.GetMaximumAttempts(),
+		NonRetriableErrorReasons: p.NonRetriableErrorReasons,
+	}
 }
 
 func convertActiveClusterSelectionPolicy(policy *ActiveClusterSelectionPolicy) (*s.ActiveClusterSelectionPolicy, error) {

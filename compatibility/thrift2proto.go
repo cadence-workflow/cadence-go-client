@@ -27,14 +27,26 @@ import (
 	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
+// AdapterClients holds the YARPC sub-clients required by NewThrift2ProtoAdapter.
+// Adding new services in the future is a non-breaking change — just add a new field.
+// Omit or set a field to nil if the corresponding RPCs are not needed.
+type AdapterClients struct {
+	Domain     apiv1.DomainAPIYARPCClient
+	Workflow   apiv1.WorkflowAPIYARPCClient
+	Worker     apiv1.WorkerAPIYARPCClient
+	Visibility apiv1.VisibilityAPIYARPCClient
+	Schedule   apiv1.ScheduleAPIYARPCClient
+}
+
 // NewThrift2ProtoAdapter creates an adapter for mapping calls from Thrift to Protobuf types.
 // This is intended to be used as compatibility layer for older client version to be able to
 // communicate with newer cadence server using GRPC.
-func NewThrift2ProtoAdapter(
-	domain apiv1.DomainAPIYARPCClient,
-	workflow apiv1.WorkflowAPIYARPCClient,
-	worker apiv1.WorkerAPIYARPCClient,
-	visibility apiv1.VisibilityAPIYARPCClient,
-) workflowserviceclient.Interface {
-	return internal.NewThrift2ProtoAdapter(domain, workflow, worker, visibility)
+func NewThrift2ProtoAdapter(clients AdapterClients) workflowserviceclient.Interface {
+	return internal.NewThrift2ProtoAdapter(
+		clients.Domain,
+		clients.Workflow,
+		clients.Worker,
+		clients.Visibility,
+		clients.Schedule,
+	)
 }

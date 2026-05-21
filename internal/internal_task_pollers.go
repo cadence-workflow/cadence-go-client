@@ -792,24 +792,25 @@ func (wtp *workflowTaskPoller) updateBacklog(taskListKind s.TaskListKind, backlo
 //
 // TODO: make this more smart to auto adjust based on poll latency
 func (wtp *workflowTaskPoller) getNextPollRequest() (request *s.PollForDecisionTaskRequest) {
-	taskListName := wtp.taskListName
-	taskListKind := s.TaskListKindNormal
+	taskList := s.TaskList{
+		Name: common.StringPtr(wtp.taskListName),
+		Kind: common.TaskListKindPtr(s.TaskListKindNormal),
+	}
 	if !wtp.disableStickyExecution {
 		wtp.requestLock.Lock()
 		if wtp.stickyBacklog > 0 || wtp.pendingStickyPollCount <= wtp.pendingRegularPollCount {
 			wtp.pendingStickyPollCount++
-			taskListName = getWorkerTaskList(wtp.stickyUUID)
-			taskListKind = s.TaskListKindSticky
+			taskList = s.TaskList{
+				Name:     common.StringPtr(getWorkerTaskList(wtp.stickyUUID)),
+				Kind:     common.TaskListKindPtr(s.TaskListKindSticky),
+				BaseName: common.StringPtr(wtp.taskListName),
+			}
 		} else {
 			wtp.pendingRegularPollCount++
 		}
 		wtp.requestLock.Unlock()
 	}
 
-	taskList := s.TaskList{
-		Name: common.StringPtr(taskListName),
-		Kind: common.TaskListKindPtr(taskListKind),
-	}
 	return &s.PollForDecisionTaskRequest{
 		Domain:         common.StringPtr(wtp.domain),
 		TaskList:       common.TaskListPtr(taskList),
