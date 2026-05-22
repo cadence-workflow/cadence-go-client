@@ -88,8 +88,9 @@ func TestScheduleClient_Create(t *testing.T) {
 			Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 			Action: &ScheduleAction{
 				StartWorkflow: &ScheduleStartWorkflowAction{
-					WorkflowType: "my-workflow",
-					TaskList:     "my-task-list",
+					WorkflowType:                 "my-workflow",
+					TaskList:                     "my-task-list",
+					ExecutionStartToCloseTimeout: time.Hour,
 				},
 			},
 		}
@@ -125,12 +126,13 @@ func TestScheduleClient_Create(t *testing.T) {
 				Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 				Action: &ScheduleAction{
 					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType:     "my-workflow",
-						TaskList:         "my-task-list",
-						Input:            []byte(`"hello"`),
-						RetryPolicy:      &RetryPolicy{MaximumAttempts: 3},
-						Memo:             map[string]interface{}{"mk": "mv"},
-						SearchAttributes: map[string]interface{}{"sk": "sv"},
+						WorkflowType:                 "my-workflow",
+						TaskList:                     "my-task-list",
+						ExecutionStartToCloseTimeout: time.Hour,
+						Input:                        []byte(`"hello"`),
+						RetryPolicy:                  &RetryPolicy{MaximumAttempts: 3},
+						Memo:                         map[string]interface{}{"mk": "mv"},
+						SearchAttributes:             map[string]interface{}{"sk": "sv"},
 					},
 				},
 				Policies: &SchedulePolicies{
@@ -172,8 +174,9 @@ func TestScheduleClient_Create(t *testing.T) {
 				Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 				Action: &ScheduleAction{
 					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType: "my-workflow",
-						TaskList:     "my-task-list",
+						WorkflowType:                 "my-workflow",
+						TaskList:                     "my-task-list",
+						ExecutionStartToCloseTimeout: time.Hour,
 						RetryPolicy: &RetryPolicy{
 							InitialInterval:    500 * time.Millisecond,
 							MaximumInterval:    1500 * time.Millisecond,
@@ -337,8 +340,9 @@ func TestScheduleClient_Create_EncodingErrors(t *testing.T) {
 	baseAction := func() *ScheduleAction {
 		return &ScheduleAction{
 			StartWorkflow: &ScheduleStartWorkflowAction{
-				WorkflowType: "my-workflow",
-				TaskList:     "my-task-list",
+				WorkflowType:                 "my-workflow",
+				TaskList:                     "my-task-list",
+				ExecutionStartToCloseTimeout: time.Hour,
 			},
 		}
 	}
@@ -355,9 +359,10 @@ func TestScheduleClient_Create_EncodingErrors(t *testing.T) {
 				Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 				Action: &ScheduleAction{
 					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType: "my-workflow",
-						TaskList:     "my-task-list",
-						Memo:         map[string]interface{}{"key": ch},
+						WorkflowType:                 "my-workflow",
+						TaskList:                     "my-task-list",
+						ExecutionStartToCloseTimeout: time.Hour,
+						Memo:                         map[string]interface{}{"key": ch},
 					},
 				},
 			},
@@ -370,9 +375,10 @@ func TestScheduleClient_Create_EncodingErrors(t *testing.T) {
 				Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 				Action: &ScheduleAction{
 					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType:     "my-workflow",
-						TaskList:         "my-task-list",
-						SearchAttributes: map[string]interface{}{"key": ch},
+						WorkflowType:                 "my-workflow",
+						TaskList:                     "my-task-list",
+						ExecutionStartToCloseTimeout: time.Hour,
+						SearchAttributes:             map[string]interface{}{"key": ch},
 					},
 				},
 			},
@@ -625,8 +631,9 @@ func TestScheduleClient_Update(t *testing.T) {
 				ScheduleID: scheduleTestID,
 				Action: &ScheduleAction{
 					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType: "my-workflow",
-						TaskList:     "my-task-list",
+						WorkflowType:                 "my-workflow",
+						TaskList:                     "my-task-list",
+						ExecutionStartToCloseTimeout: time.Hour,
 					},
 				},
 				SearchAttributes: map[string]interface{}{"attr": "val"},

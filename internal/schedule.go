@@ -23,7 +23,7 @@ package internal
 
 // This file defines all Go-native types for the schedule API. It is intentionally proto-free:
 // no proto imports appear here so that callers never encounter generated types at the API boundary.
-// Conversion to/from proto wire types happens entirely inside internal_schedule_client.go.
+// Conversion to/from Thrift wire types happens entirely inside internal_schedule_convert_thrift.go.
 
 import "time"
 
@@ -154,9 +154,9 @@ type BackfillInfo struct {
 
 // ScheduleInfo contains runtime statistics for a schedule.
 type ScheduleInfo struct {
-	LastRunTime  time.Time
-	NextRunTime  time.Time
-	TotalRuns    int64
+	LastRunTime time.Time
+	NextRunTime time.Time
+	TotalRuns   int64
 	// CreateTime is not currently populated by the server; it will always be the zero time.Time.
 	CreateTime time.Time
 	// LastUpdateTime is not currently populated by the server; it will always be the zero time.Time.
