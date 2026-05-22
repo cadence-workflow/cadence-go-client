@@ -624,6 +624,26 @@ func (_m *Client) ScanWorkflow(ctx context.Context, request *shared.ListWorkflow
 	return r0, r1
 }
 
+// ScheduleClient provides a mock function with no fields
+func (_m *Client) ScheduleClient() internal.ScheduleClient {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for ScheduleClient")
+	}
+
+	var r0 internal.ScheduleClient
+	if rf, ok := ret.Get(0).(func() internal.ScheduleClient); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(internal.ScheduleClient)
+		}
+	}
+
+	return r0
+}
+
 // SignalWithStartWorkflow provides a mock function with given fields: ctx, workflowID, signalName, signalArg, options, workflowFunc, workflowArgs
 func (_m *Client) SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{}, options internal.StartWorkflowOptions, workflowFunc interface{}, workflowArgs ...interface{}) (*internal.WorkflowExecution, error) {
 	var _ca []interface{}
