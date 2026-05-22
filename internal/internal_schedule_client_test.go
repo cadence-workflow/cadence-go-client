@@ -222,8 +222,9 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 			Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
 			Action: &ScheduleAction{
 				StartWorkflow: &ScheduleStartWorkflowAction{
-					WorkflowType: "my-workflow",
-					TaskList:     "my-task-list",
+					WorkflowType:                 "my-workflow",
+					TaskList:                     "my-task-list",
+					ExecutionStartToCloseTimeout: time.Hour,
 				},
 			},
 		}
@@ -283,6 +284,42 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				return r
 			}(),
 			wantErr: "Create: Action.StartWorkflow is required",
+		},
+		{
+			name: "empty WorkflowType",
+			request: func() *CreateScheduleRequest {
+				r := validRequest()
+				r.Action.StartWorkflow.WorkflowType = ""
+				return r
+			}(),
+			wantErr: "StartWorkflow: WorkflowType is required",
+		},
+		{
+			name: "empty TaskList",
+			request: func() *CreateScheduleRequest {
+				r := validRequest()
+				r.Action.StartWorkflow.TaskList = ""
+				return r
+			}(),
+			wantErr: "StartWorkflow: TaskList is required",
+		},
+		{
+			name: "zero ExecutionStartToCloseTimeout",
+			request: func() *CreateScheduleRequest {
+				r := validRequest()
+				r.Action.StartWorkflow.ExecutionStartToCloseTimeout = 0
+				return r
+			}(),
+			wantErr: "StartWorkflow: ExecutionStartToCloseTimeout is required",
+		},
+		{
+			name: "negative DecisionTaskStartToCloseTimeout",
+			request: func() *CreateScheduleRequest {
+				r := validRequest()
+				r.Action.StartWorkflow.DecisionTaskStartToCloseTimeout = -time.Second
+				return r
+			}(),
+			wantErr: "StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative",
 		},
 	}
 
@@ -423,6 +460,10 @@ func TestScheduleClient_Describe_Validation(t *testing.T) {
 func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	td := newScheduleClientTestData(t)
 
+	// NOTE: This test uses a hand-crafted synthetic Thrift response to verify the
+	// conversion logic for all fields. In practice, the server does not populate
+	// CreateTimeNano, LastUpdateTimeNano, OngoingBackfills, or PausedTimeNano —
+	// those fields always arrive as nil and convert to zero values.
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 	startNano := start.UnixNano()
@@ -682,6 +723,15 @@ func TestScheduleClient_Update_Validation(t *testing.T) {
 			},
 			wantErr: "Update: at least one of Spec, Action, Policies, or SearchAttributes must be set",
 		},
+		{
+			name: "non-nil Spec with empty CronExpression",
+			request: func() *UpdateScheduleRequest {
+				r := validRequest()
+				r.Spec = &ScheduleSpec{}
+				return r
+			}(),
+			wantErr: "Update: Spec.CronExpression is required when Spec is set",
+		},
 	}
 
 	for _, tt := range testcases {
@@ -851,7 +901,6 @@ func TestScheduleClient_Unpause(t *testing.T) {
 
 func TestScheduleClient_Unpause_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
-	require.EqualError(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), "Unpause: scheduleID is required")
 	require.EqualError(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), "Unpause: scheduleID is required")
 }
 

@@ -34,7 +34,7 @@ import (
 
 // ScheduleClient is the client for managing Cadence schedules within a domain.
 type ScheduleClient interface {
-	// Create creates a new schedule and returns the server-assigned schedule ID.
+	// Create creates a new schedule and returns the schedule ID (echoed from the request).
 	//
 	// Create is not idempotent. If the server processes the request successfully but the
 	// response is lost (e.g. due to a network failure), the automatic retry will receive a

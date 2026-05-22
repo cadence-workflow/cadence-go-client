@@ -87,7 +87,8 @@ type ScheduleStartWorkflowAction struct {
 	WorkflowIDPrefix string
 	// ExecutionStartToCloseTimeout is the maximum duration for the entire workflow execution. Required.
 	ExecutionStartToCloseTimeout time.Duration
-	// DecisionTaskStartToCloseTimeout is the maximum duration for a single decision task. Required.
+	// DecisionTaskStartToCloseTimeout is the maximum duration for a single decision task.
+	// If zero, defaults to 10s. The server rejects values <= 0, so a zero value must be defaulted client-side.
 	DecisionTaskStartToCloseTimeout time.Duration
 	// RetryPolicy is the retry policy applied to each triggered workflow run. Optional.
 	RetryPolicy *RetryPolicy
@@ -130,7 +131,8 @@ type SchedulePolicies struct {
 
 // SchedulePauseInfo records when and why a schedule was paused.
 type SchedulePauseInfo struct {
-	Reason   string
+	Reason string
+	// PausedAt is not currently populated by the server; it will always be the zero time.Time.
 	PausedAt time.Time
 	PausedBy string
 }
@@ -152,11 +154,14 @@ type BackfillInfo struct {
 
 // ScheduleInfo contains runtime statistics for a schedule.
 type ScheduleInfo struct {
-	LastRunTime      time.Time
-	NextRunTime      time.Time
-	TotalRuns        int64
-	CreateTime       time.Time
-	LastUpdateTime   time.Time
+	LastRunTime  time.Time
+	NextRunTime  time.Time
+	TotalRuns    int64
+	// CreateTime is not currently populated by the server; it will always be the zero time.Time.
+	CreateTime time.Time
+	// LastUpdateTime is not currently populated by the server; it will always be the zero time.Time.
+	LastUpdateTime time.Time
+	// OngoingBackfills is not currently populated by the server; it will always be nil.
 	OngoingBackfills []*BackfillInfo
 }
 
@@ -187,13 +192,17 @@ type CreateScheduleRequest struct {
 }
 
 // UpdateScheduleRequest is the request to ScheduleClient.Update.
-// Only non-nil fields are applied; nil fields leave the existing value unchanged.
+// Only non-nil fields are applied at the top level; nil fields leave the existing value unchanged.
+// Note: when Action is non-nil, the entire StartWorkflow configuration is replaced — it is not
+// merged with the existing action. All fields of ScheduleStartWorkflowAction must be provided,
+// including those you are not changing (e.g. TaskList, ExecutionStartToCloseTimeout, RetryPolicy).
+// Call Describe first to read the current values if you need to preserve them.
 type UpdateScheduleRequest struct {
 	// ScheduleID identifies the schedule to update. Required.
 	ScheduleID string
 	// Spec replaces the trigger specification when non-nil.
 	Spec *ScheduleSpec
-	// Action replaces the schedule action when non-nil.
+	// Action replaces the entire schedule action when non-nil. See note above about full-replacement semantics.
 	Action *ScheduleAction
 	// Policies replaces the schedule policies when non-nil.
 	Policies *SchedulePolicies

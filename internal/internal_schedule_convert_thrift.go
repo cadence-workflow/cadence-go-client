@@ -180,6 +180,22 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 	if a == nil {
 		return nil, nil
 	}
+	if a.WorkflowType == "" {
+		return nil, errors.New("StartWorkflow: WorkflowType is required")
+	}
+	if a.TaskList == "" {
+		return nil, errors.New("StartWorkflow: TaskList is required")
+	}
+	if a.ExecutionStartToCloseTimeout <= 0 {
+		return nil, errors.New("StartWorkflow: ExecutionStartToCloseTimeout is required")
+	}
+	decisionTaskTimeout := a.DecisionTaskStartToCloseTimeout
+	if decisionTaskTimeout < 0 {
+		return nil, errors.New("StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative")
+	}
+	if decisionTaskTimeout == 0 {
+		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
+	}
 	var memo *shared.Memo
 	if len(a.Memo) > 0 {
 		fields := make(map[string][]byte, len(a.Memo))
@@ -214,7 +230,7 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 		Input:                               input,
 		WorkflowIdPrefix:                    common.StringPtr(a.WorkflowIDPrefix),
 		ExecutionStartToCloseTimeoutSeconds: durationToThriftSeconds(a.ExecutionStartToCloseTimeout),
-		TaskStartToCloseTimeoutSeconds:      durationToThriftSeconds(a.DecisionTaskStartToCloseTimeout),
+		TaskStartToCloseTimeoutSeconds:      durationToThriftSeconds(decisionTaskTimeout),
 		RetryPolicy:                         scheduleRetryPolicyToThrift(a.RetryPolicy),
 		Memo:                                memo,
 		SearchAttributes:                    searchAttr,
@@ -224,6 +240,9 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 func scheduleActionToThrift(a *ScheduleAction, dc DataConverter) (*shared.ScheduleAction, error) {
 	if a == nil {
 		return nil, nil
+	}
+	if a.StartWorkflow == nil {
+		return nil, errors.New("Action.StartWorkflow is required when Action is set")
 	}
 	sw, err := scheduleStartWorkflowActionToThrift(a.StartWorkflow, dc)
 	if err != nil {
@@ -307,6 +326,9 @@ func scheduleUpdateRequestToThrift(domain string, r *UpdateScheduleRequest, dc D
 	}
 	if r.Spec == nil && r.Action == nil && r.Policies == nil && len(r.SearchAttributes) == 0 {
 		return nil, errors.New("Update: at least one of Spec, Action, Policies, or SearchAttributes must be set")
+	}
+	if r.Spec != nil && r.Spec.CronExpression == "" {
+		return nil, errors.New("Update: Spec.CronExpression is required when Spec is set")
 	}
 	action, err := scheduleActionToThrift(r.Action, dc)
 	if err != nil {

@@ -359,6 +359,71 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 	}, dc)
 	require.Error(t, err, "missing Action.StartWorkflow must error")
 
+	_, err = scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+	}, dc)
+	require.Error(t, err, "missing WorkflowType must error")
+
+	_, err = scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+	}, dc)
+	require.Error(t, err, "missing TaskList must error")
+
+	_, err = scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType: "my-wf",
+				TaskList:     "my-tl",
+			},
+		},
+	}, dc)
+	require.Error(t, err, "missing ExecutionStartToCloseTimeout must error")
+
+	_, err = scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                    "my-wf",
+				TaskList:                        "my-tl",
+				ExecutionStartToCloseTimeout:    time.Hour,
+				DecisionTaskStartToCloseTimeout: -time.Second,
+			},
+		},
+	}, dc)
+	require.Error(t, err, "negative DecisionTaskStartToCloseTimeout must error")
+
+	// zero DecisionTaskStartToCloseTimeout defaults to 10s
+	gotDefault, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+	}, dc)
+	require.NoError(t, err)
+	assert.Equal(t, int32(defaultDecisionTaskTimeoutInSecs), gotDefault.Action.StartWorkflow.GetTaskStartToCloseTimeoutSeconds())
+
 	got, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
 		ScheduleID: "id",
 		Spec: &ScheduleSpec{
@@ -367,9 +432,10 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 		},
 		Action: &ScheduleAction{
 			StartWorkflow: &ScheduleStartWorkflowAction{
-				WorkflowType: "my-wf",
-				TaskList:     "my-tl",
-				RetryPolicy:  &RetryPolicy{MaximumAttempts: 3},
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+				RetryPolicy:                  &RetryPolicy{MaximumAttempts: 3},
 			},
 		},
 	}, dc)
@@ -380,6 +446,49 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 	assert.Equal(t, int32(1), got.Spec.GetJitterInSeconds(), "500ms jitter must ceil to 1s")
 	assert.Equal(t, "my-wf", got.Action.StartWorkflow.WorkflowType.GetName())
 	assert.Equal(t, backoff.DefaultBackoffCoefficient, got.Action.StartWorkflow.RetryPolicy.GetBackoffCoefficient())
+}
+
+func TestScheduleUpdateRequestToThrift(t *testing.T) {
+	dc := getDefaultDataConverter()
+
+	_, err := scheduleUpdateRequestToThrift("dom", nil, dc)
+	require.Error(t, err, "nil request must error")
+
+	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{}, dc)
+	require.Error(t, err, "missing ScheduleID must error")
+
+	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{ScheduleID: "id"}, dc)
+	require.Error(t, err, "no fields set must error")
+
+	// Non-nil Action with nil StartWorkflow must error — not silently corrupt the schedule.
+	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
+		ScheduleID: "id",
+		Action:     &ScheduleAction{StartWorkflow: nil},
+	}, dc)
+	require.Error(t, err, "Action with nil StartWorkflow must error")
+
+	// Non-nil Spec with empty CronExpression must error — the scheduler workflow silently
+	// ignores updates with empty cron, so the client must catch this before the RPC.
+	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{},
+	}, dc)
+	require.Error(t, err, "Spec with empty CronExpression must error")
+
+	got, err := scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
+		ScheduleID: "id",
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+	}, dc)
+	require.NoError(t, err)
+	assert.Equal(t, "dom", got.GetDomain())
+	assert.Equal(t, "id", got.GetScheduleId())
+	assert.Equal(t, "my-wf", got.Action.StartWorkflow.WorkflowType.GetName())
 }
 
 func TestScheduleStartWorkflowActionFromThriftLossyFields(t *testing.T) {
