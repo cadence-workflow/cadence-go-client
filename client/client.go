@@ -212,7 +212,7 @@ type (
 		SignalWithStartWorkflowAsync(ctx context.Context, workflowID string, signalName string, signalArg interface{},
 			options StartWorkflowOptions, workflow interface{}, workflowArgs ...interface{}) (*workflow.ExecutionAsync, error)
 
-		// CancelWorkflow cancels a workflow in execution
+		// CancelWorkflow cancels a workflow in execution.  It allows workflow to properly clean up and gracefully close.
 		// - workflow ID of the workflow.
 		// - runID can be default(empty string). if empty string then it will pick the running execution of that workflow ID.
 		// The errors it can return:
@@ -222,7 +222,7 @@ type (
 		//	- WorkflowExecutionAlreadyCompletedError
 		CancelWorkflow(ctx context.Context, workflowID string, runID string, opts ...CancelOption) error
 
-		// TerminateWorkflow terminates a workflow execution.
+		// TerminateWorkflow terminates a workflow execution. Unlike Cancel, Terminate kills the workflow immediately.
 		// workflowID is required, other parameters are optional.
 		// - workflow ID of the workflow.
 		// - runID can be default(empty string). if empty string then it will pick the running execution of that workflow ID.
