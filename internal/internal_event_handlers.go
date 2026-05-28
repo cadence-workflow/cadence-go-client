@@ -452,6 +452,13 @@ func (wc *workflowEnvironmentImpl) GetContextPropagators() []ContextPropagator {
 	return wc.contextPropagators
 }
 
+func (wc *workflowEnvironmentImpl) GetTracer() opentracing.Tracer {
+	if wc.tracer == nil {
+		return opentracing.NoopTracer{}
+	}
+	return wc.tracer
+}
+
 func (wc *workflowEnvironmentImpl) IsReplaying() bool {
 	return wc.isReplay
 }

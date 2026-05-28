@@ -62,8 +62,9 @@ func (t tracingWriter) Set(key, val string) {
 //
 // ExtractToWorkflow -> Header to Context - takes the SpanContext present in
 //
-//	the header and puts it in the Context object. Does not start a new span
-//	as that is started outside when the workflow is actually executed
+//	the header and puts it in the Context object. The worker starts a
+//	"cadence-ExecuteWorkflow" span when running non-replay workflow code and sets
+//	WithSpanContext to the new span's context for propagation to activities.
 type tracingContextPropagator struct {
 	logger *zap.Logger
 	tracer opentracing.Tracer

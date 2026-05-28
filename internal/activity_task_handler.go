@@ -160,7 +160,18 @@ func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivit
 	ctx, dlCancelFunc := context.WithDeadline(ctx, info.deadline)
 	defer dlCancelFunc()
 
-	ctx, span := createOpenTracingActivitySpan(ctx, ath.tracer, time.Now(), activityType, t.WorkflowExecution.GetWorkflowId(), t.WorkflowExecution.GetRunId())
+	ctx, span := createOpenTracingSpanFromHeaders(
+		ctx,
+		ath.tracer,
+		time.Now(),
+		spanNameExecuteActivity,
+		opentracing.Tags{
+			tagCadenceWorkflowType: t.WorkflowType.GetName(),
+			tagCadenceWorkflowID:   t.WorkflowExecution.GetWorkflowId(),
+			tagCadenceRunID:        t.WorkflowExecution.GetRunId(),
+			tagCadenceActivityType: activityType,
+		},
+	)
 	defer span.Finish()
 
 	if activityImplementation.GetOptions().EnableAutoHeartbeat && t.HeartbeatTimeoutSeconds != nil && *t.HeartbeatTimeoutSeconds > 0 {
