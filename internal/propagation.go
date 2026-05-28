@@ -27,10 +27,17 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
+// Span names and tag keys align with the Cadence Java client's TracingPropagator.
+// See: https://github.com/cadence-workflow/cadence-java-client/blob/master/src/main/java/com/uber/cadence/internal/tracing/TracingPropagator.java
 const (
-	workflowTag = "cadenceWorkflowID"
+	spanNameExecuteWorkflow      = "cadence-ExecuteWorkflow"
+	spanNameExecuteActivity      = "cadence-ExecuteActivity"
+	spanNameExecuteLocalActivity = "cadence-ExecuteLocalActivity"
 
-	runTag = "cadenceRunID"
+	tagCadenceWorkflowType = "cadenceWorkflowType"
+	tagCadenceActivityType = "cadenceActivityType"
+	tagCadenceWorkflowID   = "cadenceWorkflowID"
+	tagCadenceRunID        = "cadenceRunID"
 )
 
 // createOpenTracingWorkflowSpan creates a new context with a workflow started span
@@ -41,50 +48,51 @@ func createOpenTracingWorkflowSpan(
 	workflowType, workflowID string,
 ) (context.Context, opentracing.Span) {
 	tags := opentracing.Tags{
-		workflowTag: workflowID,
+		tagCadenceWorkflowID: workflowID,
 	}
-	return createOpenTracingSpan(ctx, tracer, start, workflowType, tags)
-}
-
-// createOpenTracingActivitySpan creates a new context with an activity started span
-func createOpenTracingActivitySpan(
-	ctx context.Context,
-	tracer opentracing.Tracer,
-	start time.Time,
-	activityType, workflowID, runID string,
-) (context.Context, opentracing.Span) {
-	tags := opentracing.Tags{
-		workflowTag: workflowID,
-		runTag:      runID,
-	}
-	return createOpenTracingSpan(ctx, tracer, start, activityType, tags)
-}
-
-func createOpenTracingSpan(
-	ctx context.Context,
-	tracer opentracing.Tracer,
-	start time.Time,
-	name string,
-	tags opentracing.Tags,
-) (context.Context, opentracing.Span) {
-	if _, ok := tracer.(opentracing.NoopTracer); ok {
-		return ctx, tracer.StartSpan("StartWorkflow-Span")
-	}
-
 	var parent opentracing.SpanContext
 	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
 		parent = parentSpan.Context()
 	} else if spanCtx, ok := ctx.Value(activeSpanContextKey).(opentracing.SpanContext); ok {
 		parent = spanCtx
 	}
+	return startOpenTracingSpan(ctx, tracer, start, workflowType, tags, parent)
+}
 
-	span := tracer.StartSpan(
-		name,
+// createOpenTracingSpanFromHeaders creates a new context with a started span, linking FollowsFrom
+// only span context in activeSpanContextKey (set by ContextPropagator.Extract). This matches Java's
+// ignoreActiveSpan behavior for worker execute workflow/activity/local-activity spans.
+func createOpenTracingSpanFromHeaders(
+	ctx context.Context,
+	tracer opentracing.Tracer,
+	start time.Time,
+	name string,
+	tags opentracing.Tags,
+) (context.Context, opentracing.Span) {
+	var parent opentracing.SpanContext
+	if spanCtx, ok := ctx.Value(activeSpanContextKey).(opentracing.SpanContext); ok {
+		parent = spanCtx
+	}
+	return startOpenTracingSpan(ctx, tracer, start, name, tags, parent)
+}
+
+func startOpenTracingSpan(
+	ctx context.Context,
+	tracer opentracing.Tracer,
+	start time.Time,
+	name string,
+	tags opentracing.Tags,
+	parent opentracing.SpanContext,
+) (context.Context, opentracing.Span) {
+	opts := []opentracing.StartSpanOption{
 		opentracing.StartTime(start),
-		opentracing.FollowsFrom(parent),
 		tags,
-	)
+	}
+	if parent != nil {
+		opts = append(opts, opentracing.FollowsFrom(parent))
+	}
 
+	span := tracer.StartSpan(name, opts...)
 	ctx = opentracing.ContextWithSpan(ctx, span)
 	return ctx, span
 }
