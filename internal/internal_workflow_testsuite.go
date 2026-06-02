@@ -1035,6 +1035,13 @@ func (env *testWorkflowEnvironmentImpl) GetContextPropagators() []ContextPropaga
 	return env.workerOptions.ContextPropagators
 }
 
+func (env *testWorkflowEnvironmentImpl) GetTracer() opentracing.Tracer {
+	if env.workerOptions.Tracer == nil {
+		return opentracing.NoopTracer{}
+	}
+	return env.workerOptions.Tracer
+}
+
 func (env *testWorkflowEnvironmentImpl) ExecuteActivity(parameters executeActivityParams, callback resultHandler) *activityInfo {
 	var activityID string
 	if parameters.ActivityID == nil || *parameters.ActivityID == "" {

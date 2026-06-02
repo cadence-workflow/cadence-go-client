@@ -707,7 +707,18 @@ func (lath *localActivityTaskHandler) executeLocalActivityTask(task *localActivi
 		}()
 
 		laStartTime := time.Now()
-		ctx, span := createOpenTracingActivitySpan(ctx, lath.tracer, time.Now(), task.params.ActivityType, task.params.WorkflowInfo.WorkflowExecution.ID, task.params.WorkflowInfo.WorkflowExecution.RunID)
+		ctx, span := createOpenTracingSpanFromHeaders(
+			ctx,
+			lath.tracer,
+			time.Now(),
+			spanNameExecuteLocalActivity,
+			opentracing.Tags{
+				tagCadenceWorkflowType: workflowType,
+				tagCadenceWorkflowID:   task.params.WorkflowInfo.WorkflowExecution.ID,
+				tagCadenceRunID:        task.params.WorkflowInfo.WorkflowExecution.RunID,
+				tagCadenceActivityType: task.params.ActivityType,
+			},
+		)
 		activityInfo := debug.ActivityInfo{
 			TaskList:     task.params.WorkflowInfo.TaskListName,
 			ActivityType: activityType,

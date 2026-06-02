@@ -82,8 +82,9 @@ func NewDisconnectedContext(parent Context) (ctx Context, cancel CancelFunc) {
 // GetSpanContext returns the [opentracing.SpanContext] from [Context].
 // Returns nil if tracer is not set in [go.uber.org/cadence/worker.Options].
 //
-// Note: If tracer is set, we already activate a span for each workflow.
-// This SpanContext will be passed to the activities and child workflows to start new spans.
+// When a tracer is configured, the worker sets span context during
+// non-replay workflow execution ("cadence-ExecuteWorkflow" span) and activities
+// receive propagated context from workflow headers.
 //
 // Example Usage:
 //

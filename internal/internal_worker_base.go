@@ -38,6 +38,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 
+	"github.com/opentracing/opentracing-go"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/backoff"
 	"go.uber.org/cadence/internal/common/metrics"
@@ -93,6 +95,7 @@ type (
 		AddSession(sessionInfo *SessionInfo)
 		RemoveSession(sessionID string)
 		GetContextPropagators() []ContextPropagator
+		GetTracer() opentracing.Tracer
 		UpsertSearchAttributes(attributes map[string]interface{}) error
 		GetRegistry() *registry
 		GetWorkflowInterceptors() []WorkflowInterceptorFactory
