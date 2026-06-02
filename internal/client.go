@@ -401,6 +401,9 @@ type (
 		//  - ServiceBusyError
 		//  - EntityNotExistError
 		RefreshWorkflowTasks(ctx context.Context, workflowID, runID string) error
+
+		// ScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
+		ScheduleClient() ScheduleClient
 	}
 
 	// ClientOptions are optional parameters for Client creation.
