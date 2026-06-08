@@ -4,7 +4,6 @@ package mocks
 
 import (
 	mock "github.com/stretchr/testify/mock"
-
 	shared "go.uber.org/cadence/.gen/go/shared"
 )
 

@@ -50,8 +50,8 @@ var (
 		CatchUpPolicy:    apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_SKIP,
 		CatchUpWindow:    &gogo.Duration{Seconds: 3600},
 		PauseOnFailure:   true,
-		BufferLimit:      10,
-		ConcurrencyLimit: 5,
+		BufferLimit:      &gogo.Int32Value{Value: 10},
+		ConcurrencyLimit: &gogo.Int32Value{Value: 5},
 	}
 
 	ScheduleStartWorkflowAction = apiv1.ScheduleAction_StartWorkflowAction{

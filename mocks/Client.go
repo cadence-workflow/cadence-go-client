@@ -6,7 +6,6 @@ import (
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
-
 	internal "go.uber.org/cadence/internal"
 
 	shared "go.uber.org/cadence/.gen/go/shared"
