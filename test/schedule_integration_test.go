@@ -74,9 +74,6 @@ func (ts *IntegrationTestSuite) minimalCreateRequest(id string) *internal.Create
 	}
 }
 
-// boolPtr returns a pointer to the given bool value.
-func boolPtr(b bool) *bool { return &b }
-
 // TestSchedule_CreateAndDescribe verifies that a schedule can be created and that
 // Describe returns the spec and action fields that were supplied on creation.
 func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
@@ -152,12 +149,14 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	ts.Equal("0 0 1 * *", resp.Spec.CronExpression)
 }
 
-// TestSchedule_UpdatePolicies verifies PauseOnFailure (*bool) semantics on Update:
+// TestSchedule_UpdatePolicies verifies UpdateSchedule's top-level merge semantics:
 //
-//  1. Setting PauseOnFailure = &true explicitly stores the value.
-//  2. Updating with Policies = nil (omitted from UpdateScheduleRequest entirely) leaves
-//     policies untouched — the server does not replace what it did not receive.
-//  3. The *bool design ensures callers can choose to send or omit the Policies field.
+//  1. A Policies-only update stores the policy values (PauseOnFailure = true).
+//  2. A later update that omits Policies entirely (Policies == nil) leaves the stored
+//     policies untouched — the server only replaces top-level fields it actually receives.
+//
+// Note: within a *provided* Policies struct the server does full replacement (unspecified
+// sub-fields reset); this test exercises omitting the whole field, not partial merge.
 func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -176,7 +175,7 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
 		ScheduleID: id,
 		Policies: &internal.SchedulePolicies{
-			PauseOnFailure: boolPtr(true),
+			PauseOnFailure: true,
 		},
 	})
 	ts.NoError(err)
@@ -184,7 +183,7 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	resp, err := sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp.Policies)
-	ts.Equal(boolPtr(true), resp.Policies.PauseOnFailure)
+	ts.True(resp.Policies.PauseOnFailure)
 
 	// Update only the Spec (Policies is nil in the UpdateScheduleRequest).
 	// The server does not receive a Policies field, so it leaves the stored value intact.
@@ -197,7 +196,7 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	resp, err = sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp.Policies)
-	ts.Equal(boolPtr(true), resp.Policies.PauseOnFailure,
+	ts.True(resp.Policies.PauseOnFailure,
 		"PauseOnFailure must be preserved when Policies is omitted from UpdateScheduleRequest")
 }
 

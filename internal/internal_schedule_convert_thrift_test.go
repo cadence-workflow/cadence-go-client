@@ -312,6 +312,7 @@ func TestDescribeScheduleResponseFromThrift(t *testing.T) {
 	assert.Equal(t, "my-tl", got.Action.StartWorkflow.TaskList)
 	require.NotNil(t, got.State)
 	assert.True(t, got.State.Paused)
+	// Schedule-level Memo/SearchAttributes are returned as raw encoded bytes.
 	assert.Equal(t, map[string][]byte{"k": []byte(`"v"`)}, got.Memo)
 	assert.Equal(t, map[string][]byte{"sk": []byte(`"sv"`)}, got.SearchAttributes)
 }
@@ -491,20 +492,125 @@ func TestScheduleUpdateRequestToThrift(t *testing.T) {
 	assert.Equal(t, "my-wf", got.Action.StartWorkflow.WorkflowType.GetName())
 }
 
-func TestScheduleStartWorkflowActionFromThriftLossyFields(t *testing.T) {
-	// Memo and SearchAttributes are intentionally dropped on the read path:
-	// they are encoded bytes that cannot be reconstructed without a DataConverter.
-	in := &s.ScheduleStartWorkflowAction{
-		WorkflowType: &s.WorkflowType{Name: common.StringPtr("my-wf")},
-		TaskList:     &s.TaskList{Name: common.StringPtr("my-tl")},
-		Memo:         &s.Memo{Fields: map[string][]byte{"k": []byte(`"v"`)}},
-		SearchAttributes: &s.SearchAttributes{
-			IndexedFields: map[string][]byte{"sk": []byte(`"sv"`)},
-		},
+func TestScheduleStartWorkflowActionMemoAndSARoundTrip(t *testing.T) {
+	// Write takes native values (SDK encodes); read returns raw bytes (you decode).
+	// SDK(values) -> thrift -> SDK-description(raw bytes) round-trips losslessly.
+	wf := &ScheduleStartWorkflowAction{
+		WorkflowType:                 "my-wf",
+		TaskList:                     "my-tl",
+		ExecutionStartToCloseTimeout: time.Hour,
+		Memo:                         map[string]interface{}{"k": "v"},
+		SearchAttributes:             map[string]interface{}{"sk": "sv"},
 	}
-	got := scheduleStartWorkflowActionFromThrift(in)
-	require.NotNil(t, got)
-	assert.Equal(t, "my-wf", got.WorkflowType)
-	assert.Nil(t, got.Memo, "Memo must be dropped (no DataConverter on read path)")
-	assert.Nil(t, got.SearchAttributes, "SearchAttributes must be dropped (no DataConverter on read path)")
+	th, err := scheduleStartWorkflowActionToThrift(wf, getDefaultDataConverter())
+	require.NoError(t, err)
+
+	// On the wire, Memo (DataConverter-encoded) and SearchAttributes (json) are bytes.
+	desc := scheduleStartWorkflowActionDescriptionFromThrift(th)
+	require.NotNil(t, desc)
+	assert.Equal(t, "my-wf", desc.WorkflowType)
+	// Read returns raw bytes; decoding is the caller's job.
+	var memoVal string
+	require.NoError(t, decodeArg(getDefaultDataConverter(), desc.Memo["k"], &memoVal))
+	assert.Equal(t, "v", memoVal)
+	assert.Equal(t, []byte(`"sv"`), desc.SearchAttributes["sk"], "SearchAttributes come back as raw JSON bytes")
+}
+
+// TestSchedulePoliciesPauseOnFailure verifies the bool maps both directions and
+// that thrift-nil decodes to false, the field is a plain bool whose zero value is false).
+func TestSchedulePoliciesPauseOnFailure(t *testing.T) {
+	// SDK bool -> thrift *bool (always non-nil; false stays false, true stays true).
+	if got := schedulePoliciesToThrift(&SchedulePolicies{PauseOnFailure: false}).PauseOnFailure; assert.NotNil(t, got) {
+		assert.False(t, *got)
+	}
+	if got := schedulePoliciesToThrift(&SchedulePolicies{PauseOnFailure: true}).PauseOnFailure; assert.NotNil(t, got) {
+		assert.True(t, *got)
+	}
+
+	// thrift -> SDK: nil and *false both decode to false; *true -> true.
+	assert.False(t, schedulePoliciesFromThrift(&s.SchedulePolicies{}).PauseOnFailure, "thrift nil must decode to false")
+	assert.False(t, schedulePoliciesFromThrift(&s.SchedulePolicies{PauseOnFailure: common.BoolPtr(false)}).PauseOnFailure)
+	assert.True(t, schedulePoliciesFromThrift(&s.SchedulePolicies{PauseOnFailure: common.BoolPtr(true)}).PauseOnFailure)
+
+	// SDK -> thrift -> SDK round-trip is lossless for both values.
+	for _, v := range []bool{false, true} {
+		rt := schedulePoliciesFromThrift(schedulePoliciesToThrift(&SchedulePolicies{PauseOnFailure: v}))
+		assert.Equalf(t, v, rt.PauseOnFailure, "PauseOnFailure %v must round-trip", v)
+	}
+}
+
+// TestSchedulePoliciesLimitZeroVsValue verifies the SDK int32 <-> thrift *int32
+// mapping for BufferLimit/ConcurrencyLimit: the SDK cannot express thrift-nil
+// (it always sends a non-nil pointer), and FromThrift collapses thrift-nil and
+// thrift-0 both to SDK 0. SDK->thrift->SDK is lossless; thrift-nil normalizes to 0.
+func TestSchedulePoliciesLimitZeroVsValue(t *testing.T) {
+	// SDK 0 -> thrift *int32(0) (non-nil), NOT nil.
+	th := schedulePoliciesToThrift(&SchedulePolicies{BufferLimit: 0, ConcurrencyLimit: 0})
+	if assert.NotNil(t, th.BufferLimit) {
+		assert.Equal(t, int32(0), *th.BufferLimit)
+	}
+	if assert.NotNil(t, th.ConcurrencyLimit) {
+		assert.Equal(t, int32(0), *th.ConcurrencyLimit)
+	}
+	// SDK N -> thrift *int32(N).
+	th = schedulePoliciesToThrift(&SchedulePolicies{BufferLimit: 5, ConcurrencyLimit: 7})
+	assert.Equal(t, int32(5), *th.BufferLimit)
+	assert.Equal(t, int32(7), *th.ConcurrencyLimit)
+
+	// thrift nil AND thrift *int32(0) both collapse to SDK 0.
+	fromNil := schedulePoliciesFromThrift(&s.SchedulePolicies{})
+	assert.Equal(t, int32(0), fromNil.BufferLimit)
+	assert.Equal(t, int32(0), fromNil.ConcurrencyLimit)
+	fromZero := schedulePoliciesFromThrift(&s.SchedulePolicies{
+		BufferLimit:      common.Int32Ptr(0),
+		ConcurrencyLimit: common.Int32Ptr(0),
+	})
+	assert.Equal(t, int32(0), fromZero.BufferLimit)
+	assert.Equal(t, int32(0), fromZero.ConcurrencyLimit)
+
+	// SDK -> thrift -> SDK is lossless for every value, including 0.
+	for _, v := range []int32{0, 1, 5, 1000} {
+		rt := schedulePoliciesFromThrift(schedulePoliciesToThrift(&SchedulePolicies{BufferLimit: v, ConcurrencyLimit: v}))
+		assert.Equalf(t, v, rt.BufferLimit, "BufferLimit %d must round-trip", v)
+		assert.Equalf(t, v, rt.ConcurrencyLimit, "ConcurrencyLimit %d must round-trip", v)
+	}
+}
+
+// fixedDataConverter is a DataConverter whose ToData ignores its input and emits
+// a sentinel, so tests can prove the configured converter is actually used.
+type fixedDataConverter struct{}
+
+func (fixedDataConverter) ToData(value ...interface{}) ([]byte, error) {
+	return []byte("custom-encoded"), nil
+}
+func (fixedDataConverter) FromData(input []byte, valuePtr ...interface{}) error { return nil }
+
+// TestScheduleCreateRequestCustomDataConverter verifies that Memo (schedule-level AND
+// action-level) is encoded through the configured DataConverter on write, while
+// SearchAttributes always use json.Marshal regardless of the converter.
+func TestScheduleCreateRequestCustomDataConverter(t *testing.T) {
+	req := &CreateScheduleRequest{
+		ScheduleID: "dc",
+		Spec:       &ScheduleSpec{CronExpression: "* * * * *"},
+		Action: &ScheduleAction{StartWorkflow: &ScheduleStartWorkflowAction{
+			WorkflowType:                 "wf",
+			TaskList:                     "tl",
+			ExecutionStartToCloseTimeout: time.Minute,
+			Memo:                         map[string]interface{}{"m": "hello"},
+			SearchAttributes:             map[string]interface{}{"k": "v"},
+		}},
+		Memo:             map[string]interface{}{"sm": "world"},
+		SearchAttributes: map[string]interface{}{"sk": "sv"},
+	}
+
+	th, err := scheduleCreateRequestToThrift("domain", req, fixedDataConverter{})
+	require.NoError(t, err)
+
+	// Memo uses the custom DataConverter (sentinel bytes), at both levels.
+	assert.Equal(t, []byte("custom-encoded"), th.Memo.Fields["sm"], "schedule memo must use the configured DataConverter")
+	assert.Equal(t, []byte("custom-encoded"), th.Action.StartWorkflow.Memo.Fields["m"], "action memo must use the configured DataConverter")
+
+	// SearchAttributes use json.Marshal regardless of the converter, at both levels.
+	assert.Equal(t, []byte(`"sv"`), th.SearchAttributes.IndexedFields["sk"], "schedule SA must be json-encoded")
+	assert.Equal(t, []byte(`"v"`), th.Action.StartWorkflow.SearchAttributes.IndexedFields["k"], "action SA must be json-encoded")
 }

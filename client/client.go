@@ -514,6 +514,13 @@ type (
 	// ScheduleAction defines what the schedule does when it triggers.
 	ScheduleAction = internal.ScheduleAction
 
+	// ScheduleStartWorkflowActionDescription is the describe (read) form of the start-workflow
+	// action; its Memo/SearchAttributes are raw encoded bytes for you to decode.
+	ScheduleStartWorkflowActionDescription = internal.ScheduleStartWorkflowActionDescription
+
+	// ScheduleActionDescription is the describe (read) form of a schedule's action.
+	ScheduleActionDescription = internal.ScheduleActionDescription
+
 	// SchedulePolicies controls the runtime behavior of a schedule.
 	SchedulePolicies = internal.SchedulePolicies
 
