@@ -34,6 +34,8 @@ services:
       - "CASSANDRA_SEEDS=cassandra"
       - "STATSD_ENDPOINT=statsd:8125"
       - "DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml"
+    volumes:
+      - ./config/dynamicconfig/development.yaml:/etc/cadence/config/dynamicconfig/development.yaml
     depends_on:
       - cassandra
       - statsd
