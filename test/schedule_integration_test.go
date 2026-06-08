@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/cadence/encoded"
 	"go.uber.org/cadence/internal"
 )
 
@@ -74,8 +75,61 @@ func (ts *IntegrationTestSuite) minimalCreateRequest(id string) *internal.Create
 	}
 }
 
-// TestSchedule_CreateAndDescribe verifies that a schedule can be created and that
-// Describe returns the spec and action fields that were supplied on creation.
+// fullCreateRequest builds a CreateScheduleRequest that exercises every settable field
+// (rich Spec, Action, Policies, and both schedule- and action-level Memo) so a
+// create -> describe round-trip validates field-by-field fidelity — including the action
+// Memo/SearchAttributes that DescribeSchedule must return. Custom SearchAttributes are
+// intentionally omitted: they must be pre-registered in the cluster or Create is rejected.
+// The cron fires at most once a year, so no runs are triggered during the test.
+func (ts *IntegrationTestSuite) fullCreateRequest(id string) *internal.CreateScheduleRequest {
+	now := time.Now().Truncate(time.Second)
+	return &internal.CreateScheduleRequest{
+		ScheduleID: id,
+		Spec: &internal.ScheduleSpec{
+			CronExpression: "0 0 1 1 *",
+			StartTime:      now,
+			EndTime:        now.Add(365 * 24 * time.Hour),
+			Jitter:         5 * time.Second,
+		},
+		Action: &internal.ScheduleAction{
+			StartWorkflow: &internal.ScheduleStartWorkflowAction{
+				WorkflowType:                    scheduleTestWorkflowType,
+				TaskList:                        ts.taskListName,
+				Input:                           []byte(`"hello"`),
+				WorkflowIDPrefix:                "integ-full",
+				ExecutionStartToCloseTimeout:    15 * time.Second,
+				DecisionTaskStartToCloseTimeout: 10 * time.Second,
+				RetryPolicy: &internal.RetryPolicy{
+					InitialInterval: time.Second,
+					MaximumAttempts: 3,
+				},
+				Memo: map[string]interface{}{"actionOwner": "integ-action"},
+			},
+		},
+		Policies: &internal.SchedulePolicies{
+			OverlapPolicy:    internal.ScheduleOverlapPolicySkipNew,
+			CatchUpPolicy:    internal.ScheduleCatchUpPolicyOne,
+			CatchUpWindow:    time.Hour,
+			PauseOnFailure:   true,
+			BufferLimit:      10,
+			ConcurrencyLimit: 5,
+		},
+		Memo: map[string]interface{}{"scheduleOwner": "integ-schedule"},
+	}
+}
+
+// decodeMemoString decodes a single raw memo field with the default DataConverter
+// (DescribeSchedule returns Memo as raw bytes; the caller decodes).
+func (ts *IntegrationTestSuite) decodeMemoString(memo map[string][]byte, key string) string {
+	raw, ok := memo[key]
+	ts.Require().True(ok, "memo key %q missing from Describe response", key)
+	var v string
+	ts.Require().NoError(encoded.GetDefaultDataConverter().FromData(raw, &v))
+	return v
+}
+
+// TestSchedule_CreateAndDescribe creates a schedule with every settable field and verifies
+// Describe returns them all (field-by-field round-trip), including action-level Memo.
 func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -86,19 +140,48 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateAndDescribe() {
 	// Clean up any schedule left over from a previous (failed or retried) run.
 	_ = sc.Delete(ctx, id)
 
-	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
+	req := ts.fullCreateRequest(id)
+	_, err := sc.Create(ctx, req)
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
 	resp, err := sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp)
+
+	// Spec (times round-trip as UTC instants; compare the instant, not the location).
 	ts.Require().NotNil(resp.Spec)
-	ts.Equal("0 0 1 1 *", resp.Spec.CronExpression)
+	ts.Equal(req.Spec.CronExpression, resp.Spec.CronExpression)
+	ts.WithinDuration(req.Spec.StartTime, resp.Spec.StartTime, time.Second)
+	ts.WithinDuration(req.Spec.EndTime, resp.Spec.EndTime, time.Second)
+	ts.Equal(req.Spec.Jitter, resp.Spec.Jitter)
+
+	// Action.
 	ts.Require().NotNil(resp.Action)
 	ts.Require().NotNil(resp.Action.StartWorkflow)
-	ts.Equal(scheduleTestWorkflowType, resp.Action.StartWorkflow.WorkflowType)
-	ts.Equal(ts.taskListName, resp.Action.StartWorkflow.TaskList)
+	a := resp.Action.StartWorkflow
+	ts.Equal(scheduleTestWorkflowType, a.WorkflowType)
+	ts.Equal(ts.taskListName, a.TaskList)
+	ts.Equal([]byte(`"hello"`), a.Input)
+	ts.Equal("integ-full", a.WorkflowIDPrefix)
+	ts.Equal(15*time.Second, a.ExecutionStartToCloseTimeout)
+	ts.Equal(10*time.Second, a.DecisionTaskStartToCloseTimeout)
+	ts.Require().NotNil(a.RetryPolicy)
+	ts.Equal(int32(3), a.RetryPolicy.MaximumAttempts)
+
+	// Policies.
+	ts.Require().NotNil(resp.Policies)
+	ts.Equal(internal.ScheduleOverlapPolicySkipNew, resp.Policies.OverlapPolicy)
+	ts.Equal(internal.ScheduleCatchUpPolicyOne, resp.Policies.CatchUpPolicy)
+	ts.Equal(time.Hour, resp.Policies.CatchUpWindow)
+	ts.True(resp.Policies.PauseOnFailure)
+	ts.Equal(int32(10), resp.Policies.BufferLimit)
+	ts.Equal(int32(5), resp.Policies.ConcurrencyLimit)
+
+	// Memo round-trips as raw bytes at both levels (action-level Memo is the field this
+	// branch's lossless-Describe change restored).
+	ts.Equal("integ-schedule", ts.decodeMemoString(resp.Memo, "scheduleOwner"))
+	ts.Equal("integ-action", ts.decodeMemoString(a.Memo, "actionOwner"))
 }
 
 // TestSchedule_CreateDuplicate verifies that creating a schedule with a duplicate ID
