@@ -138,7 +138,7 @@ func TestScheduleClient_Create(t *testing.T) {
 				Policies: &SchedulePolicies{
 					OverlapPolicy:  ScheduleOverlapPolicyBuffer,
 					CatchUpPolicy:  ScheduleCatchUpPolicyOne,
-					PauseOnFailure: common.BoolPtr(true),
+					PauseOnFailure: true,
 					BufferLimit:    5,
 				},
 				Memo:             map[string]interface{}{"m": "mv"},
@@ -579,8 +579,7 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	assert.Equal(t, ScheduleOverlapPolicyBuffer, resp.Policies.OverlapPolicy)
 	assert.Equal(t, ScheduleCatchUpPolicyOne, resp.Policies.CatchUpPolicy)
 	assert.Equal(t, 24*time.Hour, resp.Policies.CatchUpWindow)
-	assert.Equal(t, common.BoolPtr(true), resp.Policies.PauseOnFailure)
-	assert.Equal(t, common.BoolPtr(true), resp.Policies.PauseOnFailure)
+	assert.True(t, resp.Policies.PauseOnFailure)
 	assert.Equal(t, int32(5), resp.Policies.BufferLimit)
 	assert.Equal(t, int32(2), resp.Policies.ConcurrencyLimit)
 

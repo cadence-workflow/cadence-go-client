@@ -196,6 +196,9 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 	if decisionTaskTimeout == 0 {
 		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
 	}
+	// Memo values are native Go values encoded with the configured DataConverter;
+	// SearchAttributes are JSON-encoded. (On read they come back as raw bytes — see
+	// scheduleStartWorkflowActionDescriptionFromThrift.)
 	var memo *shared.Memo
 	if len(a.Memo) > 0 {
 		fields := make(map[string][]byte, len(a.Memo))
@@ -259,7 +262,7 @@ func schedulePoliciesToThrift(p *SchedulePolicies) *shared.SchedulePolicies {
 		OverlapPolicy:          scheduleOverlapPolicyToThrift(p.OverlapPolicy),
 		CatchUpPolicy:          scheduleCatchUpPolicyToThrift(p.CatchUpPolicy),
 		CatchUpWindowInSeconds: durationToThriftSeconds(p.CatchUpWindow),
-		PauseOnFailure:         p.PauseOnFailure,
+		PauseOnFailure:         common.BoolPtr(p.PauseOnFailure),
 		BufferLimit:            common.Int32Ptr(p.BufferLimit),
 		ConcurrencyLimit:       common.Int32Ptr(p.ConcurrencyLimit),
 	}
@@ -410,15 +413,11 @@ func scheduleRetryPolicyFromThrift(p *shared.RetryPolicy) *RetryPolicy {
 	}
 }
 
-func scheduleStartWorkflowActionFromThrift(a *shared.ScheduleStartWorkflowAction) *ScheduleStartWorkflowAction {
+func scheduleStartWorkflowActionDescriptionFromThrift(a *shared.ScheduleStartWorkflowAction) *ScheduleStartWorkflowActionDescription {
 	if a == nil {
 		return nil
 	}
-	// Memo and SearchAttributes are intentionally not populated here.
-	// The server returns them as encoded bytes (map[string][]byte), but the SDK
-	// type uses map[string]interface{}, which requires a DataConverter to decode.
-	// This converter has no DataConverter, so those fields are omitted on the read path.
-	return &ScheduleStartWorkflowAction{
+	out := &ScheduleStartWorkflowActionDescription{
 		WorkflowType:                    a.GetWorkflowType().GetName(),
 		TaskList:                        a.GetTaskList().GetName(),
 		Input:                           a.Input,
@@ -427,15 +426,24 @@ func scheduleStartWorkflowActionFromThrift(a *shared.ScheduleStartWorkflowAction
 		DecisionTaskStartToCloseTimeout: thriftSecondsToDuration(a.TaskStartToCloseTimeoutSeconds),
 		RetryPolicy:                     scheduleRetryPolicyFromThrift(a.RetryPolicy),
 	}
+	// Memo and SearchAttributes are returned as the raw bytes the server stores (exactly
+	// as the caller encoded them on write). Decode them yourself with the DataConverter you
+	// used on write. This mirrors the server (no decode on read) and matches the
+	// schedule-level Memo/SA behavior on DescribeScheduleResponse.
+	if a.Memo != nil {
+		out.Memo = a.Memo.Fields
+	}
+	if a.SearchAttributes != nil {
+		out.SearchAttributes = a.SearchAttributes.IndexedFields
+	}
+	return out
 }
 
-func scheduleActionFromThrift(a *shared.ScheduleAction) *ScheduleAction {
+func scheduleActionDescriptionFromThrift(a *shared.ScheduleAction) *ScheduleActionDescription {
 	if a == nil {
 		return nil
 	}
-	return &ScheduleAction{
-		StartWorkflow: scheduleStartWorkflowActionFromThrift(a.StartWorkflow),
-	}
+	return &ScheduleActionDescription{StartWorkflow: scheduleStartWorkflowActionDescriptionFromThrift(a.StartWorkflow)}
 }
 
 func schedulePoliciesFromThrift(p *shared.SchedulePolicies) *SchedulePolicies {
@@ -446,7 +454,7 @@ func schedulePoliciesFromThrift(p *shared.SchedulePolicies) *SchedulePolicies {
 		OverlapPolicy:    scheduleOverlapPolicyFromThrift(p.OverlapPolicy),
 		CatchUpPolicy:    scheduleCatchUpPolicyFromThrift(p.CatchUpPolicy),
 		CatchUpWindow:    thriftSecondsToDuration(p.CatchUpWindowInSeconds),
-		PauseOnFailure:   p.PauseOnFailure,
+		PauseOnFailure:   p.GetPauseOnFailure(),
 		BufferLimit:      p.GetBufferLimit(),
 		ConcurrencyLimit: p.GetConcurrencyLimit(),
 	}
@@ -523,6 +531,9 @@ func describeScheduleResponseFromThrift(r *shared.DescribeScheduleResponse) *Des
 	if r == nil {
 		return nil
 	}
+	// Schedule-level and action-level Memo/SearchAttributes are all returned as raw
+	// encoded bytes (map[string][]byte), exactly as the server stores them — decode
+	// them with the DataConverter you used on write.
 	var memo map[string][]byte
 	if r.Memo != nil {
 		memo = r.Memo.Fields
@@ -533,7 +544,7 @@ func describeScheduleResponseFromThrift(r *shared.DescribeScheduleResponse) *Des
 	}
 	return &DescribeScheduleResponse{
 		Spec:             scheduleSpecFromThrift(r.Spec),
-		Action:           scheduleActionFromThrift(r.Action),
+		Action:           scheduleActionDescriptionFromThrift(r.Action),
 		Policies:         schedulePoliciesFromThrift(r.Policies),
 		State:            scheduleStateFromThrift(r.State),
 		Info:             scheduleInfoFromThrift(r.Info),

@@ -74,6 +74,9 @@ type ScheduleSpec struct {
 }
 
 // ScheduleStartWorkflowAction describes the workflow to start when the schedule triggers.
+// This is the request-side (write) type: Memo/SearchAttributes are native Go values that
+// the SDK encodes for you. The describe (read) counterpart is
+// ScheduleStartWorkflowActionDescription, which returns them as raw bytes.
 type ScheduleStartWorkflowAction struct {
 	// WorkflowType is the registered name of the workflow function to execute. Required.
 	WorkflowType string
@@ -93,22 +96,41 @@ type ScheduleStartWorkflowAction struct {
 	// RetryPolicy is the retry policy applied to each triggered workflow run. Optional.
 	RetryPolicy *RetryPolicy
 	// Memo is additional metadata attached to each triggered workflow run. Optional.
-	// Values are encoded using the DataConverter configured on the ScheduleClient.
-	// Note: Memo is not populated when reading back via DescribeSchedule, because
-	// the encoded bytes cannot be decoded without the original DataConverter.
+	// Values are native Go values; the SDK encodes each one with the configured DataConverter.
 	Memo map[string]interface{}
 	// SearchAttributes are indexed attributes attached to each triggered workflow run. Optional.
-	// Values are JSON-encoded.
-	// Note: SearchAttributes is not populated when reading back via DescribeSchedule,
-	// because the encoded bytes cannot be decoded without the original DataConverter.
+	// Values are native Go values; the SDK JSON-encodes each one.
 	SearchAttributes map[string]interface{}
 }
 
-// ScheduleAction defines what the schedule does when it triggers.
+// ScheduleAction defines what the schedule does when it triggers (request-side / write).
 // Currently only StartWorkflow is supported.
 type ScheduleAction struct {
 	// StartWorkflow starts a new workflow execution on each trigger.
 	StartWorkflow *ScheduleStartWorkflowAction
+}
+
+// ScheduleStartWorkflowActionDescription is the describe (read) counterpart of
+// ScheduleStartWorkflowAction. Memo/SearchAttributes are returned as raw encoded bytes —
+// exactly as the server stores them — for you to decode with your DataConverter. The
+// request-side type takes native values that the SDK encodes for you.
+type ScheduleStartWorkflowActionDescription struct {
+	WorkflowType                    string
+	TaskList                        string
+	Input                           []byte
+	WorkflowIDPrefix                string
+	ExecutionStartToCloseTimeout    time.Duration
+	DecisionTaskStartToCloseTimeout time.Duration
+	RetryPolicy                     *RetryPolicy
+	// Memo contains the raw encoded bytes of each memo field; decode with your DataConverter.
+	Memo map[string][]byte
+	// SearchAttributes contains the raw encoded bytes of each attribute (typically JSON).
+	SearchAttributes map[string][]byte
+}
+
+// ScheduleActionDescription is the describe (read) counterpart of ScheduleAction.
+type ScheduleActionDescription struct {
+	StartWorkflow *ScheduleStartWorkflowActionDescription
 }
 
 // SchedulePolicies controls the runtime behavior of a schedule.
@@ -121,11 +143,10 @@ type SchedulePolicies struct {
 	// Zero means the server uses its configured default.
 	CatchUpWindow time.Duration
 	// PauseOnFailure automatically pauses the schedule if a triggered workflow run fails.
-	// Use nil to leave the server's current value unchanged on Update; use common.BoolPtr(true/false) to set explicitly.
-	PauseOnFailure *bool
-	// BufferLimit caps the number of buffered runs when OverlapPolicy is Buffer (0 = unlimited).
+	PauseOnFailure bool
+	// BufferLimit caps the number of buffered runs when OverlapPolicy is Buffer (0 = no user limit, server cap applies).
 	BufferLimit int32
-	// ConcurrencyLimit caps the number of concurrent runs when OverlapPolicy is Concurrent (0 = unlimited).
+	// ConcurrencyLimit caps the number of concurrent runs when OverlapPolicy is Concurrent (0 = unlimited, server cap applies).
 	ConcurrencyLimit int32
 }
 
@@ -227,7 +248,7 @@ type BackfillRequest struct {
 // DescribeScheduleResponse is returned by ScheduleClient.Describe.
 type DescribeScheduleResponse struct {
 	Spec     *ScheduleSpec
-	Action   *ScheduleAction
+	Action   *ScheduleActionDescription
 	Policies *SchedulePolicies
 	State    *ScheduleState
 	Info     *ScheduleInfo

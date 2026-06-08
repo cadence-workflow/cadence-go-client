@@ -533,6 +533,7 @@ func TestFailoverDomainRequest(t *testing.T) {
 		FuzzOptions{
 			ExcludedFields: []string{
 				"RegionToCluster", // [DEPRECATED] This field is deprecated and not mapped in conversion functions
+				"FailoverTimeout", // proto-only field; thrift FailoverDomainRequest has no equivalent, so it cannot round-trip across the bridge
 			},
 		},
 	)
