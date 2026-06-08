@@ -111,6 +111,7 @@ var (
 		DomainName:              DomainName,
 		DomainActiveClusterName: ClusterName1,
 		ActiveClusters:          ActiveClusters,
+		FailoverTimeout:         Duration1,
 	}
 	FailoverDomainResponse = apiv1.FailoverDomainResponse{
 		Domain: &Domain,
