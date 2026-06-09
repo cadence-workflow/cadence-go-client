@@ -22,6 +22,7 @@
 package internal
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -449,47 +450,98 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 	assert.Equal(t, backoff.DefaultBackoffCoefficient, got.Action.StartWorkflow.RetryPolicy.GetBackoffCoefficient())
 }
 
-func TestScheduleUpdateRequestToThrift(t *testing.T) {
-	dc := getDefaultDataConverter()
+func TestScheduleActionDescriptionToThrift(t *testing.T) {
+	// nil action -> nil, no error
+	got, err := scheduleActionDescriptionToThrift(nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
 
-	_, err := scheduleUpdateRequestToThrift("dom", nil, dc)
-	require.Error(t, err, "nil request must error")
-
-	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{}, dc)
-	require.Error(t, err, "missing ScheduleID must error")
-
-	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{ScheduleID: "id"}, dc)
-	require.Error(t, err, "no fields set must error")
-
-	// Non-nil Action with nil StartWorkflow must error — not silently corrupt the schedule.
-	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
-		ScheduleID: "id",
-		Action:     &ScheduleAction{StartWorkflow: nil},
-	}, dc)
+	// Action with nil StartWorkflow must error — not silently corrupt the schedule.
+	_, err = scheduleActionDescriptionToThrift(&ScheduleActionDescription{})
 	require.Error(t, err, "Action with nil StartWorkflow must error")
 
-	// Non-nil Spec with empty CronExpression must error — the scheduler workflow silently
-	// ignores updates with empty cron, so the client must catch this before the RPC.
-	_, err = scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
-		ScheduleID: "id",
-		Spec:       &ScheduleSpec{},
-	}, dc)
-	require.Error(t, err, "Spec with empty CronExpression must error")
+	// Required-field validation on the start-workflow action.
+	_, err = scheduleActionDescriptionToThrift(&ScheduleActionDescription{
+		StartWorkflow: &ScheduleStartWorkflowActionDescription{TaskList: "tl", ExecutionStartToCloseTimeout: time.Hour},
+	})
+	require.Error(t, err, "missing WorkflowType must error")
 
-	got, err := scheduleUpdateRequestToThrift("dom", &UpdateScheduleRequest{
-		ScheduleID: "id",
-		Action: &ScheduleAction{
-			StartWorkflow: &ScheduleStartWorkflowAction{
+	// Memo/SearchAttributes pass through as raw bytes (no re-encode).
+	out, err := scheduleActionDescriptionToThrift(&ScheduleActionDescription{
+		StartWorkflow: &ScheduleStartWorkflowActionDescription{
+			WorkflowType:                 "my-wf",
+			TaskList:                     "my-tl",
+			ExecutionStartToCloseTimeout: time.Hour,
+			Memo:                         map[string][]byte{"k": []byte(`"v"`)},
+			SearchAttributes:             map[string][]byte{"sk": []byte(`"sv"`)},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out.StartWorkflow)
+	assert.Equal(t, "my-wf", out.StartWorkflow.WorkflowType.GetName())
+	assert.Equal(t, []byte(`"v"`), out.StartWorkflow.Memo.Fields["k"])
+	assert.Equal(t, []byte(`"sv"`), out.StartWorkflow.SearchAttributes.IndexedFields["sk"])
+}
+
+func TestScheduleUpdateFromDescribeDeepCopy(t *testing.T) {
+	// scheduleUpdateFromDescribe must deep-copy so mutating the result does not alias the
+	// original Describe response (which the client keeps as the change-detection baseline).
+	desc := &DescribeScheduleResponse{
+		Spec:     &ScheduleSpec{CronExpression: "0 * * * *"},
+		Policies: &SchedulePolicies{PauseOnFailure: true, BufferLimit: 5},
+		Action: &ScheduleActionDescription{
+			StartWorkflow: &ScheduleStartWorkflowActionDescription{
 				WorkflowType:                 "my-wf",
 				TaskList:                     "my-tl",
 				ExecutionStartToCloseTimeout: time.Hour,
+				Memo:                         map[string][]byte{"k": []byte(`"v"`)},
 			},
 		},
-	}, dc)
-	require.NoError(t, err)
-	assert.Equal(t, "dom", got.GetDomain())
-	assert.Equal(t, "id", got.GetScheduleId())
-	assert.Equal(t, "my-wf", got.Action.StartWorkflow.WorkflowType.GetName())
+		SearchAttributes: map[string][]byte{"sa": []byte(`"x"`)},
+	}
+	u := scheduleUpdateFromDescribe(desc, getDefaultDataConverter())
+
+	// Mutate every level of the copy.
+	u.Spec.CronExpression = "0 0 * * *"
+	u.Policies.PauseOnFailure = false
+	u.Action.StartWorkflow.WorkflowType = "other"
+	u.Action.StartWorkflow.Memo["k"] = []byte(`"mutated"`)
+	u.SearchAttributes["sa"] = []byte(`"mutated"`)
+
+	// The original Describe response is unchanged.
+	assert.Equal(t, "0 * * * *", desc.Spec.CronExpression)
+	assert.True(t, desc.Policies.PauseOnFailure)
+	assert.Equal(t, "my-wf", desc.Action.StartWorkflow.WorkflowType)
+	assert.Equal(t, []byte(`"v"`), desc.Action.StartWorkflow.Memo["k"])
+	assert.Equal(t, []byte(`"x"`), desc.SearchAttributes["sa"])
+}
+
+// TestScheduleUpdateFromDescribeEqualsSource guards the Update change-detection: a freshly
+// built (unmutated) ScheduleUpdate must be reflect.DeepEqual to the Describe response field by
+// field — including empty-non-nil slices/maps — so untouched fields are never spuriously
+// re-sent. (Regression for copy helpers collapsing empty-non-nil to nil.)
+func TestScheduleUpdateFromDescribeEqualsSource(t *testing.T) {
+	desc := &DescribeScheduleResponse{
+		Spec:     &ScheduleSpec{CronExpression: "0 * * * *"},
+		Policies: &SchedulePolicies{BufferLimit: 5},
+		Action: &ScheduleActionDescription{
+			StartWorkflow: &ScheduleStartWorkflowActionDescription{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+				Input:                        []byte{},                                           // empty non-nil
+				RetryPolicy:                  &RetryPolicy{NonRetriableErrorReasons: []string{}}, // empty non-nil
+				Memo:                         map[string][]byte{"k": {}},                         // empty-non-nil value
+			},
+		},
+		SearchAttributes: map[string][]byte{},
+	}
+	u := scheduleUpdateFromDescribe(desc, getDefaultDataConverter())
+
+	assert.True(t, reflect.DeepEqual(u.Spec, desc.Spec), "Spec copy must equal source")
+	assert.True(t, reflect.DeepEqual(u.Action, desc.Action), "Action copy must equal source")
+	assert.True(t, reflect.DeepEqual(u.Policies, desc.Policies), "Policies copy must equal source")
+	assert.True(t, reflect.DeepEqual(u.SearchAttributes, desc.SearchAttributes), "SearchAttributes copy must equal source")
 }
 
 func TestScheduleStartWorkflowActionMemoAndSARoundTrip(t *testing.T) {

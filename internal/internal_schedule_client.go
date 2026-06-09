@@ -26,6 +26,8 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	shared "go.uber.org/cadence/.gen/go/shared"
@@ -45,8 +47,9 @@ type ScheduleClient interface {
 	// Describe returns the current configuration and state of a schedule.
 	Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error)
 
-	// Update replaces the spec, action, and/or policies of an existing schedule.
-	Update(ctx context.Context, request *UpdateScheduleRequest) error
+	// Update reads the schedule's current state, passes it to mutate for in-place editing,
+	// and applies the result. Only the fields changed are sent; untouched fields are preserved.
+	Update(ctx context.Context, scheduleID string, mutate func(*ScheduleUpdate) error) error
 
 	// Delete deletes a schedule.
 	Delete(ctx context.Context, scheduleID string) error
@@ -127,15 +130,68 @@ func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*Des
 	return describeScheduleResponseFromThrift(thriftResp), nil
 }
 
-func (sc *scheduleClient) Update(ctx context.Context, request *UpdateScheduleRequest) error {
-	thriftReq, err := scheduleUpdateRequestToThrift(sc.domain, request, sc.dataConverter)
+func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate func(*ScheduleUpdate) error) error {
+	if scheduleID == "" {
+		return errors.New("Update: scheduleID is required")
+	}
+	if mutate == nil {
+		return errors.New("Update: mutate function is required")
+	}
+
+	// Read current state; keep `desc` as the baseline for change detection.
+	desc, err := sc.Describe(ctx, scheduleID)
 	if err != nil {
+		return fmt.Errorf("Update: describe failed: %w", err)
+	}
+
+	cur := scheduleUpdateFromDescribe(desc, sc.dataConverter)
+	if err := mutate(cur); err != nil {
 		return err
 	}
+
+	// Send only the top-level fields the caller actually changed. Untouched fields are
+	// omitted so the server preserves them (top-level merge) and no side-effects fire for
+	// them — notably, sending an unchanged Spec would otherwise clear pending backfills.
+	req := &shared.UpdateScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
+	}
+	changed := false
+	if !reflect.DeepEqual(cur.Spec, desc.Spec) {
+		if cur.Spec != nil && cur.Spec.CronExpression == "" {
+			return errors.New("Update: Spec.CronExpression is required when Spec is set")
+		}
+		req.Spec = scheduleSpecToThrift(cur.Spec)
+		changed = true
+	}
+	if !reflect.DeepEqual(cur.Action, desc.Action) {
+		action, aerr := scheduleActionDescriptionToThrift(cur.Action)
+		if aerr != nil {
+			return aerr
+		}
+		req.Action = action
+		changed = true
+	}
+	if !reflect.DeepEqual(cur.Policies, desc.Policies) {
+		req.Policies = schedulePoliciesToThrift(cur.Policies)
+		changed = true
+	}
+	// SearchAttributes are only sent when non-empty: the wire UpdateScheduleRequest can add
+	// or replace attributes, but omitting the field preserves the existing ones, so there is
+	// no way to clear all attributes via Update (matching the server's top-level-merge model).
+	if len(cur.SearchAttributes) > 0 && !reflect.DeepEqual(cur.SearchAttributes, desc.SearchAttributes) {
+		req.SearchAttributes = &shared.SearchAttributes{IndexedFields: cur.SearchAttributes}
+		changed = true
+	}
+	if !changed {
+		// Nothing changed — don't issue a no-op UpdateSchedule RPC.
+		return nil
+	}
+
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.workflowService.UpdateSchedule(tchCtx, thriftReq, opt...)
+		_, rpcErr := sc.workflowService.UpdateSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 }

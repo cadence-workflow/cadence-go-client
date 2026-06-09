@@ -542,8 +542,8 @@ type (
 	// CreateScheduleRequest is the request to ScheduleClient.Create.
 	CreateScheduleRequest = internal.CreateScheduleRequest
 
-	// UpdateScheduleRequest is the request to ScheduleClient.Update.
-	UpdateScheduleRequest = internal.UpdateScheduleRequest
+	// ScheduleUpdate is the mutable current state passed to ScheduleClient.Update's callback.
+	ScheduleUpdate = internal.ScheduleUpdate
 
 	// BackfillRequest triggers workflow runs for a historical time range.
 	BackfillRequest = internal.BackfillRequest

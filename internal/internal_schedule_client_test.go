@@ -23,6 +23,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -605,185 +606,143 @@ func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func TestScheduleClient_Update(t *testing.T) {
+	// baseline is the schedule's current thrift state returned by DescribeSchedule.
+	baseline := func() *s.DescribeScheduleResponse {
+		op := s.ScheduleOverlapPolicyBuffer
+		return &s.DescribeScheduleResponse{
+			Spec: &s.ScheduleSpec{CronExpression: common.StringPtr("0 * * * *")},
+			Action: &s.ScheduleAction{StartWorkflow: &s.ScheduleStartWorkflowAction{
+				WorkflowType:                        &s.WorkflowType{Name: common.StringPtr("my-wf")},
+				TaskList:                            &s.TaskList{Name: common.StringPtr("my-tl")},
+				ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(3600),
+			}},
+			Policies: &s.SchedulePolicies{
+				OverlapPolicy:  &op,
+				BufferLimit:    common.Int32Ptr(5),
+				PauseOnFailure: common.BoolPtr(false),
+			},
+		}
+	}
+
 	testcases := []struct {
-		name     string
-		request  *UpdateScheduleRequest
-		rpcError error
-		verify   func(*testing.T, *s.UpdateScheduleRequest)
+		name         string
+		mutate       func(*ScheduleUpdate) error
+		expectUpdate bool
+		rpcError     error
+		verify       func(*testing.T, *s.UpdateScheduleRequest)
 	}{
 		{
-			name: "success - spec only",
-			request: &UpdateScheduleRequest{
-				ScheduleID: scheduleTestID,
-				Spec:       &ScheduleSpec{CronExpression: "0 2 * * *"},
-			},
+			name:         "change one policy sub-field preserves the others",
+			mutate:       func(u *ScheduleUpdate) error { u.Policies.PauseOnFailure = true; return nil },
+			expectUpdate: true,
 			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
-				assert.Equal(t, scheduleTestDomain, req.GetDomain())
-				assert.Equal(t, scheduleTestID, req.GetScheduleId())
+				require.NotNil(t, req.Policies)
+				assert.True(t, req.Policies.GetPauseOnFailure())
+				assert.Equal(t, int32(5), req.Policies.GetBufferLimit()) // preserved, not reset
+				assert.Nil(t, req.Spec, "unchanged Spec must be omitted")
+				assert.Nil(t, req.Action, "unchanged Action must be omitted")
+			},
+		},
+		{
+			name:         "change spec only",
+			mutate:       func(u *ScheduleUpdate) error { u.Spec.CronExpression = "0 2 * * *"; return nil },
+			expectUpdate: true,
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
 				require.NotNil(t, req.Spec)
 				assert.Equal(t, "0 2 * * *", req.Spec.GetCronExpression())
+				assert.Nil(t, req.Policies, "unchanged Policies must be omitted")
+				assert.Nil(t, req.Action, "unchanged Action must be omitted")
 			},
 		},
 		{
-			name: "success - with action and search attrs",
-			request: &UpdateScheduleRequest{
-				ScheduleID: scheduleTestID,
-				Action: &ScheduleAction{
-					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType:                 "my-workflow",
-						TaskList:                     "my-task-list",
-						ExecutionStartToCloseTimeout: time.Hour,
-					},
-				},
-				SearchAttributes: map[string]interface{}{"attr": "val"},
-			},
-			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
-				assert.NotNil(t, req.Action)
-				assert.NotNil(t, req.SearchAttributes)
-			},
+			name:         "no change does not send UpdateSchedule",
+			mutate:       func(u *ScheduleUpdate) error { return nil },
+			expectUpdate: false,
 		},
 		{
-			name: "success - search attributes only",
-			request: &UpdateScheduleRequest{
-				ScheduleID:       scheduleTestID,
-				SearchAttributes: map[string]interface{}{"env": "prod"},
-			},
-			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
-				assert.Nil(t, req.Spec)
-				assert.Nil(t, req.Action)
-				assert.Nil(t, req.Policies)
-				assert.NotNil(t, req.SearchAttributes)
-			},
-		},
-		{
-			name: "rpc failure",
-			request: &UpdateScheduleRequest{
-				ScheduleID: scheduleTestID,
-				Spec:       &ScheduleSpec{CronExpression: "0 2 * * *"},
-			},
-			rpcError: errScheduleNonRetryable,
+			name:         "rpc failure is returned",
+			mutate:       func(u *ScheduleUpdate) error { u.Spec.CronExpression = "0 2 * * *"; return nil },
+			expectUpdate: true,
+			rpcError:     errScheduleNonRetryable,
 		},
 	}
 
 	for _, tt := range testcases {
 		t.Run(tt.name, func(t *testing.T) {
 			td := newScheduleClientTestData(t)
-
 			td.mockService.EXPECT().
-				UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, req *s.UpdateScheduleRequest, _ ...interface{}) {
-					if tt.verify != nil {
-						tt.verify(t, req)
-					}
-				}).
-				Return(&s.UpdateScheduleResponse{}, tt.rpcError)
-
-			assert.Equal(t, tt.rpcError, td.sc.Update(context.Background(), tt.request))
+				DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(baseline(), nil)
+			if tt.expectUpdate {
+				td.mockService.EXPECT().
+					UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+					Do(func(_ context.Context, req *s.UpdateScheduleRequest, _ ...interface{}) {
+						assert.Equal(t, scheduleTestDomain, req.GetDomain())
+						assert.Equal(t, scheduleTestID, req.GetScheduleId())
+						if tt.verify != nil {
+							tt.verify(t, req)
+						}
+					}).
+					Return(&s.UpdateScheduleResponse{}, tt.rpcError)
+			}
+			err := td.sc.Update(context.Background(), scheduleTestID, tt.mutate)
+			if tt.rpcError != nil {
+				assert.Equal(t, tt.rpcError, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
 
 func TestScheduleClient_Update_Validation(t *testing.T) {
-	validRequest := func() *UpdateScheduleRequest {
-		return &UpdateScheduleRequest{
-			ScheduleID: scheduleTestID,
-			Spec:       &ScheduleSpec{CronExpression: "0 2 * * *"},
-		}
+	specOnlyDescribe := func() *s.DescribeScheduleResponse {
+		return &s.DescribeScheduleResponse{Spec: &s.ScheduleSpec{CronExpression: common.StringPtr("0 * * * *")}}
 	}
 
-	testcases := []struct {
-		name    string
-		request *UpdateScheduleRequest
-		wantErr string
-	}{
-		{
-			name:    "nil request",
-			request: nil,
-			wantErr: "Update: request is required",
-		},
-		{
-			name: "empty ScheduleID",
-			request: func() *UpdateScheduleRequest {
-				r := validRequest()
-				r.ScheduleID = ""
-				return r
-			}(),
-			wantErr: "Update: ScheduleID is required",
-		},
-		{
-			name: "all fields nil",
-			request: func() *UpdateScheduleRequest {
-				r := validRequest()
-				r.Spec = nil
-				r.Action = nil
-				r.Policies = nil
-				return r
-			}(),
-			wantErr: "Update: at least one of Spec, Action, Policies, or SearchAttributes must be set",
-		},
-		{
-			name: "all fields nil including empty SearchAttributes",
-			request: &UpdateScheduleRequest{
-				ScheduleID:       scheduleTestID,
-				SearchAttributes: map[string]interface{}{},
-			},
-			wantErr: "Update: at least one of Spec, Action, Policies, or SearchAttributes must be set",
-		},
-		{
-			name: "non-nil Spec with empty CronExpression",
-			request: func() *UpdateScheduleRequest {
-				r := validRequest()
-				r.Spec = &ScheduleSpec{}
-				return r
-			}(),
-			wantErr: "Update: Spec.CronExpression is required when Spec is set",
-		},
-	}
+	t.Run("empty scheduleID errors before any RPC", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		err := td.sc.Update(context.Background(), "", func(*ScheduleUpdate) error { return nil })
+		require.EqualError(t, err, "Update: scheduleID is required")
+	})
 
-	for _, tt := range testcases {
-		t.Run(tt.name, func(t *testing.T) {
-			td := newScheduleClientTestData(t)
-			require.EqualError(t, td.sc.Update(context.Background(), tt.request), tt.wantErr)
+	t.Run("nil mutate errors before any RPC", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		err := td.sc.Update(context.Background(), scheduleTestID, nil)
+		require.EqualError(t, err, "Update: mutate function is required")
+	})
+
+	t.Run("describe failure aborts the update", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		td.mockService.EXPECT().
+			DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, errScheduleNonRetryable)
+		err := td.sc.Update(context.Background(), scheduleTestID, func(*ScheduleUpdate) error { return nil })
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "describe failed")
+	})
+
+	t.Run("mutate error aborts without UpdateSchedule", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		td.mockService.EXPECT().
+			DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(specOnlyDescribe(), nil)
+		wantErr := errors.New("boom")
+		err := td.sc.Update(context.Background(), scheduleTestID, func(*ScheduleUpdate) error { return wantErr })
+		assert.Equal(t, wantErr, err)
+	})
+
+	t.Run("cleared cron is rejected", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		td.mockService.EXPECT().
+			DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(specOnlyDescribe(), nil)
+		err := td.sc.Update(context.Background(), scheduleTestID, func(u *ScheduleUpdate) error {
+			u.Spec.CronExpression = ""
+			return nil
 		})
-	}
-}
-
-func TestScheduleClient_Update_EncodingErrors(t *testing.T) {
-	ch := make(chan int)
-
-	testcases := []struct {
-		name    string
-		request *UpdateScheduleRequest
-	}{
-		{
-			name: "action memo encoding error",
-			request: &UpdateScheduleRequest{
-				ScheduleID: scheduleTestID,
-				Action: &ScheduleAction{
-					StartWorkflow: &ScheduleStartWorkflowAction{
-						WorkflowType: "my-workflow",
-						TaskList:     "my-task-list",
-						Memo:         map[string]interface{}{"key": ch},
-					},
-				},
-			},
-		},
-		{
-			name: "search attribute encoding error",
-			request: &UpdateScheduleRequest{
-				ScheduleID:       scheduleTestID,
-				Spec:             &ScheduleSpec{CronExpression: "0 2 * * *"},
-				SearchAttributes: map[string]interface{}{"key": ch},
-			},
-		},
-	}
-
-	for _, tt := range testcases {
-		t.Run(tt.name, func(t *testing.T) {
-			td := newScheduleClientTestData(t)
-			require.Error(t, td.sc.Update(context.Background(), tt.request))
-		})
-	}
+		require.EqualError(t, err, "Update: Spec.CronExpression is required when Spec is set")
+	})
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────

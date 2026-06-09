@@ -204,8 +204,9 @@ func (ts *IntegrationTestSuite) TestSchedule_CreateDuplicate() {
 	ts.Error(err, "second Create with same ID must fail")
 }
 
-// TestSchedule_Update verifies that Update replaces the schedule's spec and that
-// the new spec is reflected in a subsequent Describe.
+// TestSchedule_Update verifies the describe-then-update flow: changing one top-level field
+// (Spec) is reflected on Describe, and the untouched top-level fields (Action, Policies) are
+// preserved — i.e. the SDK sends only what changed and the server's top-level merge keeps the rest.
 func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -216,30 +217,34 @@ func (ts *IntegrationTestSuite) TestSchedule_Update() {
 	// Clean up any schedule left over from a previous (failed or retried) run.
 	_ = sc.Delete(ctx, id)
 
-	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
+	_, err := sc.Create(ctx, ts.fullCreateRequest(id))
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
-	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
-		ScheduleID: id,
-		Spec:       &internal.ScheduleSpec{CronExpression: "0 0 1 * *"},
+	err = sc.Update(ctx, id, func(u *internal.ScheduleUpdate) error {
+		u.Spec.CronExpression = "0 0 1 * *"
+		return nil
 	})
 	ts.NoError(err)
 
 	resp, err := sc.Describe(ctx, id)
 	ts.NoError(err)
+	// Changed field applied.
 	ts.Require().NotNil(resp.Spec)
 	ts.Equal("0 0 1 * *", resp.Spec.CronExpression)
+	// Untouched top-level fields preserved.
+	ts.Require().NotNil(resp.Policies)
+	ts.True(resp.Policies.PauseOnFailure)
+	ts.Equal(int32(10), resp.Policies.BufferLimit)
+	ts.Require().NotNil(resp.Action)
+	ts.Require().NotNil(resp.Action.StartWorkflow)
+	ts.Equal("integ-full", resp.Action.StartWorkflow.WorkflowIDPrefix)
 }
 
-// TestSchedule_UpdatePolicies verifies UpdateSchedule's top-level merge semantics:
-//
-//  1. A Policies-only update stores the policy values (PauseOnFailure = true).
-//  2. A later update that omits Policies entirely (Policies == nil) leaves the stored
-//     policies untouched — the server only replaces top-level fields it actually receives.
-//
-// Note: within a *provided* Policies struct the server does full replacement (unspecified
-// sub-fields reset); this test exercises omitting the whole field, not partial merge.
+// TestSchedule_UpdatePolicies verifies within-struct sub-field partial updates: changing one
+// policy sub-field preserves the others. This is the core capability describe-then-update adds —
+// the SDK reads the current Policies, applies the one change, and resends the whole struct so the
+// server's within-struct full replacement doesn't reset the siblings.
 func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -250,37 +255,24 @@ func (ts *IntegrationTestSuite) TestSchedule_UpdatePolicies() {
 	// Clean up any schedule left over from a previous (failed or retried) run.
 	_ = sc.Delete(ctx, id)
 
-	_, err := sc.Create(ctx, ts.minimalCreateRequest(id))
+	// fullCreateRequest sets PauseOnFailure=true, BufferLimit=10, ConcurrencyLimit=5.
+	_, err := sc.Create(ctx, ts.fullCreateRequest(id))
 	ts.NoError(err)
 	defer func() { _ = sc.Delete(context.Background(), id) }()
 
-	// Explicitly set PauseOnFailure = true via a Policies-only update.
-	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
-		ScheduleID: id,
-		Policies: &internal.SchedulePolicies{
-			PauseOnFailure: true,
-		},
+	// Flip a single policy sub-field; the others must survive.
+	err = sc.Update(ctx, id, func(u *internal.ScheduleUpdate) error {
+		u.Policies.PauseOnFailure = false
+		return nil
 	})
 	ts.NoError(err)
 
 	resp, err := sc.Describe(ctx, id)
 	ts.NoError(err)
 	ts.Require().NotNil(resp.Policies)
-	ts.True(resp.Policies.PauseOnFailure)
-
-	// Update only the Spec (Policies is nil in the UpdateScheduleRequest).
-	// The server does not receive a Policies field, so it leaves the stored value intact.
-	err = sc.Update(ctx, &internal.UpdateScheduleRequest{
-		ScheduleID: id,
-		Spec:       &internal.ScheduleSpec{CronExpression: "0 0 1 * *"},
-	})
-	ts.NoError(err)
-
-	resp, err = sc.Describe(ctx, id)
-	ts.NoError(err)
-	ts.Require().NotNil(resp.Policies)
-	ts.True(resp.Policies.PauseOnFailure,
-		"PauseOnFailure must be preserved when Policies is omitted from UpdateScheduleRequest")
+	ts.False(resp.Policies.PauseOnFailure, "changed sub-field applied")
+	ts.Equal(int32(10), resp.Policies.BufferLimit, "sibling sub-field preserved")
+	ts.Equal(int32(5), resp.Policies.ConcurrencyLimit, "sibling sub-field preserved")
 }
 
 // TestSchedule_PauseAndUnpause verifies the full pause → describe → unpause → describe cycle.
