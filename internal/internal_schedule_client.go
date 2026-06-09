@@ -163,7 +163,7 @@ func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate 
 	changed := false
 	if cur.Spec != nil && !reflect.DeepEqual(cur.Spec, desc.Spec) {
 		if cur.Spec.CronExpression == "" {
-			return errors.New("Update: Spec.CronExpression is required when Spec is set")
+			return errors.New("Update: Spec.CronExpression must not be empty")
 		}
 		req.Spec = scheduleSpecToThrift(cur.Spec)
 		changed = true
