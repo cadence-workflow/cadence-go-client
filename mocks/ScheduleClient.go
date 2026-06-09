@@ -391,17 +391,17 @@ func (_c *ScheduleClient_Unpause_Call) RunAndReturn(run func(context.Context, st
 	return _c
 }
 
-// Update provides a mock function with given fields: ctx, request
-func (_m *ScheduleClient) Update(ctx context.Context, request *internal.UpdateScheduleRequest) error {
-	ret := _m.Called(ctx, request)
+// Update provides a mock function with given fields: ctx, scheduleID, mutate
+func (_m *ScheduleClient) Update(ctx context.Context, scheduleID string, mutate func(*internal.ScheduleUpdate) error) error {
+	ret := _m.Called(ctx, scheduleID, mutate)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Update")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *internal.UpdateScheduleRequest) error); ok {
-		r0 = rf(ctx, request)
+	if rf, ok := ret.Get(0).(func(context.Context, string, func(*internal.ScheduleUpdate) error) error); ok {
+		r0 = rf(ctx, scheduleID, mutate)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -416,14 +416,15 @@ type ScheduleClient_Update_Call struct {
 
 // Update is a helper method to define mock.On call
 //   - ctx context.Context
-//   - request *internal.UpdateScheduleRequest
-func (_e *ScheduleClient_Expecter) Update(ctx interface{}, request interface{}) *ScheduleClient_Update_Call {
-	return &ScheduleClient_Update_Call{Call: _e.mock.On("Update", ctx, request)}
+//   - scheduleID string
+//   - mutate func(*internal.ScheduleUpdate) error
+func (_e *ScheduleClient_Expecter) Update(ctx interface{}, scheduleID interface{}, mutate interface{}) *ScheduleClient_Update_Call {
+	return &ScheduleClient_Update_Call{Call: _e.mock.On("Update", ctx, scheduleID, mutate)}
 }
 
-func (_c *ScheduleClient_Update_Call) Run(run func(ctx context.Context, request *internal.UpdateScheduleRequest)) *ScheduleClient_Update_Call {
+func (_c *ScheduleClient_Update_Call) Run(run func(ctx context.Context, scheduleID string, mutate func(*internal.ScheduleUpdate) error)) *ScheduleClient_Update_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*internal.UpdateScheduleRequest))
+		run(args[0].(context.Context), args[1].(string), args[2].(func(*internal.ScheduleUpdate) error))
 	})
 	return _c
 }
@@ -433,7 +434,7 @@ func (_c *ScheduleClient_Update_Call) Return(_a0 error) *ScheduleClient_Update_C
 	return _c
 }
 
-func (_c *ScheduleClient_Update_Call) RunAndReturn(run func(context.Context, *internal.UpdateScheduleRequest) error) *ScheduleClient_Update_Call {
+func (_c *ScheduleClient_Update_Call) RunAndReturn(run func(context.Context, string, func(*internal.ScheduleUpdate) error) error) *ScheduleClient_Update_Call {
 	_c.Call.Return(run)
 	return _c
 }

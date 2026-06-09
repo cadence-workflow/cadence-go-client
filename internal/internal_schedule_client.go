@@ -26,10 +26,27 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
 	shared "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+)
+
+var (
+	ErrScheduleIDRequired          = errors.New("scheduleID is required")
+	ErrMutateFunctionRequired      = errors.New("mutate function is required")
+	ErrCronExpressionRequired      = errors.New("Spec.CronExpression must not be empty")
+	ErrRequestRequired             = errors.New("request is required")
+	ErrActionStartWorkflowRequired = errors.New("Action.StartWorkflow is required")
+	ErrWorkflowTypeRequired        = errors.New("WorkflowType is required")
+	ErrTaskListRequired            = errors.New("TaskList is required")
+	ErrExecutionTimeoutRequired    = errors.New("ExecutionStartToCloseTimeout is required")
+	ErrNegativeDecisionTimeout     = errors.New("DecisionTaskStartToCloseTimeout must not be negative")
+	ErrStartTimeRequired           = errors.New("StartTime is required")
+	ErrEndTimeRequired             = errors.New("EndTime is required")
+	ErrEndTimeBeforeStartTime      = errors.New("EndTime must be after StartTime")
 )
 
 // ScheduleClient is the client for managing Cadence schedules within a domain.
@@ -45,8 +62,9 @@ type ScheduleClient interface {
 	// Describe returns the current configuration and state of a schedule.
 	Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error)
 
-	// Update replaces the spec, action, and/or policies of an existing schedule.
-	Update(ctx context.Context, request *UpdateScheduleRequest) error
+	// Update reads the schedule's current state, passes it to mutate for in-place editing,
+	// and applies the result. Only the fields changed are sent; untouched fields are preserved.
+	Update(ctx context.Context, scheduleID string, mutate func(*ScheduleUpdate) error) error
 
 	// Delete deletes a schedule.
 	Delete(ctx context.Context, scheduleID string) error
@@ -107,7 +125,7 @@ func (sc *scheduleClient) Create(ctx context.Context, request *CreateScheduleReq
 
 func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error) {
 	if scheduleID == "" {
-		return nil, errors.New("Describe: scheduleID is required")
+		return nil, fmt.Errorf("Describe: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.DescribeScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -127,22 +145,77 @@ func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*Des
 	return describeScheduleResponseFromThrift(thriftResp), nil
 }
 
-func (sc *scheduleClient) Update(ctx context.Context, request *UpdateScheduleRequest) error {
-	thriftReq, err := scheduleUpdateRequestToThrift(sc.domain, request, sc.dataConverter)
+func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate func(*ScheduleUpdate) error) error {
+	if scheduleID == "" {
+		return fmt.Errorf("Update: %w", ErrScheduleIDRequired)
+	}
+	if mutate == nil {
+		return fmt.Errorf("Update: %w", ErrMutateFunctionRequired)
+	}
+
+	// Read current state; keep `desc` as the baseline for change detection.
+	desc, err := sc.Describe(ctx, scheduleID)
 	if err != nil {
+		return fmt.Errorf("Update: describe failed: %w", err)
+	}
+
+	cur := scheduleUpdateFromDescribe(desc, sc.dataConverter)
+	if err := mutate(cur); err != nil {
 		return err
 	}
+
+	// Send only the top-level fields the caller actually changed. Untouched fields are
+	// omitted so the server preserves them (top-level merge).
+	//
+	// A field is sent only when its new value is non-nil/non-empty and differs from the
+	// baseline. Top-level fields therefore cannot be cleared via the callback: nil-ing one
+	// (e.g. cur.Policies = nil) is treated as "no change", not "clear" — clearing isn't
+	// expressible on the wire (an omitted field is preserved by the server's top-level merge).
+	req := &shared.UpdateScheduleRequest{
+		Domain:     common.StringPtr(sc.domain),
+		ScheduleId: common.StringPtr(scheduleID),
+	}
+	changed := false
+	if cur.Spec != nil && !reflect.DeepEqual(cur.Spec, desc.Spec) {
+		if cur.Spec.CronExpression == "" {
+			return fmt.Errorf("Update: %w", ErrCronExpressionRequired)
+		}
+		req.Spec = scheduleSpecToThrift(cur.Spec)
+		changed = true
+	}
+	if cur.Action != nil && !reflect.DeepEqual(cur.Action, desc.Action) {
+		action, aerr := scheduleActionDescriptionToThrift(cur.Action)
+		if aerr != nil {
+			return aerr
+		}
+		req.Action = action
+		changed = true
+	}
+	if cur.Policies != nil && !reflect.DeepEqual(cur.Policies, desc.Policies) {
+		req.Policies = schedulePoliciesToThrift(cur.Policies)
+		changed = true
+	}
+	// SearchAttributes are only sent when non-empty (same can't-clear rationale as above).
+	if len(cur.SearchAttributes) > 0 && !reflect.DeepEqual(cur.SearchAttributes, desc.SearchAttributes) {
+		req.SearchAttributes = &shared.SearchAttributes{IndexedFields: cur.SearchAttributes}
+		changed = true
+	}
+	if !changed {
+		// Nothing changed — don't issue a no-op UpdateSchedule RPC.
+		return nil
+	}
+
 	return retryWhileTransientError(ctx, func() error {
 		tchCtx, cancel, opt := newChannelContext(ctx, sc.featureFlags)
 		defer cancel()
-		_, rpcErr := sc.workflowService.UpdateSchedule(tchCtx, thriftReq, opt...)
+		_, rpcErr := sc.workflowService.UpdateSchedule(tchCtx, req, opt...)
 		return rpcErr
 	})
 }
 
 func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 	if scheduleID == "" {
-		return errors.New("Delete: scheduleID is required")
+		return fmt.Errorf("Delete: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.DeleteScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -158,7 +231,7 @@ func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 
 func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason string) error {
 	if scheduleID == "" {
-		return errors.New("Pause: scheduleID is required")
+		return fmt.Errorf("Pause: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.PauseScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -176,7 +249,7 @@ func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 
 func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason string, catchUpPolicy ScheduleCatchUpPolicy) error {
 	if scheduleID == "" {
-		return errors.New("Unpause: scheduleID is required")
+		return fmt.Errorf("Unpause: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.UnpauseScheduleRequest{
 		Domain:        common.StringPtr(sc.domain),

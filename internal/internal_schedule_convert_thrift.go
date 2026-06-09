@@ -23,7 +23,6 @@ package internal
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -176,22 +175,59 @@ func scheduleRetryPolicyToThrift(p *RetryPolicy) *shared.RetryPolicy {
 	}
 }
 
+// encodeMemo encodes native memo values into the raw-byte wire form using the configured
+// DataConverter. It is the single source of memo encoding, shared by the Create paths and
+// ScheduleUpdate.SetActionMemo so they cannot drift. Returns nil for an empty map.
+func encodeMemo(dc DataConverter, memo map[string]interface{}) (map[string][]byte, error) {
+	if len(memo) == 0 {
+		return nil, nil
+	}
+	fields := make(map[string][]byte, len(memo))
+	for k, v := range memo {
+		b, err := encodeArg(dc, v)
+		if err != nil {
+			return nil, fmt.Errorf("encode memo field %q: %w", k, err)
+		}
+		fields[k] = b
+	}
+	return fields, nil
+}
+
+// encodeSearchAttributes JSON-encodes native search-attribute values into the raw-byte wire
+// form the server stores. It is the single source of search-attribute encoding, shared by the
+// Create paths and ScheduleUpdate's Set* helpers so they cannot drift. Returns nil for an
+// empty map (nothing to send).
+func encodeSearchAttributes(searchAttributes map[string]interface{}) (map[string][]byte, error) {
+	if len(searchAttributes) == 0 {
+		return nil, nil
+	}
+	fields := make(map[string][]byte, len(searchAttributes))
+	for k, v := range searchAttributes {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("encode search attribute %q: %w", k, err)
+		}
+		fields[k] = b
+	}
+	return fields, nil
+}
+
 func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc DataConverter) (*shared.ScheduleStartWorkflowAction, error) {
 	if a == nil {
 		return nil, nil
 	}
 	if a.WorkflowType == "" {
-		return nil, errors.New("StartWorkflow: WorkflowType is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrWorkflowTypeRequired)
 	}
 	if a.TaskList == "" {
-		return nil, errors.New("StartWorkflow: TaskList is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrTaskListRequired)
 	}
 	if a.ExecutionStartToCloseTimeout <= 0 {
-		return nil, errors.New("StartWorkflow: ExecutionStartToCloseTimeout is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrExecutionTimeoutRequired)
 	}
 	decisionTaskTimeout := a.DecisionTaskStartToCloseTimeout
 	if decisionTaskTimeout < 0 {
-		return nil, errors.New("StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrNegativeDecisionTimeout)
 	}
 	if decisionTaskTimeout == 0 {
 		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
@@ -200,27 +236,15 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 	// SearchAttributes are JSON-encoded. (On read they come back as raw bytes — see
 	// scheduleStartWorkflowActionDescriptionFromThrift.)
 	var memo *shared.Memo
-	if len(a.Memo) > 0 {
-		fields := make(map[string][]byte, len(a.Memo))
-		for k, v := range a.Memo {
-			b, err := encodeArg(dc, v)
-			if err != nil {
-				return nil, fmt.Errorf("encode memo field %q: %w", k, err)
-			}
-			fields[k] = b
-		}
+	if fields, err := encodeMemo(dc, a.Memo); err != nil {
+		return nil, err
+	} else if fields != nil {
 		memo = &shared.Memo{Fields: fields}
 	}
 	var searchAttr *shared.SearchAttributes
-	if len(a.SearchAttributes) > 0 {
-		fields := make(map[string][]byte, len(a.SearchAttributes))
-		for k, v := range a.SearchAttributes {
-			b, err := json.Marshal(v)
-			if err != nil {
-				return nil, fmt.Errorf("encode search attribute %q: %w", k, err)
-			}
-			fields[k] = b
-		}
+	if fields, err := encodeSearchAttributes(a.SearchAttributes); err != nil {
+		return nil, err
+	} else if fields != nil {
 		searchAttr = &shared.SearchAttributes{IndexedFields: fields}
 	}
 	var input []byte
@@ -245,7 +269,7 @@ func scheduleActionToThrift(a *ScheduleAction, dc DataConverter) (*shared.Schedu
 		return nil, nil
 	}
 	if a.StartWorkflow == nil {
-		return nil, errors.New("Action.StartWorkflow is required when Action is set")
+		return nil, ErrActionStartWorkflowRequired
 	}
 	sw, err := scheduleStartWorkflowActionToThrift(a.StartWorkflow, dc)
 	if err != nil {
@@ -270,43 +294,31 @@ func schedulePoliciesToThrift(p *SchedulePolicies) *shared.SchedulePolicies {
 
 func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc DataConverter) (*shared.CreateScheduleRequest, error) {
 	if r == nil {
-		return nil, errors.New("Create: request is required")
+		return nil, fmt.Errorf("Create: %w", ErrRequestRequired)
 	}
 	if r.ScheduleID == "" {
-		return nil, errors.New("Create: ScheduleID is required")
+		return nil, fmt.Errorf("Create: %w", ErrScheduleIDRequired)
 	}
 	if r.Spec == nil || r.Spec.CronExpression == "" {
-		return nil, errors.New("Create: Spec.CronExpression is required")
+		return nil, fmt.Errorf("Create: %w", ErrCronExpressionRequired)
 	}
 	if r.Action == nil || r.Action.StartWorkflow == nil {
-		return nil, errors.New("Create: Action.StartWorkflow is required")
+		return nil, fmt.Errorf("Create: %w", ErrActionStartWorkflowRequired)
 	}
 	action, err := scheduleActionToThrift(r.Action, dc)
 	if err != nil {
 		return nil, err
 	}
 	var memo *shared.Memo
-	if len(r.Memo) > 0 {
-		fields := make(map[string][]byte, len(r.Memo))
-		for k, v := range r.Memo {
-			b, encErr := encodeArg(dc, v)
-			if encErr != nil {
-				return nil, fmt.Errorf("encode memo field %q: %w", k, encErr)
-			}
-			fields[k] = b
-		}
+	if fields, encErr := encodeMemo(dc, r.Memo); encErr != nil {
+		return nil, encErr
+	} else if fields != nil {
 		memo = &shared.Memo{Fields: fields}
 	}
 	var searchAttr *shared.SearchAttributes
-	if len(r.SearchAttributes) > 0 {
-		fields := make(map[string][]byte, len(r.SearchAttributes))
-		for k, v := range r.SearchAttributes {
-			b, encErr := json.Marshal(v)
-			if encErr != nil {
-				return nil, fmt.Errorf("encode search attribute %q: %w", k, encErr)
-			}
-			fields[k] = b
-		}
+	if fields, encErr := encodeSearchAttributes(r.SearchAttributes); encErr != nil {
+		return nil, encErr
+	} else if fields != nil {
 		searchAttr = &shared.SearchAttributes{IndexedFields: fields}
 	}
 	return &shared.CreateScheduleRequest{
@@ -320,60 +332,147 @@ func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc D
 	}, nil
 }
 
-func scheduleUpdateRequestToThrift(domain string, r *UpdateScheduleRequest, dc DataConverter) (*shared.UpdateScheduleRequest, error) {
-	if r == nil {
-		return nil, errors.New("Update: request is required")
+// scheduleStartWorkflowActionDescriptionToThrift converts the read-shaped action (with
+// raw-byte Memo/SearchAttributes) into a thrift action for UpdateSchedule. Memo and
+// SearchAttributes pass through as bytes — no encoding — so values carried over from a
+// Describe survive byte-for-byte.
+func scheduleStartWorkflowActionDescriptionToThrift(a *ScheduleStartWorkflowActionDescription) (*shared.ScheduleStartWorkflowAction, error) {
+	if a == nil {
+		return nil, nil
 	}
-	if r.ScheduleID == "" {
-		return nil, errors.New("Update: ScheduleID is required")
+	if a.WorkflowType == "" {
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrWorkflowTypeRequired)
 	}
-	if r.Spec == nil && r.Action == nil && r.Policies == nil && len(r.SearchAttributes) == 0 {
-		return nil, errors.New("Update: at least one of Spec, Action, Policies, or SearchAttributes must be set")
+	if a.TaskList == "" {
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrTaskListRequired)
 	}
-	if r.Spec != nil && r.Spec.CronExpression == "" {
-		return nil, errors.New("Update: Spec.CronExpression is required when Spec is set")
+	if a.ExecutionStartToCloseTimeout <= 0 {
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrExecutionTimeoutRequired)
 	}
-	action, err := scheduleActionToThrift(r.Action, dc)
+	decisionTaskTimeout := a.DecisionTaskStartToCloseTimeout
+	if decisionTaskTimeout < 0 {
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrNegativeDecisionTimeout)
+	}
+	if decisionTaskTimeout == 0 {
+		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
+	}
+	var memo *shared.Memo
+	if len(a.Memo) > 0 {
+		memo = &shared.Memo{Fields: a.Memo}
+	}
+	var searchAttr *shared.SearchAttributes
+	if len(a.SearchAttributes) > 0 {
+		searchAttr = &shared.SearchAttributes{IndexedFields: a.SearchAttributes}
+	}
+	var input []byte
+	if len(a.Input) > 0 {
+		input = a.Input
+	}
+	return &shared.ScheduleStartWorkflowAction{
+		WorkflowType:                        &shared.WorkflowType{Name: common.StringPtr(a.WorkflowType)},
+		TaskList:                            &shared.TaskList{Name: common.StringPtr(a.TaskList)},
+		Input:                               input,
+		WorkflowIdPrefix:                    common.StringPtr(a.WorkflowIDPrefix),
+		ExecutionStartToCloseTimeoutSeconds: durationToThriftSeconds(a.ExecutionStartToCloseTimeout),
+		TaskStartToCloseTimeoutSeconds:      durationToThriftSeconds(decisionTaskTimeout),
+		RetryPolicy:                         scheduleRetryPolicyToThrift(a.RetryPolicy),
+		Memo:                                memo,
+		SearchAttributes:                    searchAttr,
+	}, nil
+}
+
+func scheduleActionDescriptionToThrift(a *ScheduleActionDescription) (*shared.ScheduleAction, error) {
+	if a == nil {
+		return nil, nil
+	}
+	if a.StartWorkflow == nil {
+		return nil, ErrActionStartWorkflowRequired
+	}
+	sw, err := scheduleStartWorkflowActionDescriptionToThrift(a.StartWorkflow)
 	if err != nil {
 		return nil, err
 	}
-	var searchAttr *shared.SearchAttributes
-	if len(r.SearchAttributes) > 0 {
-		fields := make(map[string][]byte, len(r.SearchAttributes))
-		for k, v := range r.SearchAttributes {
-			b, encErr := json.Marshal(v)
-			if encErr != nil {
-				return nil, fmt.Errorf("encode search attribute %q: %w", k, encErr)
-			}
-			fields[k] = b
-		}
-		searchAttr = &shared.SearchAttributes{IndexedFields: fields}
+	return &shared.ScheduleAction{StartWorkflow: sw}, nil
+}
+
+// scheduleUpdateFromDescribe builds the mutable ScheduleUpdate handed to the Update callback
+// from a Describe response. It deep-copies so the caller's mutations don't alias the original
+// response, which the client keeps as the baseline for change detection.
+func scheduleUpdateFromDescribe(desc *DescribeScheduleResponse, dc DataConverter) *ScheduleUpdate {
+	u := &ScheduleUpdate{dc: dc}
+	if desc == nil {
+		return u
 	}
-	return &shared.UpdateScheduleRequest{
-		Domain:           common.StringPtr(domain),
-		ScheduleId:       common.StringPtr(r.ScheduleID),
-		Spec:             scheduleSpecToThrift(r.Spec),
-		Action:           action,
-		Policies:         schedulePoliciesToThrift(r.Policies),
-		SearchAttributes: searchAttr,
-	}, nil
+	if desc.Spec != nil {
+		s := *desc.Spec
+		u.Spec = &s
+	}
+	if desc.Action != nil && desc.Action.StartWorkflow != nil {
+		sw := *desc.Action.StartWorkflow
+		sw.Input = copyBytes(desc.Action.StartWorkflow.Input)
+		if desc.Action.StartWorkflow.RetryPolicy != nil {
+			rp := *desc.Action.StartWorkflow.RetryPolicy
+			rp.NonRetriableErrorReasons = copyStrings(desc.Action.StartWorkflow.RetryPolicy.NonRetriableErrorReasons)
+			sw.RetryPolicy = &rp
+		}
+		sw.Memo = copyByteMap(desc.Action.StartWorkflow.Memo)
+		sw.SearchAttributes = copyByteMap(desc.Action.StartWorkflow.SearchAttributes)
+		u.Action = &ScheduleActionDescription{StartWorkflow: &sw}
+	}
+	if desc.Policies != nil {
+		p := *desc.Policies
+		u.Policies = &p
+	}
+	u.SearchAttributes = copyByteMap(desc.SearchAttributes)
+	return u
+}
+
+// copyBytes / copyStrings / copyByteMap deep-copy while preserving nil-vs-empty, so a copy
+// is always reflect.DeepEqual to its source (the Update diff relies on this).
+func copyBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
+
+func copyStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
+	return out
+}
+
+func copyByteMap(m map[string][]byte) map[string][]byte {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]byte, len(m))
+	for k, v := range m {
+		out[k] = copyBytes(v)
+	}
+	return out
 }
 
 func backfillRequestToThrift(domain, scheduleID string, r *BackfillRequest) (*shared.BackfillScheduleRequest, error) {
 	if scheduleID == "" {
-		return nil, errors.New("Backfill: scheduleID is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrScheduleIDRequired)
 	}
 	if r == nil {
-		return nil, errors.New("Backfill: request is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrRequestRequired)
 	}
 	if r.StartTime.IsZero() {
-		return nil, errors.New("Backfill: StartTime is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrStartTimeRequired)
 	}
 	if r.EndTime.IsZero() {
-		return nil, errors.New("Backfill: EndTime is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrEndTimeRequired)
 	}
 	if !r.EndTime.After(r.StartTime) {
-		return nil, errors.New("Backfill: EndTime must be after StartTime")
+		return nil, fmt.Errorf("Backfill: %w", ErrEndTimeBeforeStartTime)
 	}
 	return &shared.BackfillScheduleRequest{
 		Domain:        common.StringPtr(domain),

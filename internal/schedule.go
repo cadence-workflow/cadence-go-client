@@ -25,7 +25,10 @@ package internal
 // no proto imports appear here so that callers never encounter generated types at the API boundary.
 // Conversion to/from Thrift wire types happens entirely inside internal_schedule_convert_thrift.go.
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
 type ScheduleOverlapPolicy int
@@ -212,23 +215,68 @@ type CreateScheduleRequest struct {
 	SearchAttributes map[string]interface{}
 }
 
-// UpdateScheduleRequest is the request to ScheduleClient.Update.
-// Only non-nil fields are applied at the top level; nil fields leave the existing value unchanged.
-// Note: when Action is non-nil, the entire StartWorkflow configuration is replaced — it is not
-// merged with the existing action. All fields of ScheduleStartWorkflowAction must be provided,
-// including those you are not changing (e.g. TaskList, ExecutionStartToCloseTimeout, RetryPolicy).
-// Call Describe first to read the current values if you need to preserve them.
-type UpdateScheduleRequest struct {
-	// ScheduleID identifies the schedule to update. Required.
-	ScheduleID string
-	// Spec replaces the trigger specification when non-nil.
+// ScheduleUpdate is the mutable view of a schedule's current state passed to the callback
+// in ScheduleClient.Update. It is pre-populated from DescribeSchedule with the schedule's
+// updatable fields. Mutate the fields you want to change and leave the rest untouched; the
+// SDK sends only the top-level fields you actually changed (others are preserved server-side).
+//
+// Memo/SearchAttributes are raw encoded bytes (as DescribeSchedule returns them), so
+// untouched values round-trip byte-for-byte. To set a new action Memo from native Go values,
+// use SetActionMemo. (UpdateSchedule does not support changing schedule-level Memo.)
+type ScheduleUpdate struct {
+	// Spec is the schedule's trigger specification.
 	Spec *ScheduleSpec
-	// Action replaces the entire schedule action when non-nil. See note above about full-replacement semantics.
-	Action *ScheduleAction
-	// Policies replaces the schedule policies when non-nil.
+	// Action is the schedule's action (reuses the read type; Memo/SearchAttributes are raw bytes).
+	Action *ScheduleActionDescription
+	// Policies are the schedule's runtime policies.
 	Policies *SchedulePolicies
-	// SearchAttributes replaces the schedule's search attributes when non-nil.
-	SearchAttributes map[string]interface{}
+	// SearchAttributes are the schedule-level indexed attributes, as raw encoded bytes.
+	SearchAttributes map[string][]byte
+
+	// dc encodes values for the Set* helpers; populated by the SDK.
+	dc DataConverter
+}
+
+// SetActionMemo sets the action-level Memo from native Go values, encoding each with the
+// client's DataConverter (the same encoding used on Create). Replaces any existing action Memo.
+func (u *ScheduleUpdate) SetActionMemo(memo map[string]interface{}) error {
+	if u.Action == nil || u.Action.StartWorkflow == nil {
+		return errors.New("SetActionMemo: Action.StartWorkflow is nil")
+	}
+	encoded, err := encodeMemo(u.dc, memo)
+	if err != nil {
+		return err
+	}
+	u.Action.StartWorkflow.Memo = encoded
+	return nil
+}
+
+// SetSearchAttributes sets the schedule-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing schedule-level
+// SearchAttributes. Note: like UpdateSchedule itself, this can add or replace attributes but
+// cannot clear them — passing an empty map is a no-op (the existing attributes are preserved).
+func (u *ScheduleUpdate) SetSearchAttributes(searchAttributes map[string]interface{}) error {
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.SearchAttributes = encoded
+	return nil
+}
+
+// SetActionSearchAttributes sets the action-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing action-level
+// SearchAttributes; pass an empty map to clear them.
+func (u *ScheduleUpdate) SetActionSearchAttributes(searchAttributes map[string]interface{}) error {
+	if u.Action == nil || u.Action.StartWorkflow == nil {
+		return errors.New("SetActionSearchAttributes: Action.StartWorkflow is nil")
+	}
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.Action.StartWorkflow.SearchAttributes = encoded
+	return nil
 }
 
 // BackfillRequest triggers workflow runs for a historical time range.
