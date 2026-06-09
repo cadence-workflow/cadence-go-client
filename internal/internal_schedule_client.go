@@ -150,21 +150,25 @@ func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate 
 	}
 
 	// Send only the top-level fields the caller actually changed. Untouched fields are
-	// omitted so the server preserves them (top-level merge) and no side-effects fire for
-	// them — notably, sending an unchanged Spec would otherwise clear pending backfills.
+	// omitted so the server preserves them (top-level merge).
+	//
+	// A field is sent only when its new value is non-nil/non-empty and differs from the
+	// baseline. Top-level fields therefore cannot be cleared via the callback: nil-ing one
+	// (e.g. cur.Policies = nil) is treated as "no change", not "clear" — clearing isn't
+	// expressible on the wire (an omitted field is preserved by the server's top-level merge).
 	req := &shared.UpdateScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
 		ScheduleId: common.StringPtr(scheduleID),
 	}
 	changed := false
-	if !reflect.DeepEqual(cur.Spec, desc.Spec) {
-		if cur.Spec != nil && cur.Spec.CronExpression == "" {
+	if cur.Spec != nil && !reflect.DeepEqual(cur.Spec, desc.Spec) {
+		if cur.Spec.CronExpression == "" {
 			return errors.New("Update: Spec.CronExpression is required when Spec is set")
 		}
 		req.Spec = scheduleSpecToThrift(cur.Spec)
 		changed = true
 	}
-	if !reflect.DeepEqual(cur.Action, desc.Action) {
+	if cur.Action != nil && !reflect.DeepEqual(cur.Action, desc.Action) {
 		action, aerr := scheduleActionDescriptionToThrift(cur.Action)
 		if aerr != nil {
 			return aerr
@@ -172,13 +176,11 @@ func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate 
 		req.Action = action
 		changed = true
 	}
-	if !reflect.DeepEqual(cur.Policies, desc.Policies) {
+	if cur.Policies != nil && !reflect.DeepEqual(cur.Policies, desc.Policies) {
 		req.Policies = schedulePoliciesToThrift(cur.Policies)
 		changed = true
 	}
-	// SearchAttributes are only sent when non-empty: the wire UpdateScheduleRequest can add
-	// or replace attributes, but omitting the field preserves the existing ones, so there is
-	// no way to clear all attributes via Update (matching the server's top-level-merge model).
+	// SearchAttributes are only sent when non-empty (same can't-clear rationale as above).
 	if len(cur.SearchAttributes) > 0 && !reflect.DeepEqual(cur.SearchAttributes, desc.SearchAttributes) {
 		req.SearchAttributes = &shared.SearchAttributes{IndexedFields: cur.SearchAttributes}
 		changed = true

@@ -22,6 +22,7 @@
 package internal
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -481,6 +482,72 @@ func TestScheduleActionDescriptionToThrift(t *testing.T) {
 	assert.Equal(t, "my-wf", out.StartWorkflow.WorkflowType.GetName())
 	assert.Equal(t, []byte(`"v"`), out.StartWorkflow.Memo.Fields["k"])
 	assert.Equal(t, []byte(`"sv"`), out.StartWorkflow.SearchAttributes.IndexedFields["sk"])
+}
+
+func TestScheduleUpdateSetActionMemo(t *testing.T) {
+	dc := getDefaultDataConverter()
+	// SetActionMemo must encode via the same path as Create (encodeMemo -> DataConverter).
+	wantV, err := encodeArg(dc, "v")
+	require.NoError(t, err)
+
+	t.Run("encodes via the data converter", func(t *testing.T) {
+		u := &ScheduleUpdate{Action: &ScheduleActionDescription{StartWorkflow: &ScheduleStartWorkflowActionDescription{}}, dc: dc}
+		require.NoError(t, u.SetActionMemo(map[string]interface{}{"k": "v"}))
+		assert.Equal(t, wantV, u.Action.StartWorkflow.Memo["k"])
+	})
+
+	t.Run("empty map clears the action memo", func(t *testing.T) {
+		u := &ScheduleUpdate{Action: &ScheduleActionDescription{StartWorkflow: &ScheduleStartWorkflowActionDescription{Memo: map[string][]byte{"old": []byte("x")}}}, dc: dc}
+		require.NoError(t, u.SetActionMemo(nil))
+		assert.Nil(t, u.Action.StartWorkflow.Memo)
+	})
+
+	t.Run("errors when StartWorkflow is nil", func(t *testing.T) {
+		u := &ScheduleUpdate{dc: dc}
+		require.Error(t, u.SetActionMemo(map[string]interface{}{"k": "v"}))
+		u = &ScheduleUpdate{Action: &ScheduleActionDescription{}, dc: dc}
+		require.Error(t, u.SetActionMemo(map[string]interface{}{"k": "v"}))
+	})
+}
+
+func TestScheduleUpdateSetSearchAttributes(t *testing.T) {
+	// The Set* helpers must produce byte-identical encoding to the Create path so values
+	// round-trip; encodeSearchAttributes is the shared source, so json.Marshal is the contract.
+	wantSV, err := json.Marshal("sv")
+	require.NoError(t, err)
+	wantNum, err := json.Marshal(42)
+	require.NoError(t, err)
+
+	t.Run("schedule-level set encodes via json", func(t *testing.T) {
+		u := &ScheduleUpdate{}
+		require.NoError(t, u.SetSearchAttributes(map[string]interface{}{"sk": "sv", "n": 42}))
+		assert.Equal(t, wantSV, u.SearchAttributes["sk"])
+		assert.Equal(t, wantNum, u.SearchAttributes["n"])
+	})
+
+	t.Run("schedule-level empty map is a no-op clear (nil)", func(t *testing.T) {
+		u := &ScheduleUpdate{SearchAttributes: map[string][]byte{"old": []byte("x")}}
+		require.NoError(t, u.SetSearchAttributes(nil))
+		assert.Nil(t, u.SearchAttributes)
+	})
+
+	t.Run("action-level set encodes via json", func(t *testing.T) {
+		u := &ScheduleUpdate{Action: &ScheduleActionDescription{StartWorkflow: &ScheduleStartWorkflowActionDescription{}}}
+		require.NoError(t, u.SetActionSearchAttributes(map[string]interface{}{"sk": "sv"}))
+		assert.Equal(t, wantSV, u.Action.StartWorkflow.SearchAttributes["sk"])
+	})
+
+	t.Run("action-level errors when StartWorkflow is nil", func(t *testing.T) {
+		u := &ScheduleUpdate{}
+		require.Error(t, u.SetActionSearchAttributes(map[string]interface{}{"sk": "sv"}))
+		u = &ScheduleUpdate{Action: &ScheduleActionDescription{}}
+		require.Error(t, u.SetActionSearchAttributes(map[string]interface{}{"sk": "sv"}))
+	})
+
+	t.Run("unmarshalable value returns an error", func(t *testing.T) {
+		u := &ScheduleUpdate{}
+		require.Error(t, u.SetSearchAttributes(map[string]interface{}{"bad": make(chan int)}))
+	})
 }
 
 func TestScheduleUpdateFromDescribeDeepCopy(t *testing.T) {

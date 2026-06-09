@@ -23,6 +23,7 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -655,8 +656,53 @@ func TestScheduleClient_Update(t *testing.T) {
 			},
 		},
 		{
+			// Mutating the action (here via SetActionMemo) sends the whole action through
+			// scheduleActionDescriptionToThrift: the carried-over required fields survive and the
+			// missing DecisionTaskStartToCloseTimeout is defaulted to 10s.
+			name:         "change action via SetActionMemo",
+			mutate:       func(u *ScheduleUpdate) error { return u.SetActionMemo(map[string]interface{}{"k": "v"}) },
+			expectUpdate: true,
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
+				require.NotNil(t, req.Action)
+				require.NotNil(t, req.Action.StartWorkflow)
+				sw := req.Action.StartWorkflow
+				assert.Equal(t, "my-wf", sw.WorkflowType.GetName(), "required field carried over from Describe")
+				assert.Equal(t, "my-tl", sw.TaskList.GetName(), "required field carried over from Describe")
+				assert.Equal(t, int32(3600), sw.GetExecutionStartToCloseTimeoutSeconds(), "carried over")
+				assert.Equal(t, int32(defaultDecisionTaskTimeoutInSecs), sw.GetTaskStartToCloseTimeoutSeconds(), "defaulted")
+				require.NotNil(t, sw.Memo)
+				wantV, encErr := encodeArg(getDefaultDataConverter(), "v")
+				require.NoError(t, encErr)
+				assert.Equal(t, wantV, sw.Memo.Fields["k"])
+				assert.Nil(t, req.Spec, "unchanged Spec must be omitted")
+				assert.Nil(t, req.Policies, "unchanged Policies must be omitted")
+			},
+		},
+		{
+			// SearchAttributes can be added/replaced via Update (baseline has none here).
+			name:         "add search attributes",
+			mutate:       func(u *ScheduleUpdate) error { return u.SetSearchAttributes(map[string]interface{}{"sk": "sv"}) },
+			expectUpdate: true,
+			verify: func(t *testing.T, req *s.UpdateScheduleRequest) {
+				require.NotNil(t, req.SearchAttributes)
+				wantSV, _ := json.Marshal("sv")
+				assert.Equal(t, wantSV, req.SearchAttributes.IndexedFields["sk"])
+				assert.Nil(t, req.Spec, "unchanged Spec must be omitted")
+				assert.Nil(t, req.Action, "unchanged Action must be omitted")
+				assert.Nil(t, req.Policies, "unchanged Policies must be omitted")
+			},
+		},
+		{
 			name:         "no change does not send UpdateSchedule",
 			mutate:       func(u *ScheduleUpdate) error { return nil },
+			expectUpdate: false,
+		},
+		{
+			// Nil-ing a top-level field cannot clear it (an omitted wire field is preserved
+			// by the server's top-level merge), so it is treated as "no change" rather than
+			// firing a silent no-op RPC.
+			name:         "nil-ing a top-level field is a no-op",
+			mutate:       func(u *ScheduleUpdate) error { u.Policies = nil; return nil },
 			expectUpdate: false,
 		},
 		{
@@ -693,6 +739,51 @@ func TestScheduleClient_Update(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestScheduleClient_Update_SearchAttributesCannotClear(t *testing.T) {
+	// Baseline already has a schedule-level search attribute.
+	describe := func() *s.DescribeScheduleResponse {
+		return &s.DescribeScheduleResponse{
+			Spec:             &s.ScheduleSpec{CronExpression: common.StringPtr("0 * * * *")},
+			SearchAttributes: &s.SearchAttributes{IndexedFields: map[string][]byte{"sk": []byte(`"sv"`)}},
+		}
+	}
+
+	// Clearing search attributes (nil-ing them in the callback) cannot be expressed on the wire —
+	// an omitted field is preserved by the server's top-level merge — so it is a no-op: no RPC.
+	t.Run("clearing is a no-op", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		td.mockService.EXPECT().
+			DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(describe(), nil)
+		// No UpdateSchedule expectation: gomock fails if it is called.
+		err := td.sc.Update(context.Background(), scheduleTestID, func(u *ScheduleUpdate) error {
+			u.SearchAttributes = nil
+			return nil
+		})
+		require.NoError(t, err)
+	})
+
+	// Modifying an existing attribute does send the full (replacement) set.
+	t.Run("modifying replaces", func(t *testing.T) {
+		td := newScheduleClientTestData(t)
+		td.mockService.EXPECT().
+			DescribeSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(describe(), nil)
+		td.mockService.EXPECT().
+			UpdateSchedule(gomock.Any(), gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, req *s.UpdateScheduleRequest, _ ...interface{}) {
+				require.NotNil(t, req.SearchAttributes)
+				wantSV, _ := json.Marshal("sv2")
+				assert.Equal(t, wantSV, req.SearchAttributes.IndexedFields["sk"])
+			}).
+			Return(&s.UpdateScheduleResponse{}, nil)
+		err := td.sc.Update(context.Background(), scheduleTestID, func(u *ScheduleUpdate) error {
+			return u.SetSearchAttributes(map[string]interface{}{"sk": "sv2"})
+		})
+		require.NoError(t, err)
+	})
 }
 
 func TestScheduleClient_Update_Validation(t *testing.T) {

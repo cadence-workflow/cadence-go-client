@@ -176,6 +176,43 @@ func scheduleRetryPolicyToThrift(p *RetryPolicy) *shared.RetryPolicy {
 	}
 }
 
+// encodeMemo encodes native memo values into the raw-byte wire form using the configured
+// DataConverter. It is the single source of memo encoding, shared by the Create paths and
+// ScheduleUpdate.SetActionMemo so they cannot drift. Returns nil for an empty map.
+func encodeMemo(dc DataConverter, memo map[string]interface{}) (map[string][]byte, error) {
+	if len(memo) == 0 {
+		return nil, nil
+	}
+	fields := make(map[string][]byte, len(memo))
+	for k, v := range memo {
+		b, err := encodeArg(dc, v)
+		if err != nil {
+			return nil, fmt.Errorf("encode memo field %q: %w", k, err)
+		}
+		fields[k] = b
+	}
+	return fields, nil
+}
+
+// encodeSearchAttributes JSON-encodes native search-attribute values into the raw-byte wire
+// form the server stores. It is the single source of search-attribute encoding, shared by the
+// Create paths and ScheduleUpdate's Set* helpers so they cannot drift. Returns nil for an
+// empty map (nothing to send).
+func encodeSearchAttributes(searchAttributes map[string]interface{}) (map[string][]byte, error) {
+	if len(searchAttributes) == 0 {
+		return nil, nil
+	}
+	fields := make(map[string][]byte, len(searchAttributes))
+	for k, v := range searchAttributes {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("encode search attribute %q: %w", k, err)
+		}
+		fields[k] = b
+	}
+	return fields, nil
+}
+
 func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc DataConverter) (*shared.ScheduleStartWorkflowAction, error) {
 	if a == nil {
 		return nil, nil
@@ -200,27 +237,15 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 	// SearchAttributes are JSON-encoded. (On read they come back as raw bytes — see
 	// scheduleStartWorkflowActionDescriptionFromThrift.)
 	var memo *shared.Memo
-	if len(a.Memo) > 0 {
-		fields := make(map[string][]byte, len(a.Memo))
-		for k, v := range a.Memo {
-			b, err := encodeArg(dc, v)
-			if err != nil {
-				return nil, fmt.Errorf("encode memo field %q: %w", k, err)
-			}
-			fields[k] = b
-		}
+	if fields, err := encodeMemo(dc, a.Memo); err != nil {
+		return nil, err
+	} else if fields != nil {
 		memo = &shared.Memo{Fields: fields}
 	}
 	var searchAttr *shared.SearchAttributes
-	if len(a.SearchAttributes) > 0 {
-		fields := make(map[string][]byte, len(a.SearchAttributes))
-		for k, v := range a.SearchAttributes {
-			b, err := json.Marshal(v)
-			if err != nil {
-				return nil, fmt.Errorf("encode search attribute %q: %w", k, err)
-			}
-			fields[k] = b
-		}
+	if fields, err := encodeSearchAttributes(a.SearchAttributes); err != nil {
+		return nil, err
+	} else if fields != nil {
 		searchAttr = &shared.SearchAttributes{IndexedFields: fields}
 	}
 	var input []byte
@@ -286,27 +311,15 @@ func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc D
 		return nil, err
 	}
 	var memo *shared.Memo
-	if len(r.Memo) > 0 {
-		fields := make(map[string][]byte, len(r.Memo))
-		for k, v := range r.Memo {
-			b, encErr := encodeArg(dc, v)
-			if encErr != nil {
-				return nil, fmt.Errorf("encode memo field %q: %w", k, encErr)
-			}
-			fields[k] = b
-		}
+	if fields, encErr := encodeMemo(dc, r.Memo); encErr != nil {
+		return nil, encErr
+	} else if fields != nil {
 		memo = &shared.Memo{Fields: fields}
 	}
 	var searchAttr *shared.SearchAttributes
-	if len(r.SearchAttributes) > 0 {
-		fields := make(map[string][]byte, len(r.SearchAttributes))
-		for k, v := range r.SearchAttributes {
-			b, encErr := json.Marshal(v)
-			if encErr != nil {
-				return nil, fmt.Errorf("encode search attribute %q: %w", k, encErr)
-			}
-			fields[k] = b
-		}
+	if fields, encErr := encodeSearchAttributes(r.SearchAttributes); encErr != nil {
+		return nil, encErr
+	} else if fields != nil {
 		searchAttr = &shared.SearchAttributes{IndexedFields: fields}
 	}
 	return &shared.CreateScheduleRequest{

@@ -27,7 +27,6 @@ package internal
 
 import (
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -244,19 +243,39 @@ func (u *ScheduleUpdate) SetActionMemo(memo map[string]interface{}) error {
 	if u.Action == nil || u.Action.StartWorkflow == nil {
 		return errors.New("SetActionMemo: Action.StartWorkflow is nil")
 	}
-	if len(memo) == 0 {
-		u.Action.StartWorkflow.Memo = nil
-		return nil
-	}
-	encoded := make(map[string][]byte, len(memo))
-	for k, v := range memo {
-		b, err := encodeArg(u.dc, v)
-		if err != nil {
-			return fmt.Errorf("encode action memo field %q: %w", k, err)
-		}
-		encoded[k] = b
+	encoded, err := encodeMemo(u.dc, memo)
+	if err != nil {
+		return err
 	}
 	u.Action.StartWorkflow.Memo = encoded
+	return nil
+}
+
+// SetSearchAttributes sets the schedule-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing schedule-level
+// SearchAttributes. Note: like UpdateSchedule itself, this can add or replace attributes but
+// cannot clear them — passing an empty map is a no-op (the existing attributes are preserved).
+func (u *ScheduleUpdate) SetSearchAttributes(searchAttributes map[string]interface{}) error {
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.SearchAttributes = encoded
+	return nil
+}
+
+// SetActionSearchAttributes sets the action-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing action-level
+// SearchAttributes; pass an empty map to clear them.
+func (u *ScheduleUpdate) SetActionSearchAttributes(searchAttributes map[string]interface{}) error {
+	if u.Action == nil || u.Action.StartWorkflow == nil {
+		return errors.New("SetActionSearchAttributes: Action.StartWorkflow is nil")
+	}
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.Action.StartWorkflow.SearchAttributes = encoded
 	return nil
 }
 
