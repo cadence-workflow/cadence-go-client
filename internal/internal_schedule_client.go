@@ -34,6 +34,21 @@ import (
 	"go.uber.org/cadence/internal/common"
 )
 
+var (
+	ErrScheduleIDRequired         = errors.New("scheduleID is required")
+	ErrMutateFunctionRequired     = errors.New("mutate function is required")
+	ErrCronExpressionRequired     = errors.New("Spec.CronExpression must not be empty")
+	ErrRequestRequired            = errors.New("request is required")
+	ErrActionStartWorkflowRequired = errors.New("Action.StartWorkflow is required")
+	ErrWorkflowTypeRequired       = errors.New("WorkflowType is required")
+	ErrTaskListRequired           = errors.New("TaskList is required")
+	ErrExecutionTimeoutRequired   = errors.New("ExecutionStartToCloseTimeout is required")
+	ErrNegativeDecisionTimeout    = errors.New("DecisionTaskStartToCloseTimeout must not be negative")
+	ErrStartTimeRequired          = errors.New("StartTime is required")
+	ErrEndTimeRequired            = errors.New("EndTime is required")
+	ErrEndTimeBeforeStartTime     = errors.New("EndTime must be after StartTime")
+)
+
 // ScheduleClient is the client for managing Cadence schedules within a domain.
 type ScheduleClient interface {
 	// Create creates a new schedule and returns the schedule ID (echoed from the request).
@@ -110,7 +125,7 @@ func (sc *scheduleClient) Create(ctx context.Context, request *CreateScheduleReq
 
 func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*DescribeScheduleResponse, error) {
 	if scheduleID == "" {
-		return nil, errors.New("Describe: scheduleID is required")
+		return nil, fmt.Errorf("Describe: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.DescribeScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -132,10 +147,10 @@ func (sc *scheduleClient) Describe(ctx context.Context, scheduleID string) (*Des
 
 func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate func(*ScheduleUpdate) error) error {
 	if scheduleID == "" {
-		return errors.New("Update: scheduleID is required")
+		return fmt.Errorf("Update: %w", ErrScheduleIDRequired)
 	}
 	if mutate == nil {
-		return errors.New("Update: mutate function is required")
+		return fmt.Errorf("Update: %w", ErrMutateFunctionRequired)
 	}
 
 	// Read current state; keep `desc` as the baseline for change detection.
@@ -163,7 +178,7 @@ func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate 
 	changed := false
 	if cur.Spec != nil && !reflect.DeepEqual(cur.Spec, desc.Spec) {
 		if cur.Spec.CronExpression == "" {
-			return errors.New("Update: Spec.CronExpression must not be empty")
+			return fmt.Errorf("Update: %w", ErrCronExpressionRequired)
 		}
 		req.Spec = scheduleSpecToThrift(cur.Spec)
 		changed = true
@@ -200,7 +215,7 @@ func (sc *scheduleClient) Update(ctx context.Context, scheduleID string, mutate 
 
 func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 	if scheduleID == "" {
-		return errors.New("Delete: scheduleID is required")
+		return fmt.Errorf("Delete: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.DeleteScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -216,7 +231,7 @@ func (sc *scheduleClient) Delete(ctx context.Context, scheduleID string) error {
 
 func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason string) error {
 	if scheduleID == "" {
-		return errors.New("Pause: scheduleID is required")
+		return fmt.Errorf("Pause: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.PauseScheduleRequest{
 		Domain:     common.StringPtr(sc.domain),
@@ -234,7 +249,7 @@ func (sc *scheduleClient) Pause(ctx context.Context, scheduleID string, reason s
 
 func (sc *scheduleClient) Unpause(ctx context.Context, scheduleID string, reason string, catchUpPolicy ScheduleCatchUpPolicy) error {
 	if scheduleID == "" {
-		return errors.New("Unpause: scheduleID is required")
+		return fmt.Errorf("Unpause: %w", ErrScheduleIDRequired)
 	}
 	req := &shared.UnpauseScheduleRequest{
 		Domain:        common.StringPtr(sc.domain),

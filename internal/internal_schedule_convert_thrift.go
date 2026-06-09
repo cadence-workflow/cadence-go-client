@@ -23,7 +23,6 @@ package internal
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -218,17 +217,17 @@ func scheduleStartWorkflowActionToThrift(a *ScheduleStartWorkflowAction, dc Data
 		return nil, nil
 	}
 	if a.WorkflowType == "" {
-		return nil, errors.New("StartWorkflow: WorkflowType is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrWorkflowTypeRequired)
 	}
 	if a.TaskList == "" {
-		return nil, errors.New("StartWorkflow: TaskList is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrTaskListRequired)
 	}
 	if a.ExecutionStartToCloseTimeout <= 0 {
-		return nil, errors.New("StartWorkflow: ExecutionStartToCloseTimeout is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrExecutionTimeoutRequired)
 	}
 	decisionTaskTimeout := a.DecisionTaskStartToCloseTimeout
 	if decisionTaskTimeout < 0 {
-		return nil, errors.New("StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrNegativeDecisionTimeout)
 	}
 	if decisionTaskTimeout == 0 {
 		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
@@ -270,7 +269,7 @@ func scheduleActionToThrift(a *ScheduleAction, dc DataConverter) (*shared.Schedu
 		return nil, nil
 	}
 	if a.StartWorkflow == nil {
-		return nil, errors.New("Action.StartWorkflow is required when Action is set")
+		return nil, ErrActionStartWorkflowRequired
 	}
 	sw, err := scheduleStartWorkflowActionToThrift(a.StartWorkflow, dc)
 	if err != nil {
@@ -295,16 +294,16 @@ func schedulePoliciesToThrift(p *SchedulePolicies) *shared.SchedulePolicies {
 
 func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc DataConverter) (*shared.CreateScheduleRequest, error) {
 	if r == nil {
-		return nil, errors.New("Create: request is required")
+		return nil, fmt.Errorf("Create: %w", ErrRequestRequired)
 	}
 	if r.ScheduleID == "" {
-		return nil, errors.New("Create: ScheduleID is required")
+		return nil, fmt.Errorf("Create: %w", ErrScheduleIDRequired)
 	}
 	if r.Spec == nil || r.Spec.CronExpression == "" {
-		return nil, errors.New("Create: Spec.CronExpression is required")
+		return nil, fmt.Errorf("Create: %w", ErrCronExpressionRequired)
 	}
 	if r.Action == nil || r.Action.StartWorkflow == nil {
-		return nil, errors.New("Create: Action.StartWorkflow is required")
+		return nil, fmt.Errorf("Create: %w", ErrActionStartWorkflowRequired)
 	}
 	action, err := scheduleActionToThrift(r.Action, dc)
 	if err != nil {
@@ -342,17 +341,17 @@ func scheduleStartWorkflowActionDescriptionToThrift(a *ScheduleStartWorkflowActi
 		return nil, nil
 	}
 	if a.WorkflowType == "" {
-		return nil, errors.New("StartWorkflow: WorkflowType is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrWorkflowTypeRequired)
 	}
 	if a.TaskList == "" {
-		return nil, errors.New("StartWorkflow: TaskList is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrTaskListRequired)
 	}
 	if a.ExecutionStartToCloseTimeout <= 0 {
-		return nil, errors.New("StartWorkflow: ExecutionStartToCloseTimeout is required")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrExecutionTimeoutRequired)
 	}
 	decisionTaskTimeout := a.DecisionTaskStartToCloseTimeout
 	if decisionTaskTimeout < 0 {
-		return nil, errors.New("StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative")
+		return nil, fmt.Errorf("StartWorkflow: %w", ErrNegativeDecisionTimeout)
 	}
 	if decisionTaskTimeout == 0 {
 		decisionTaskTimeout = time.Duration(defaultDecisionTaskTimeoutInSecs) * time.Second
@@ -387,7 +386,7 @@ func scheduleActionDescriptionToThrift(a *ScheduleActionDescription) (*shared.Sc
 		return nil, nil
 	}
 	if a.StartWorkflow == nil {
-		return nil, errors.New("Action.StartWorkflow is required when Action is set")
+		return nil, ErrActionStartWorkflowRequired
 	}
 	sw, err := scheduleStartWorkflowActionDescriptionToThrift(a.StartWorkflow)
 	if err != nil {
@@ -461,19 +460,19 @@ func copyByteMap(m map[string][]byte) map[string][]byte {
 
 func backfillRequestToThrift(domain, scheduleID string, r *BackfillRequest) (*shared.BackfillScheduleRequest, error) {
 	if scheduleID == "" {
-		return nil, errors.New("Backfill: scheduleID is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrScheduleIDRequired)
 	}
 	if r == nil {
-		return nil, errors.New("Backfill: request is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrRequestRequired)
 	}
 	if r.StartTime.IsZero() {
-		return nil, errors.New("Backfill: StartTime is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrStartTimeRequired)
 	}
 	if r.EndTime.IsZero() {
-		return nil, errors.New("Backfill: EndTime is required")
+		return nil, fmt.Errorf("Backfill: %w", ErrEndTimeRequired)
 	}
 	if !r.EndTime.After(r.StartTime) {
-		return nil, errors.New("Backfill: EndTime must be after StartTime")
+		return nil, fmt.Errorf("Backfill: %w", ErrEndTimeBeforeStartTime)
 	}
 	return &shared.BackfillScheduleRequest{
 		Domain:        common.StringPtr(domain),

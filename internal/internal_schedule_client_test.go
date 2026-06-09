@@ -238,12 +238,12 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 	testcases := []struct {
 		name    string
 		request *CreateScheduleRequest
-		wantErr string
+		wantErr error
 	}{
 		{
 			name:    "nil request",
 			request: nil,
-			wantErr: "Create: request is required",
+			wantErr: ErrRequestRequired,
 		},
 		{
 			name: "empty ScheduleID",
@@ -252,7 +252,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.ScheduleID = ""
 				return r
 			}(),
-			wantErr: "Create: ScheduleID is required",
+			wantErr: ErrScheduleIDRequired,
 		},
 		{
 			name: "nil Spec",
@@ -261,7 +261,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Spec = nil
 				return r
 			}(),
-			wantErr: "Create: Spec.CronExpression is required",
+			wantErr: ErrCronExpressionRequired,
 		},
 		{
 			name: "empty CronExpression",
@@ -270,7 +270,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Spec.CronExpression = ""
 				return r
 			}(),
-			wantErr: "Create: Spec.CronExpression is required",
+			wantErr: ErrCronExpressionRequired,
 		},
 		{
 			name: "nil Action",
@@ -279,7 +279,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action = nil
 				return r
 			}(),
-			wantErr: "Create: Action.StartWorkflow is required",
+			wantErr: ErrActionStartWorkflowRequired,
 		},
 		{
 			name: "nil Action.StartWorkflow",
@@ -288,7 +288,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action.StartWorkflow = nil
 				return r
 			}(),
-			wantErr: "Create: Action.StartWorkflow is required",
+			wantErr: ErrActionStartWorkflowRequired,
 		},
 		{
 			name: "empty WorkflowType",
@@ -297,7 +297,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action.StartWorkflow.WorkflowType = ""
 				return r
 			}(),
-			wantErr: "StartWorkflow: WorkflowType is required",
+			wantErr: ErrWorkflowTypeRequired,
 		},
 		{
 			name: "empty TaskList",
@@ -306,7 +306,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action.StartWorkflow.TaskList = ""
 				return r
 			}(),
-			wantErr: "StartWorkflow: TaskList is required",
+			wantErr: ErrTaskListRequired,
 		},
 		{
 			name: "zero ExecutionStartToCloseTimeout",
@@ -315,7 +315,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action.StartWorkflow.ExecutionStartToCloseTimeout = 0
 				return r
 			}(),
-			wantErr: "StartWorkflow: ExecutionStartToCloseTimeout is required",
+			wantErr: ErrExecutionTimeoutRequired,
 		},
 		{
 			name: "negative DecisionTaskStartToCloseTimeout",
@@ -324,7 +324,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 				r.Action.StartWorkflow.DecisionTaskStartToCloseTimeout = -time.Second
 				return r
 			}(),
-			wantErr: "StartWorkflow: DecisionTaskStartToCloseTimeout must not be negative",
+			wantErr: ErrNegativeDecisionTimeout,
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestScheduleClient_Create_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			td := newScheduleClientTestData(t)
 			_, err := td.sc.Create(context.Background(), tt.request)
-			require.EqualError(t, err, tt.wantErr)
+			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 }
@@ -462,7 +462,7 @@ func TestScheduleClient_Describe(t *testing.T) {
 func TestScheduleClient_Describe_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
 	_, err := td.sc.Describe(context.Background(), "")
-	require.EqualError(t, err, "Describe: scheduleID is required")
+	require.ErrorIs(t, err, ErrScheduleIDRequired)
 }
 
 func TestScheduleClient_Describe_FullResponse(t *testing.T) {
@@ -794,13 +794,13 @@ func TestScheduleClient_Update_Validation(t *testing.T) {
 	t.Run("empty scheduleID errors before any RPC", func(t *testing.T) {
 		td := newScheduleClientTestData(t)
 		err := td.sc.Update(context.Background(), "", func(*ScheduleUpdate) error { return nil })
-		require.EqualError(t, err, "Update: scheduleID is required")
+		require.ErrorIs(t, err, ErrScheduleIDRequired)
 	})
 
 	t.Run("nil mutate errors before any RPC", func(t *testing.T) {
 		td := newScheduleClientTestData(t)
 		err := td.sc.Update(context.Background(), scheduleTestID, nil)
-		require.EqualError(t, err, "Update: mutate function is required")
+		require.ErrorIs(t, err, ErrMutateFunctionRequired)
 	})
 
 	t.Run("describe failure aborts the update", func(t *testing.T) {
@@ -832,7 +832,7 @@ func TestScheduleClient_Update_Validation(t *testing.T) {
 			u.Spec.CronExpression = ""
 			return nil
 		})
-		require.EqualError(t, err, "Update: Spec.CronExpression is required when Spec is set")
+		require.ErrorIs(t, err, ErrCronExpressionRequired)
 	})
 }
 
@@ -866,7 +866,7 @@ func TestScheduleClient_Delete(t *testing.T) {
 
 func TestScheduleClient_Delete_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
-	require.EqualError(t, td.sc.Delete(context.Background(), ""), "Delete: scheduleID is required")
+	require.ErrorIs(t, td.sc.Delete(context.Background(), ""), ErrScheduleIDRequired)
 }
 
 // ── Pause ─────────────────────────────────────────────────────────────────────
@@ -902,7 +902,7 @@ func TestScheduleClient_Pause(t *testing.T) {
 
 func TestScheduleClient_Pause_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
-	require.EqualError(t, td.sc.Pause(context.Background(), "", "reason"), "Pause: scheduleID is required")
+	require.ErrorIs(t, td.sc.Pause(context.Background(), "", "reason"), ErrScheduleIDRequired)
 }
 
 // ── Unpause ───────────────────────────────────────────────────────────────────
@@ -957,7 +957,7 @@ func TestScheduleClient_Unpause(t *testing.T) {
 
 func TestScheduleClient_Unpause_Validation(t *testing.T) {
 	td := newScheduleClientTestData(t)
-	require.EqualError(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), "Unpause: scheduleID is required")
+	require.ErrorIs(t, td.sc.Unpause(context.Background(), "", "reason", ScheduleCatchUpPolicyUnspecified), ErrScheduleIDRequired)
 }
 
 // ── Backfill ──────────────────────────────────────────────────────────────────
@@ -1015,50 +1015,50 @@ func TestScheduleClient_Backfill_Validation(t *testing.T) {
 		name       string
 		scheduleID string
 		request    *BackfillRequest
-		wantErr    string
+		wantErr    error
 	}{
 		{
 			name:       "empty scheduleID",
 			scheduleID: "",
 			request:    validRequest(),
-			wantErr:    "Backfill: scheduleID is required",
+			wantErr:    ErrScheduleIDRequired,
 		},
 		{
 			name:       "nil request",
 			scheduleID: scheduleTestID,
 			request:    nil,
-			wantErr:    "Backfill: request is required",
+			wantErr:    ErrRequestRequired,
 		},
 		{
 			name:       "zero StartTime",
 			scheduleID: scheduleTestID,
 			request:    func() *BackfillRequest { r := validRequest(); r.StartTime = time.Time{}; return r }(),
-			wantErr:    "Backfill: StartTime is required",
+			wantErr:    ErrStartTimeRequired,
 		},
 		{
 			name:       "zero EndTime",
 			scheduleID: scheduleTestID,
 			request:    func() *BackfillRequest { r := validRequest(); r.EndTime = time.Time{}; return r }(),
-			wantErr:    "Backfill: EndTime is required",
+			wantErr:    ErrEndTimeRequired,
 		},
 		{
 			name:       "EndTime equal to StartTime",
 			scheduleID: scheduleTestID,
 			request:    func() *BackfillRequest { r := validRequest(); r.EndTime = start; return r }(),
-			wantErr:    "Backfill: EndTime must be after StartTime",
+			wantErr:    ErrEndTimeBeforeStartTime,
 		},
 		{
 			name:       "EndTime before StartTime",
 			scheduleID: scheduleTestID,
 			request:    func() *BackfillRequest { r := validRequest(); r.EndTime = start.Add(-time.Hour); return r }(),
-			wantErr:    "Backfill: EndTime must be after StartTime",
+			wantErr:    ErrEndTimeBeforeStartTime,
 		},
 	}
 
 	for _, tt := range testcases {
 		t.Run(tt.name, func(t *testing.T) {
 			td := newScheduleClientTestData(t)
-			require.EqualError(t, td.sc.Backfill(context.Background(), tt.scheduleID, tt.request), tt.wantErr)
+			require.ErrorIs(t, td.sc.Backfill(context.Background(), tt.scheduleID, tt.request), tt.wantErr)
 		})
 	}
 }
