@@ -56,7 +56,7 @@ func StringPtr(v string) *string {
 	return PtrOf(v)
 }
 
-// BoolPtr makes a copy and returns the pointer to a string.
+// BoolPtr makes a copy and returns the pointer to a boolean.
 func BoolPtr(v bool) *bool {
 	return PtrOf(v)
 }

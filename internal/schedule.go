@@ -25,7 +25,10 @@ package internal
 // no proto imports appear here so that callers never encounter generated types at the API boundary.
 // Conversion to/from Thrift wire types happens entirely inside internal_schedule_convert_thrift.go.
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
 type ScheduleOverlapPolicy int
@@ -74,6 +77,9 @@ type ScheduleSpec struct {
 }
 
 // ScheduleStartWorkflowAction describes the workflow to start when the schedule triggers.
+// This is the request-side (write) type: Memo/SearchAttributes are native Go values that
+// the SDK encodes for you. The describe (read) counterpart is
+// ScheduleStartWorkflowActionDescription, which returns them as raw bytes.
 type ScheduleStartWorkflowAction struct {
 	// WorkflowType is the registered name of the workflow function to execute. Required.
 	WorkflowType string
@@ -93,22 +99,41 @@ type ScheduleStartWorkflowAction struct {
 	// RetryPolicy is the retry policy applied to each triggered workflow run. Optional.
 	RetryPolicy *RetryPolicy
 	// Memo is additional metadata attached to each triggered workflow run. Optional.
-	// Values are encoded using the DataConverter configured on the ScheduleClient.
-	// Note: Memo is not populated when reading back via DescribeSchedule, because
-	// the encoded bytes cannot be decoded without the original DataConverter.
+	// Values are native Go values; the SDK encodes each one with the configured DataConverter.
 	Memo map[string]interface{}
 	// SearchAttributes are indexed attributes attached to each triggered workflow run. Optional.
-	// Values are JSON-encoded.
-	// Note: SearchAttributes is not populated when reading back via DescribeSchedule,
-	// because the encoded bytes cannot be decoded without the original DataConverter.
+	// Values are native Go values; the SDK JSON-encodes each one.
 	SearchAttributes map[string]interface{}
 }
 
-// ScheduleAction defines what the schedule does when it triggers.
+// ScheduleAction defines what the schedule does when it triggers (request-side / write).
 // Currently only StartWorkflow is supported.
 type ScheduleAction struct {
 	// StartWorkflow starts a new workflow execution on each trigger.
 	StartWorkflow *ScheduleStartWorkflowAction
+}
+
+// ScheduleStartWorkflowActionDescription is the describe (read) counterpart of
+// ScheduleStartWorkflowAction. Memo/SearchAttributes are returned as raw encoded bytes —
+// exactly as the server stores them — for you to decode with your DataConverter. The
+// request-side type takes native values that the SDK encodes for you.
+type ScheduleStartWorkflowActionDescription struct {
+	WorkflowType                    string
+	TaskList                        string
+	Input                           []byte
+	WorkflowIDPrefix                string
+	ExecutionStartToCloseTimeout    time.Duration
+	DecisionTaskStartToCloseTimeout time.Duration
+	RetryPolicy                     *RetryPolicy
+	// Memo contains the raw encoded bytes of each memo field; decode with your DataConverter.
+	Memo map[string][]byte
+	// SearchAttributes contains the raw encoded bytes of each attribute (typically JSON).
+	SearchAttributes map[string][]byte
+}
+
+// ScheduleActionDescription is the describe (read) counterpart of ScheduleAction.
+type ScheduleActionDescription struct {
+	StartWorkflow *ScheduleStartWorkflowActionDescription
 }
 
 // SchedulePolicies controls the runtime behavior of a schedule.
@@ -121,11 +146,10 @@ type SchedulePolicies struct {
 	// Zero means the server uses its configured default.
 	CatchUpWindow time.Duration
 	// PauseOnFailure automatically pauses the schedule if a triggered workflow run fails.
-	// Use nil to leave the server's current value unchanged on Update; use common.BoolPtr(true/false) to set explicitly.
-	PauseOnFailure *bool
-	// BufferLimit caps the number of buffered runs when OverlapPolicy is Buffer (0 = unlimited).
+	PauseOnFailure bool
+	// BufferLimit caps the number of buffered runs when OverlapPolicy is Buffer (0 = no user limit, server cap applies).
 	BufferLimit int32
-	// ConcurrencyLimit caps the number of concurrent runs when OverlapPolicy is Concurrent (0 = unlimited).
+	// ConcurrencyLimit caps the number of concurrent runs when OverlapPolicy is Concurrent (0 = unlimited, server cap applies).
 	ConcurrencyLimit int32
 }
 
@@ -191,23 +215,68 @@ type CreateScheduleRequest struct {
 	SearchAttributes map[string]interface{}
 }
 
-// UpdateScheduleRequest is the request to ScheduleClient.Update.
-// Only non-nil fields are applied at the top level; nil fields leave the existing value unchanged.
-// Note: when Action is non-nil, the entire StartWorkflow configuration is replaced — it is not
-// merged with the existing action. All fields of ScheduleStartWorkflowAction must be provided,
-// including those you are not changing (e.g. TaskList, ExecutionStartToCloseTimeout, RetryPolicy).
-// Call Describe first to read the current values if you need to preserve them.
-type UpdateScheduleRequest struct {
-	// ScheduleID identifies the schedule to update. Required.
-	ScheduleID string
-	// Spec replaces the trigger specification when non-nil.
+// ScheduleUpdate is the mutable view of a schedule's current state passed to the callback
+// in ScheduleClient.Update. It is pre-populated from DescribeSchedule with the schedule's
+// updatable fields. Mutate the fields you want to change and leave the rest untouched; the
+// SDK sends only the top-level fields you actually changed (others are preserved server-side).
+//
+// Memo/SearchAttributes are raw encoded bytes (as DescribeSchedule returns them), so
+// untouched values round-trip byte-for-byte. To set a new action Memo from native Go values,
+// use SetActionMemo. (UpdateSchedule does not support changing schedule-level Memo.)
+type ScheduleUpdate struct {
+	// Spec is the schedule's trigger specification.
 	Spec *ScheduleSpec
-	// Action replaces the entire schedule action when non-nil. See note above about full-replacement semantics.
-	Action *ScheduleAction
-	// Policies replaces the schedule policies when non-nil.
+	// Action is the schedule's action (reuses the read type; Memo/SearchAttributes are raw bytes).
+	Action *ScheduleActionDescription
+	// Policies are the schedule's runtime policies.
 	Policies *SchedulePolicies
-	// SearchAttributes replaces the schedule's search attributes when non-nil.
-	SearchAttributes map[string]interface{}
+	// SearchAttributes are the schedule-level indexed attributes, as raw encoded bytes.
+	SearchAttributes map[string][]byte
+
+	// dc encodes values for the Set* helpers; populated by the SDK.
+	dc DataConverter
+}
+
+// SetActionMemo sets the action-level Memo from native Go values, encoding each with the
+// client's DataConverter (the same encoding used on Create). Replaces any existing action Memo.
+func (u *ScheduleUpdate) SetActionMemo(memo map[string]interface{}) error {
+	if u.Action == nil || u.Action.StartWorkflow == nil {
+		return errors.New("SetActionMemo: Action.StartWorkflow is nil")
+	}
+	encoded, err := encodeMemo(u.dc, memo)
+	if err != nil {
+		return err
+	}
+	u.Action.StartWorkflow.Memo = encoded
+	return nil
+}
+
+// SetSearchAttributes sets the schedule-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing schedule-level
+// SearchAttributes. Note: like UpdateSchedule itself, this can add or replace attributes but
+// cannot clear them — passing an empty map is a no-op (the existing attributes are preserved).
+func (u *ScheduleUpdate) SetSearchAttributes(searchAttributes map[string]interface{}) error {
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.SearchAttributes = encoded
+	return nil
+}
+
+// SetActionSearchAttributes sets the action-level SearchAttributes from native Go values,
+// JSON-encoding each (the same encoding used on Create). Replaces any existing action-level
+// SearchAttributes; pass an empty map to clear them.
+func (u *ScheduleUpdate) SetActionSearchAttributes(searchAttributes map[string]interface{}) error {
+	if u.Action == nil || u.Action.StartWorkflow == nil {
+		return errors.New("SetActionSearchAttributes: Action.StartWorkflow is nil")
+	}
+	encoded, err := encodeSearchAttributes(searchAttributes)
+	if err != nil {
+		return err
+	}
+	u.Action.StartWorkflow.SearchAttributes = encoded
+	return nil
 }
 
 // BackfillRequest triggers workflow runs for a historical time range.
@@ -227,7 +296,7 @@ type BackfillRequest struct {
 // DescribeScheduleResponse is returned by ScheduleClient.Describe.
 type DescribeScheduleResponse struct {
 	Spec     *ScheduleSpec
-	Action   *ScheduleAction
+	Action   *ScheduleActionDescription
 	Policies *SchedulePolicies
 	State    *ScheduleState
 	Info     *ScheduleInfo
