@@ -74,12 +74,6 @@ func SetEmitMode(mode MetricEmitMode) {
 	atomic.StoreInt32(&currentEmitMode, int32(mode))
 }
 
-// getCurrentEmitMode returns the current emission mode.
-// This function is safe for concurrent use.
-func getCurrentEmitMode() MetricEmitMode {
-	return MetricEmitMode(atomic.LoadInt32(&currentEmitMode))
-}
-
 // GetCurrentEmitMode returns the current emission mode (exported for testing).
 // This function is safe for concurrent use.
 func GetCurrentEmitMode() MetricEmitMode {
@@ -99,7 +93,7 @@ func GetCurrentEmitMode() MetricEmitMode {
 //
 //	EmitLatency(scope, "decision-poll-latency", duration, Default1ms100s)
 func EmitLatency(scope tally.Scope, name string, latency time.Duration, buckets SubsettableHistogram) {
-	switch getCurrentEmitMode() {
+	switch GetCurrentEmitMode() {
 	case EmitTimersOnly:
 		scope.Timer(name).Record(latency)
 	case EmitBoth:
@@ -132,7 +126,7 @@ type DualStopwatch struct {
 //	// ... do work ...
 //	sw.Stop()
 func StartLatency(scope tally.Scope, name string, buckets SubsettableHistogram) *DualStopwatch {
-	mode := getCurrentEmitMode()
+	mode := GetCurrentEmitMode()
 	sw := &DualStopwatch{mode: mode}
 
 	switch mode {
