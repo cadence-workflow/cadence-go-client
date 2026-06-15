@@ -618,6 +618,9 @@ func FailoverDomainRequest(t *apiv1.FailoverDomainRequest) *shared.FailoverDomai
 	if t.ActiveClusters != nil {
 		request.ActiveClusters = ActiveClusters(t.ActiveClusters)
 	}
+	if t.FailoverTimeout != nil {
+		request.FailoverTimeoutInSeconds = durationToSeconds(t.FailoverTimeout)
+	}
 	return request
 }
 

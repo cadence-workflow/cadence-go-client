@@ -85,6 +85,8 @@ var (
 		CreateTime:       Timestamp3,
 		LastUpdateTime:   Timestamp4,
 		OngoingBackfills: []*apiv1.BackfillInfo{&BackfillInfo},
+		MissedRuns:       7,
+		SkippedRuns:      3,
 	}
 
 	ScheduleListEntry = apiv1.ScheduleListEntry{

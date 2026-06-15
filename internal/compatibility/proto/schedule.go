@@ -264,6 +264,8 @@ func ScheduleInfo(t *shared.ScheduleInfo) *apiv1.ScheduleInfo {
 		CreateTime:       unixNanoToTime(t.CreateTimeNano),
 		LastUpdateTime:   unixNanoToTime(t.LastUpdateTimeNano),
 		OngoingBackfills: ongoing,
+		MissedRuns:       t.GetMissedRuns(),
+		SkippedRuns:      t.GetSkippedRuns(),
 	}
 }
 
