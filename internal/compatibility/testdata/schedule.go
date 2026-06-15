@@ -50,8 +50,8 @@ var (
 		CatchUpPolicy:    apiv1.ScheduleCatchUpPolicy_SCHEDULE_CATCH_UP_POLICY_SKIP,
 		CatchUpWindow:    &gogo.Duration{Seconds: 3600},
 		PauseOnFailure:   true,
-		BufferLimit:      &gogo.Int32Value{Value: 10},
-		ConcurrencyLimit: &gogo.Int32Value{Value: 5},
+		BufferLimit:      10,
+		ConcurrencyLimit: 5,
 	}
 
 	ScheduleStartWorkflowAction = apiv1.ScheduleAction_StartWorkflowAction{
@@ -85,6 +85,8 @@ var (
 		CreateTime:       Timestamp3,
 		LastUpdateTime:   Timestamp4,
 		OngoingBackfills: []*apiv1.BackfillInfo{&BackfillInfo},
+		MissedRuns:       7,
+		SkippedRuns:      3,
 	}
 
 	ScheduleListEntry = apiv1.ScheduleListEntry{

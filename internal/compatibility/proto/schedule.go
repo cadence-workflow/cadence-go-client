@@ -171,8 +171,8 @@ func SchedulePolicies(t *shared.SchedulePolicies) *apiv1.SchedulePolicies {
 		CatchUpPolicy:    ScheduleCatchUpPolicy(t.CatchUpPolicy),
 		CatchUpWindow:    secondsToDuration(t.CatchUpWindowInSeconds),
 		PauseOnFailure:   t.GetPauseOnFailure(),
-		BufferLimit:      fromInt32Value(t.BufferLimit),
-		ConcurrencyLimit: fromInt32Value(t.ConcurrencyLimit),
+		BufferLimit:      t.GetBufferLimit(),
+		ConcurrencyLimit: t.GetConcurrencyLimit(),
 	}
 }
 
@@ -264,6 +264,8 @@ func ScheduleInfo(t *shared.ScheduleInfo) *apiv1.ScheduleInfo {
 		CreateTime:       unixNanoToTime(t.CreateTimeNano),
 		LastUpdateTime:   unixNanoToTime(t.LastUpdateTimeNano),
 		OngoingBackfills: ongoing,
+		MissedRuns:       t.GetMissedRuns(),
+		SkippedRuns:      t.GetSkippedRuns(),
 	}
 }
 

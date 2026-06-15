@@ -42,13 +42,6 @@ func fromInt64Value(v *int64) *gogo.Int64Value {
 	return &gogo.Int64Value{Value: *v}
 }
 
-func fromInt32Value(v *int32) *gogo.Int32Value {
-	if v == nil {
-		return nil
-	}
-	return &gogo.Int32Value{Value: *v}
-}
-
 func unixNanoToTime(t *int64) *gogo.Timestamp {
 	if t == nil {
 		return nil
