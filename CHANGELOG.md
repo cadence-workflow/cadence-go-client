@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Breaking:** `compatibility.NewThrift2ProtoAdapter` now takes an `AdapterClients` struct instead of positional arguments (#1502)
+- Switched metrics default emit mode to histogram only (#1513)
 - Upgraded grpc-go and yarpc dependencies (#1494)
 - Synced idl submodule (#1508)
 - Cleaned up duplicate function (#1511)
