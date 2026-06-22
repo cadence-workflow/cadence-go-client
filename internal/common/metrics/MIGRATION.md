@@ -2,18 +2,17 @@
 
 ## Summary
 
-**Starting in v1.3.1, all latency metrics automatically emit BOTH timer and histogram formats.**
+**The timer→histogram migration is complete. The default is now `EmitHistogramsOnly`.**
 
-- Your existing dashboards continue to work (timers)
-- New histogram metrics available (with `_ns` suffix)
-- Migrate dashboards at your own pace
-- No code changes needed
+- Only histogram metrics emit by default
+- Users who still need timers can opt in with `EmitTimersOnly` or `EmitBoth`
+- See `EMIT_MODE.md` for configuration details
 
 ## What Changed
 
-All latency metrics now dual-emit:
-- **Timer**: `cadence-decision-poll-latency` (existing)
-- **Histogram**: `cadence-decision-poll-latency_ns` (new)
+All latency metrics now emit as histograms by default:
+- **Histogram**: `cadence-decision-poll-latency_ns` (default)
+- **Timer**: `cadence-decision-poll-latency` (opt-in via EmitTimersOnly or EmitBoth)
 
 ### Affected Metrics (62 total)
 
@@ -28,9 +27,9 @@ All latency metrics now dual-emit:
 
 ## Impact
 
-**Cardinality:** +62 histogram metrics (temporary during migration)
+**Cardinality:** Reduced — only histogram metrics emit by default
 **Performance:** Minimal impact
-**Compatibility:** 100% backward compatible
+**Compatibility:** Users can opt back into timers via EmitTimersOnly or EmitBoth
 
 ## Why Migrate?
 
@@ -57,9 +56,9 @@ All latency metrics now dual-emit:
 - **Range**: 1ms → ~3 days
 - **Use for**: Long-running operations with high cardinality
 
-## Developer Guide (Future)
+## Developer Guide
 
-Currently, the client automatically dual-emits. In a future version when you want to use histogram-only APIs:
+Use histogram APIs directly:
 
 ```go
 // Simple recording
@@ -84,19 +83,16 @@ sw.Stop()
 
 ## Migration Timeline
 
-### Phase 1: Automatic Dual-Emit (Now)
-- Upgrade to v1.3.1
-- Both metrics automatically emit
+### Phase 1: Automatic Dual-Emit (Completed)
+- Both metrics emitted automatically
 - No code changes needed
 
-### Phase 2: Migrate Dashboards (Your Pace)
-1. Identify dashboards using timer metrics
-2. Create new panels using histogram metrics (`_ns` suffix)
-3. Compare side-by-side
-4. Switch over when validated
+### Phase 2: Histogram-Only Default (Current)
+- Default switched to `EmitHistogramsOnly`
+- Users who haven't migrated dashboards can opt in to `EmitBoth` or `EmitTimersOnly`
 
-### Phase 3: Timers Removed (Future v1.3.*)
-- Timer emission removed in future major version
+### Phase 3: Timers Removed (Future)
+- Timer emission support removed in future major version
 - Plenty of advance notice provided
 
 ## Testing

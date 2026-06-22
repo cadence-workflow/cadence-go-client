@@ -7,10 +7,10 @@ This document describes how to configure metric emission behavior for the timer�
 The cadence-go-client supports three metric emission modes:
 
 1. **EmitTimersOnly** - Only timer metrics (legacy OSS behavior)
-2. **EmitBoth** (default) - Both timer and histogram metrics (for migration)
-3. **EmitHistogramsOnly** - Only histogram metrics (post-migration)
+2. **EmitBoth** - Both timer and histogram metrics (for migration)
+3. **EmitHistogramsOnly** (default) - Only histogram metrics (post-migration)
 
-**Default**: `EmitBoth` - This allows all users (OSS and monorepo) to see both metrics during the migration period.
+**Default**: `EmitHistogramsOnly` - The migration from timers to histograms is complete. Users who still need timers can opt in via configuration.
 
 ## Configuration Methods
 
@@ -36,10 +36,10 @@ func main() {
 				// Option A: Use only timers (legacy behavior)
 				MetricEmitMode: metrics.EmitTimersOnly,
 
-				// Option B: Use both (default, no need to set)
+				// Option B: Use both (dual-emit for migration)
 				// MetricEmitMode: metrics.EmitBoth,
 
-				// Option C: Use only histograms (post-migration)
+				// Option C: Use only histograms (default, no need to set)
 				// MetricEmitMode: metrics.EmitHistogramsOnly,
 			},
 		},
@@ -64,7 +64,7 @@ cadence:
         # Feature flags for controlling worker behavior
         feature_flags:
           # Options: "timers_only", "both", "histograms_only"
-          # Default: "both" (dual-emit for migration)
+          # Default: "histograms_only" (post-migration)
           metric_emit_mode: "timers_only"  # or "both" or "histograms_only"
 ```
 
@@ -102,25 +102,17 @@ worker.Options{
 
 ## Migration Path
 
-### Phase 1: Enable Dual Emission (Current Default)
+### Phase 1: Dual Emission (Completed)
 
-The default `EmitBoth` mode is already active. No changes needed.
+The `EmitBoth` mode was the previous default during migration.
 
-- Both timer and histogram metrics emit automatically
-- Create new dashboards/alerts using histogram metrics (`_ns` suffix
-- Validate histogram metrics match timer metrics
+- Both timer and histogram metrics were emitted
+- New dashboards/alerts were created using histogram metrics (`_ns` suffix)
+- Histogram metrics were validated against timer metrics
 
-### Phase 2: Switch to Histogram-Only
+### Phase 2: Histogram-Only (Current Default)
 
-After validating histograms and migrating all dashboards/alerts:
-
-```go
-worker.Options{
-	FeatureFlags: internal.FeatureFlags{
-		MetricEmitMode: metrics.EmitHistogramsOnly,
-	},
-}
-```
+The default is now `EmitHistogramsOnly`:
 
 - Only histogram metrics emit
 - Remove old timer-based dashboards/alerts
@@ -141,7 +133,7 @@ All 62 latency metrics are controlled by this setting:
 ## Benefits
 
 ✅ **Consistent across OSS and monorepo** - Same mechanism for everyone
-✅ **Safe default** - Dual-emit ensures metrics availability during migration
+✅ **Safe default** - Histogram-only reduces metric cardinality post-migration
 ✅ **Per-worker configuration** - Different workers can have different modes
 ✅ **Clear and explicit** - Configuration visible in WorkerOptions
 ✅ **Simple and lightweight** - No runtime overhead

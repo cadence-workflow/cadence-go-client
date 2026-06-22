@@ -1307,9 +1307,9 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 		options.EnableSessionWorker = false
 	}
 
-	// Set default MetricEmitMode to EmitBoth if not explicitly configured
+	// Set default MetricEmitMode to EmitHistogramsOnly if not explicitly configured
 	if options.FeatureFlags.MetricEmitMode == metrics.EmitModeUnset {
-		options.FeatureFlags.MetricEmitMode = metrics.EmitBoth
+		options.FeatureFlags.MetricEmitMode = metrics.EmitHistogramsOnly
 	}
 
 	return options

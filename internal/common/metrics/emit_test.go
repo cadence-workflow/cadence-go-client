@@ -30,8 +30,8 @@ import (
 )
 
 func TestEmitLatency_DefaultMode(t *testing.T) {
-	// Reset to default (should be EmitBoth)
-	SetEmitMode(EmitBoth)
+	// Reset to default (should be EmitHistogramsOnly)
+	SetEmitMode(EmitHistogramsOnly)
 
 	scope := tally.NewTestScope("test", nil)
 	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
@@ -40,20 +40,18 @@ func TestEmitLatency_DefaultMode(t *testing.T) {
 	timers := snapshot.Timers()
 	histograms := snapshot.Histograms()
 
-	// Should have both timer and histogram in default mode
-	timer, timerExists := timers["test.test-metric+"]
+	// Should have only histogram in default mode
+	_, timerExists := timers["test.test-metric+"]
 	hist, histExists := histograms["test.test-metric_ns+"]
 
-	assert.True(t, timerExists, "timer should exist in EmitBoth (default) mode")
-	assert.NotNil(t, timer)
-	assert.True(t, histExists, "histogram should exist in EmitBoth (default) mode")
+	assert.False(t, timerExists, "timer should not exist in EmitHistogramsOnly (default) mode")
+	assert.True(t, histExists, "histogram should exist in EmitHistogramsOnly (default) mode")
 	assert.NotNil(t, hist)
 }
 
 func TestEmitLatency_DualMode(t *testing.T) {
-	// Set to dual-emit mode (this is also the default)
 	SetEmitMode(EmitBoth)
-	defer SetEmitMode(EmitBoth) // Reset after test
+	defer SetEmitMode(EmitHistogramsOnly) // Reset after test
 
 	scope := tally.NewTestScope("test", nil)
 	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
@@ -75,7 +73,7 @@ func TestEmitLatency_DualMode(t *testing.T) {
 func TestEmitLatency_HistogramOnlyMode(t *testing.T) {
 	// Set to histogram-only mode
 	SetEmitMode(EmitHistogramsOnly)
-	defer SetEmitMode(EmitBoth) // Reset after test
+	defer SetEmitMode(EmitHistogramsOnly) // Reset after test
 
 	scope := tally.NewTestScope("test", nil)
 	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
@@ -96,7 +94,7 @@ func TestEmitLatency_HistogramOnlyMode(t *testing.T) {
 func TestEmitLatency_TimersOnlyMode(t *testing.T) {
 	// Set to timers-only mode (legacy behavior)
 	SetEmitMode(EmitTimersOnly)
-	defer SetEmitMode(EmitBoth) // Reset after test
+	defer SetEmitMode(EmitHistogramsOnly) // Reset after test
 
 	scope := tally.NewTestScope("test", nil)
 	EmitLatency(scope, "test-metric", 50*time.Millisecond, Default1ms100s)
@@ -115,8 +113,8 @@ func TestEmitLatency_TimersOnlyMode(t *testing.T) {
 }
 
 func TestStartLatency_DefaultMode(t *testing.T) {
-	// Reset to default (should be EmitBoth)
-	SetEmitMode(EmitBoth)
+	// Reset to default (should be EmitHistogramsOnly)
+	SetEmitMode(EmitHistogramsOnly)
 
 	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
@@ -127,18 +125,17 @@ func TestStartLatency_DefaultMode(t *testing.T) {
 	timers := snapshot.Timers()
 	histograms := snapshot.Histograms()
 
-	timer, timerExists := timers["test.test-metric+"]
+	_, timerExists := timers["test.test-metric+"]
 	hist, histExists := histograms["test.test-metric_ns+"]
 
-	assert.True(t, timerExists, "timer should exist in EmitBoth (default) mode")
-	assert.NotNil(t, timer)
-	assert.True(t, histExists, "histogram should exist in EmitBoth (default) mode")
+	assert.False(t, timerExists, "timer should not exist in EmitHistogramsOnly (default) mode")
+	assert.True(t, histExists, "histogram should exist in EmitHistogramsOnly (default) mode")
 	assert.NotNil(t, hist)
 }
 
 func TestStartLatency_DualMode(t *testing.T) {
 	SetEmitMode(EmitBoth)
-	defer SetEmitMode(EmitBoth)
+	defer SetEmitMode(EmitHistogramsOnly)
 
 	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
@@ -160,7 +157,7 @@ func TestStartLatency_DualMode(t *testing.T) {
 
 func TestStartLatency_HistogramOnlyMode(t *testing.T) {
 	SetEmitMode(EmitHistogramsOnly)
-	defer SetEmitMode(EmitBoth)
+	defer SetEmitMode(EmitHistogramsOnly)
 
 	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
@@ -181,6 +178,7 @@ func TestStartLatency_HistogramOnlyMode(t *testing.T) {
 
 func TestDualStopwatch_MultipleStops(t *testing.T) {
 	SetEmitMode(EmitBoth)
+	defer SetEmitMode(EmitHistogramsOnly)
 
 	scope := tally.NewTestScope("test", nil)
 	sw := StartLatency(scope, "test-metric", Default1ms100s)
@@ -208,7 +206,7 @@ func TestEmitLatency_DifferentHistograms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			SetEmitMode(EmitBoth)
-			defer SetEmitMode(EmitBoth)
+			defer SetEmitMode(EmitHistogramsOnly)
 
 			scope := tally.NewTestScope("test", nil)
 			EmitLatency(scope, "test-metric", 50*time.Millisecond, tt.histogram)
@@ -263,5 +261,5 @@ func TestMetricEmitMode_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Clean up: restore to default
-	SetEmitMode(EmitBoth)
+	SetEmitMode(EmitHistogramsOnly)
 }
