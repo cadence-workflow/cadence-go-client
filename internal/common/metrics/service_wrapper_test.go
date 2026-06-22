@@ -193,8 +193,9 @@ func assertMetrics(t *testing.T, reporter *CapturingStatsReporter, methodName st
 		}
 		assert.True(t, find, "counter %v not found in counters %v", counterName, reporter.counts)
 	}
-	assert.Equal(t, 1, len(reporter.timers), "expected 1 timer, got %v", len(reporter.timers))
-	assert.Equal(t, CadenceMetricsPrefix+methodName+"."+CadenceLatency, reporter.timers[0].name, "expected timer %v, got %v", CadenceMetricsPrefix+methodName+"."+CadenceLatency, reporter.timers[0].name)
+	expectedHistName := CadenceMetricsPrefix + methodName + "." + CadenceLatency + "_ns"
+	assert.True(t, len(reporter.histogramDurationSamples) > 0, "expected histogram duration samples, got %v", len(reporter.histogramDurationSamples))
+	assert.Equal(t, expectedHistName, reporter.histogramDurationSamples[0].name, "expected histogram %v, got %v", expectedHistName, reporter.histogramDurationSamples[0].name)
 }
 
 func assertPromMetrics(t *testing.T, reporter *CapturingStatsReporter, methodName string, counterNames []string) {
@@ -211,9 +212,9 @@ func assertPromMetrics(t *testing.T, reporter *CapturingStatsReporter, methodNam
 		}
 		assert.True(t, find, "counter %v not found in counters %v", counterName, reporter.counts)
 	}
-	assert.Equal(t, 1, len(reporter.timers), "expected 1 timer, got %v", len(reporter.timers))
-	expected := makePromCompatible(CadenceMetricsPrefix + methodName + "." + CadenceLatency)
-	assert.Equal(t, expected, reporter.timers[0].name, "expected timer %v, got %v", expected, reporter.timers[0].name)
+	expected := makePromCompatible(CadenceMetricsPrefix + methodName + "." + CadenceLatency + "_ns")
+	assert.True(t, len(reporter.histogramDurationSamples) > 0, "expected histogram duration samples, got %v", len(reporter.histogramDurationSamples))
+	assert.Equal(t, expected, reporter.histogramDurationSamples[0].name, "expected histogram %v, got %v", expected, reporter.histogramDurationSamples[0].name)
 }
 
 func makePromCompatible(name string) string {

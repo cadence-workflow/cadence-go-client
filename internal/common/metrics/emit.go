@@ -45,17 +45,17 @@ const (
 	EmitModeUnset MetricEmitMode = iota
 	// EmitTimersOnly emits only timer metrics (legacy OSS behavior)
 	EmitTimersOnly
-	// EmitBoth emits both timer and histogram metrics (default for migration)
+	// EmitBoth emits both timer and histogram metrics (for migration)
 	EmitBoth
 	// EmitHistogramsOnly emits only histogram metrics (post-migration)
 	EmitHistogramsOnly
 )
 
-// currentEmitMode is the active emission mode. Default is EmitBoth for migration.
+// currentEmitMode is the active emission mode. Default is EmitHistogramsOnly (post-migration).
 // This should be set during application initialization (e.g., in init() or before starting workers).
 // It should NOT be changed dynamically after workers have started.
 // Access via atomic operations for thread-safety.
-var currentEmitMode = int32(EmitBoth)
+var currentEmitMode = int32(EmitHistogramsOnly)
 
 // SetEmitMode configures the metric emission strategy.
 // This should be called during application initialization, before any metrics are emitted.

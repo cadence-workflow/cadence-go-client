@@ -1321,7 +1321,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  nil,
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  true,
@@ -1362,7 +1362,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  true,
@@ -1407,7 +1407,7 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitBoth},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
 				AutoScalerOptions: AutoScalerOptions{
 					Enabled:                  false,
@@ -1577,18 +1577,18 @@ func TestAugmentWorkerOptions_MetricEmitMode(t *testing.T) {
 		expected metrics.MetricEmitMode
 	}{
 		{
-			name:     "unset defaults to EmitBoth",
+			name:     "unset defaults to EmitHistogramsOnly",
 			input:    WorkerOptions{},
-			expected: metrics.EmitBoth,
+			expected: metrics.EmitHistogramsOnly,
 		},
 		{
-			name: "explicit EmitModeUnset defaults to EmitBoth",
+			name: "explicit EmitModeUnset defaults to EmitHistogramsOnly",
 			input: WorkerOptions{
 				FeatureFlags: FeatureFlags{
 					MetricEmitMode: metrics.EmitModeUnset,
 				},
 			},
-			expected: metrics.EmitBoth,
+			expected: metrics.EmitHistogramsOnly,
 		},
 		{
 			name: "explicit EmitTimersOnly is preserved",
@@ -1635,9 +1635,9 @@ func TestNewAggregatedWorker_SetsMetricEmitMode(t *testing.T) {
 	mockService := workflowservicetest.NewMockClient(mockCtrl)
 
 	// Reset to known state
-	metrics.SetEmitMode(metrics.EmitBoth)
+	metrics.SetEmitMode(metrics.EmitHistogramsOnly)
 	initialMode := metrics.GetCurrentEmitMode()
-	assert.Equal(t, metrics.EmitBoth, initialMode)
+	assert.Equal(t, metrics.EmitHistogramsOnly, initialMode)
 
 	// Create worker with EmitTimersOnly
 	_, err := newAggregatedWorker(
@@ -1660,5 +1660,5 @@ func TestNewAggregatedWorker_SetsMetricEmitMode(t *testing.T) {
 	assert.Equal(t, metrics.EmitTimersOnly, currentMode, "newAggregatedWorker should set the global emit mode")
 
 	// Clean up: restore to default
-	metrics.SetEmitMode(metrics.EmitBoth)
+	metrics.SetEmitMode(metrics.EmitHistogramsOnly)
 }
