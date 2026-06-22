@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added action Memo and SearchAttributes to DescribeSchedule response (#1509)
 - Added span activation on activity and workflow execution (#1506)
 - Added rate limiting to sticky pollers (#1497)
+- Added ActiveClusterSelectionPolicy to workflow start options (#1438)
 
 ### Changed
 - **Breaking:** `compatibility.NewThrift2ProtoAdapter` now takes an `AdapterClients` struct instead of positional arguments (#1502)
