@@ -5,8 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v1.4.0] - 2026-06-22
 ### Added
-- Added ActiveClusterSelectionPolicy to workflow start options (#1438)
+- Added Go-native ScheduleClient SDK with Create, Describe, Update, Pause, Unpause, Backfill, List, and Delete operations (#1505)
+- Added wire protocol infrastructure for 8 schedule RPCs (#1502)
+- Added describe-then-update callback pattern for ScheduleClient.Update (#1510)
+- Added action Memo and SearchAttributes to DescribeSchedule response (#1509)
+- Added span activation on activity and workflow execution (#1506)
+- Added rate limiting to sticky pollers (#1497)
+
+### Changed
+- **Breaking:** `compatibility.NewThrift2ProtoAdapter` now takes an `AdapterClients` struct instead of positional arguments (#1502)
+- Upgraded grpc-go and yarpc dependencies (#1494)
+- Synced idl submodule (#1508)
+- Cleaned up duplicate function (#1511)
+
+### Removed
+- Removed experimental x/blocks package (#1496)
 
 ## [v1.3.0] - 2025-07-08
 ### Added
