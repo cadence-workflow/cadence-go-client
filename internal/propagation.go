@@ -93,6 +93,8 @@ func startOpenTracingSpan(
 	}
 
 	span := tracer.StartSpan(name, opts...)
-	ctx = opentracing.ContextWithSpan(ctx, span)
+	if _, ok := tracer.(opentracing.NoopTracer); !ok {
+		ctx = opentracing.ContextWithSpan(ctx, span)
+	}
 	return ctx, span
 }
