@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	jaeger_config "github.com/uber/jaeger-client-go/config"
@@ -116,6 +117,58 @@ func TestTracingContextPropagatorWorkflowContextNoSpan(t *testing.T) {
 	returnCtx := Background()
 	returnCtx, err = ctxProp.ExtractToWorkflow(returnCtx, NewHeaderReader(header))
 	assert.NoError(t, err)
+}
+
+// TestWorkflowSpanContextNoopTracer verifies that a workflow executed with a
+// NoopTracer (the testsuite default) does not seed a span context into the
+// workflow context. Seeding a noop span context here would leak it into user
+// code that builds child spans with a different, real tracer (e.g. a mocktracer
+// or jaeger tracer configured globally in a test), which panics when that tracer
+// type-asserts the foreign parent span context. Skipping the seed keeps
+// GetSpanContext returning nil so opentracing.ChildOf drops it harmlessly.
+func TestWorkflowSpanContextNoopTracer(t *testing.T) {
+	env := newTestWorkflowEnv(t)
+
+	var seededSpanContext opentracing.SpanContext
+	var childDidNotPanic bool
+	wf := func(ctx Context) error {
+		seededSpanContext = GetSpanContext(ctx)
+		// Reproduce the downstream failure: a real tracer building a child span
+		// from whatever parent GetSpanContext returns. With the guard in place
+		// the parent is nil and ChildOf is silently dropped instead of panicking.
+		globalTracer := mocktracer.New()
+		child := globalTracer.StartSpan("child", opentracing.ChildOf(seededSpanContext))
+		child.Finish()
+		childDidNotPanic = true
+		return nil
+	}
+	env.ExecuteWorkflow(wf)
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	assert.Nil(t, seededSpanContext, "NoopTracer must not seed a span context into the workflow context")
+	assert.True(t, childDidNotPanic)
+}
+
+// TestWorkflowSpanContextRealTracer verifies that when a real tracer is
+// configured on the worker, the workflow span context is still seeded so
+// baggage propagation to activities and child workflows keeps working.
+func TestWorkflowSpanContextRealTracer(t *testing.T) {
+	env := newTestWorkflowEnv(t)
+	// setWorkerOptions intentionally ignores Tracer, so set it directly on the
+	// impl to exercise the real-tracer path.
+	env.impl.workerOptions.Tracer = mocktracer.New()
+
+	var seededSpanContext opentracing.SpanContext
+	wf := func(ctx Context) error {
+		seededSpanContext = GetSpanContext(ctx)
+		return nil
+	}
+	env.ExecuteWorkflow(wf)
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	assert.NotNil(t, seededSpanContext, "a real tracer must seed a span context into the workflow context")
 }
 
 func TestConsistentInjectionExtraction(t *testing.T) {

@@ -490,7 +490,15 @@ func (d *syncWorkflowDefinition) Execute(env workflowEnvironment, header *shared
 				},
 			)
 			defer span.Finish()
-			execCtx = WithSpanContext(d.rootCtx, span.Context())
+			// Only seed the workflow span context when a real tracer produced it.
+			// A NoopTracer yields a noop span context that carries no tracing value,
+			// and seeding it forces workflows that use their own real tracer (e.g. a
+			// mocktracer in the testsuite) to build children from a foreign span
+			// context, which panics. Skipping it leaves GetSpanContext returning nil,
+			// matching the behavior established for NoopTracer in #1516.
+			if _, ok := wfEnv.GetTracer().(opentracing.NoopTracer); !ok {
+				execCtx = WithSpanContext(d.rootCtx, span.Context())
+			}
 		}
 		r.workflowResult, r.error = d.workflow.Execute(execCtx, input)
 		rpp := getWorkflowResultPointerPointer(ctx)
