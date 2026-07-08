@@ -408,3 +408,17 @@ func FailoverType(t apiv1.FailoverType) *shared.FailoverType {
 	}
 	return shared.FailoverTypeInvalid.Ptr()
 }
+
+func FailureCategory(t apiv1.FailureCategory) *shared.FailureCategory {
+	switch t {
+	case apiv1.FailureCategory_FAILURE_CATEGORY_INVALID:
+		return nil
+	case apiv1.FailureCategory_FAILURE_CATEGORY_POLL:
+		return shared.FailureCategoryPoll.Ptr()
+	case apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD:
+		return shared.FailureCategoryStandard.Ptr()
+	case apiv1.FailureCategory_FAILURE_CATEGORY_FATAL:
+		return shared.FailureCategoryFatal.Ptr()
+	}
+	return nil
+}

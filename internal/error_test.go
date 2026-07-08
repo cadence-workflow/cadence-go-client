@@ -23,7 +23,9 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
+	"time"
 
 	"go.uber.org/cadence/internal/common/testlogger"
 
@@ -300,6 +302,92 @@ func Test_CustomError_Pointer(t *testing.T) {
 	err6.Details(&b2)
 	require.NoError(t, err6.Details(&b2))
 	require.Equal(t, &testErrorDetails4, b2)
+}
+
+func Test_NewCustomError_Options(t *testing.T) {
+	tests := []struct {
+		name                    string
+		args                    []interface{}
+		expectedDetails         []interface{}
+		expectedFailureCategory shared.FailureCategory
+		expectedNextRetryDelay  time.Duration
+	}{
+		{
+			name: "with failure category option",
+			args: []interface{}{
+				WithFailureCategory(shared.FailureCategoryFatal),
+			},
+			expectedFailureCategory: shared.FailureCategoryFatal,
+			expectedNextRetryDelay:  0,
+		},
+		{
+			name: "with next retry delay option",
+			args: []interface{}{
+				WithNextRetryDelay(37 * time.Second),
+			},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  37 * time.Second,
+		},
+		{
+			name: "with both options interleaved with details",
+			args: []interface{}{
+				testErrorDetails1,
+				WithFailureCategory(shared.FailureCategoryStandard),
+				testErrorDetails2,
+				WithNextRetryDelay(19 * time.Second),
+				testErrorDetails3,
+			},
+			expectedDetails:         []interface{}{testErrorDetails1, testErrorDetails2, testErrorDetails3},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  19 * time.Second,
+		},
+		{
+			name: "no options",
+			args: []interface{}{
+				testErrorDetails1,
+				testErrorDetails2,
+				testErrorDetails3,
+			},
+			expectedDetails:         []interface{}{testErrorDetails1, testErrorDetails2, testErrorDetails3},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  0,
+		},
+		{
+			name:                    "no options and no details",
+			args:                    nil,
+			expectedDetails:         nil,
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewCustomError(customErrReasonA, tt.args...)
+
+			require.Equal(t, customErrReasonA, err.Reason())
+			require.Equal(t, tt.expectedFailureCategory, err.GetFailureCategory())
+			require.Equal(t, tt.expectedNextRetryDelay, err.GetNextRetryDelay())
+
+			if len(tt.expectedDetails) == 0 {
+				require.False(t, err.HasDetails())
+				require.Equal(t, ErrNoData, err.Details())
+				return
+			}
+
+			require.True(t, err.HasDetails())
+
+			decodedPtrs := make([]interface{}, 0, len(tt.expectedDetails))
+			for _, expectedDetail := range tt.expectedDetails {
+				decodedPtrs = append(decodedPtrs, reflect.New(reflect.TypeOf(expectedDetail)).Interface())
+			}
+
+			require.NoError(t, err.Details(decodedPtrs...))
+			for i, expectedDetail := range tt.expectedDetails {
+				require.Equal(t, expectedDetail, reflect.ValueOf(decodedPtrs[i]).Elem().Interface())
+			}
+		})
+	}
 }
 
 func Test_CustomError_WrongDecodedType(t *testing.T) {

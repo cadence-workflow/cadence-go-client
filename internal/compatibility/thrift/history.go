@@ -233,6 +233,7 @@ func ActivityTaskFailedEventAttributes(t *apiv1.ActivityTaskFailedEventAttribute
 	return &shared.ActivityTaskFailedEventAttributes{
 		Reason:           FailureReason(t.Failure),
 		Details:          FailureDetails(t.Failure),
+		FailureOptions:   FailureOptions(t.Failure),
 		ScheduledEventId: &t.ScheduledEventId,
 		StartedEventId:   &t.StartedEventId,
 		Identity:         &t.Identity,
@@ -270,6 +271,7 @@ func ActivityTaskStartedEventAttributes(t *apiv1.ActivityTaskStartedEventAttribu
 		Attempt:            &t.Attempt,
 		LastFailureReason:  FailureReason(t.LastFailure),
 		LastFailureDetails: FailureDetails(t.LastFailure),
+		LastFailureOptions: FailureOptions(t.LastFailure),
 	}
 }
 
@@ -284,6 +286,7 @@ func ActivityTaskTimedOutEventAttributes(t *apiv1.ActivityTaskTimedOutEventAttri
 		TimeoutType:        TimeoutType(t.TimeoutType),
 		LastFailureReason:  FailureReason(t.LastFailure),
 		LastFailureDetails: FailureDetails(t.LastFailure),
+		LastFailureOptions: FailureOptions(t.LastFailure),
 	}
 }
 

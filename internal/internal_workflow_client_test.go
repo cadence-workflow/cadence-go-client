@@ -2267,10 +2267,11 @@ func (s *workflowClientTestSuite) TestCompleteActivity() {
 
 			mockRPC: func() {
 				request := &shared.RespondActivityTaskFailedRequest{
-					TaskToken: []byte(taskToken),
-					Reason:    common.StringPtr("some reason"),
-					Details:   []byte("\"some details\"\n"),
-					Identity:  common.StringPtr(identity),
+					TaskToken:      []byte(taskToken),
+					Reason:         common.StringPtr("some reason"),
+					Details:        []byte("\"some details\"\n"),
+					Identity:       common.StringPtr(identity),
+					FailureOptions: &shared.FailureOptions{FailureCategory: shared.FailureCategoryStandard.Ptr()},
 				}
 				s.service.EXPECT().
 					RespondActivityTaskFailed(gomock.Any(), request, gomock.Any()).
@@ -2426,13 +2427,14 @@ func (s *workflowClientTestSuite) TestCompleteActivityByID() {
 
 			mockRPC: func() {
 				request := &shared.RespondActivityTaskFailedByIDRequest{
-					Domain:     common.StringPtr(domain),
-					WorkflowID: common.StringPtr(workflowID),
-					RunID:      common.StringPtr(runID),
-					ActivityID: common.StringPtr(activityID),
-					Reason:     common.StringPtr("some reason"),
-					Details:    []byte("\"some details\"\n"),
-					Identity:   common.StringPtr(identity),
+					Domain:         common.StringPtr(domain),
+					WorkflowID:     common.StringPtr(workflowID),
+					RunID:          common.StringPtr(runID),
+					ActivityID:     common.StringPtr(activityID),
+					Reason:         common.StringPtr("some reason"),
+					Details:        []byte("\"some details\"\n"),
+					Identity:       common.StringPtr(identity),
+					FailureOptions: &shared.FailureOptions{FailureCategory: shared.FailureCategoryStandard.Ptr()},
 				}
 				s.service.EXPECT().
 					RespondActivityTaskFailedByID(gomock.Any(), request, gomock.Any()).

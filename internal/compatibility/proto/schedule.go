@@ -258,14 +258,16 @@ func ScheduleInfo(t *shared.ScheduleInfo) *apiv1.ScheduleInfo {
 		}
 	}
 	return &apiv1.ScheduleInfo{
-		LastRunTime:      unixNanoToTime(t.LastRunTimeNano),
-		NextRunTime:      unixNanoToTime(t.NextRunTimeNano),
-		TotalRuns:        t.GetTotalRuns(),
-		CreateTime:       unixNanoToTime(t.CreateTimeNano),
-		LastUpdateTime:   unixNanoToTime(t.LastUpdateTimeNano),
-		OngoingBackfills: ongoing,
-		MissedRuns:       t.GetMissedRuns(),
-		SkippedRuns:      t.GetSkippedRuns(),
+		LastRunTime:          unixNanoToTime(t.LastRunTimeNano),
+		NextRunTime:          unixNanoToTime(t.NextRunTimeNano),
+		TotalRuns:            t.GetTotalRuns(),
+		CreateTime:           unixNanoToTime(t.CreateTimeNano),
+		LastUpdateTime:       unixNanoToTime(t.LastUpdateTimeNano),
+		OngoingBackfills:     ongoing,
+		MissedRuns:           t.GetMissedRuns(),
+		SkippedRuns:          t.GetSkippedRuns(),
+		BufferedFireCount:    t.GetBufferedFireCount(),
+		RunningWorkflowCount: t.GetRunningWorkflowCount(),
 	}
 }
 

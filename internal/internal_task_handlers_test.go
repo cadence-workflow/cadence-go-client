@@ -1475,35 +1475,6 @@ func (t *TaskHandlersTestSuite) TestHeartBeat_NilResponseWithDomainNotActiveErro
 	t.True(called)
 }
 
-type testActivityDeadline struct {
-	logger *zap.Logger
-	d      time.Duration
-}
-
-func (t *testActivityDeadline) Execute(ctx context.Context, input []byte) ([]byte, error) {
-	if d, _ := ctx.Deadline(); d.IsZero() {
-		panic("invalid deadline provided")
-	}
-	if t.d != 0 {
-		// Wait till deadline expires.
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}
-	return nil, nil
-}
-
-func (t *testActivityDeadline) ActivityType() ActivityType {
-	return ActivityType{Name: "test"}
-}
-
-func (t *testActivityDeadline) GetFunction() interface{} {
-	return t.Execute
-}
-
-func (t *testActivityDeadline) GetOptions() RegisterActivityOptions {
-	return RegisterActivityOptions{}
-}
-
 // a regrettably-hacky func to use goleak to count leaking goroutines.
 // ideally there will be a structured way to do this in the future, rather than string parsing
 func countLeaks(leaks error) int {

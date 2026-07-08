@@ -45,6 +45,25 @@ func Failure(reason *string, details []byte) *apiv1.Failure {
 	}
 }
 
+func FailureWithOptions(reason *string, details []byte, options *shared.FailureOptions) *apiv1.Failure {
+	failure := Failure(reason, details)
+	if failure == nil {
+		return nil
+	}
+	failure.Options = FailureOptions(options)
+	return failure
+}
+
+func FailureOptions(options *shared.FailureOptions) *apiv1.FailureOptions {
+	if options == nil {
+		return nil
+	}
+	return &apiv1.FailureOptions{
+		FailureCategory:   FailureCategory(options.FailureCategory),
+		NextRetryInterval: secondsToDuration(options.NextRetryIntervalSeconds),
+	}
+}
+
 func WorkflowExecution(t *shared.WorkflowExecution) *apiv1.WorkflowExecution {
 	if t == nil {
 		return nil
@@ -474,7 +493,7 @@ func PendingActivityInfo(t *shared.PendingActivityInfo) *apiv1.PendingActivityIn
 		MaximumAttempts:    t.GetMaximumAttempts(),
 		ScheduledTime:      unixNanoToTime(t.ScheduledTimestamp),
 		ExpirationTime:     unixNanoToTime(t.ExpirationTimestamp),
-		LastFailure:        Failure(t.LastFailureReason, t.LastFailureDetails),
+		LastFailure:        FailureWithOptions(t.LastFailureReason, t.LastFailureDetails, t.LastFailureOptions),
 		LastWorkerIdentity: t.GetLastWorkerIdentity(),
 	}
 }

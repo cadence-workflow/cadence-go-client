@@ -1746,7 +1746,16 @@ func TestRespondActivityTaskFailedByIDRequest(t *testing.T) {
 	runFuzzTest(t,
 		thrift.RespondActivityTaskFailedByIDRequest,
 		proto.RespondActivityTaskFailedByIDRequest,
-		FuzzOptions{},
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(req *apiv1.RespondActivityTaskFailedByIDRequest, _ fuzz.Continue) {
+					if req.WorkflowExecution != nil && req.WorkflowExecution.WorkflowId == "" && req.WorkflowExecution.RunId == "" {
+						req.WorkflowExecution = nil
+					}
+				},
+				fuzzFailureWithOptions,
+			},
+		},
 	)
 }
 func TestRespondActivityTaskFailedRequest(t *testing.T) {
@@ -1757,7 +1766,11 @@ func TestRespondActivityTaskFailedRequest(t *testing.T) {
 	runFuzzTest(t,
 		thrift.RespondActivityTaskFailedRequest,
 		proto.RespondActivityTaskFailedRequest,
-		FuzzOptions{},
+		FuzzOptions{
+			CustomFuncs: []any{
+				fuzzFailureWithOptions,
+			},
+		},
 	)
 }
 func TestRespondDecisionTaskCompletedRequest(t *testing.T) {
@@ -3307,6 +3320,26 @@ func TestFailure(t *testing.T) {
 	assert.Equal(t, testdata.FailureReason, *thrift.FailureReason(failure))
 	assert.Equal(t, testdata.FailureDetails, thrift.FailureDetails(failure))
 }
+
+func TestFailureOptions(t *testing.T) {
+	assert.Nil(t, proto.FailureOptions(nil))
+	assert.Nil(t, thrift.FailureOptions(nil))
+	assert.Nil(t, thrift.FailureOptions(&apiv1.Failure{}))
+
+	options := &shared.FailureOptions{
+		FailureCategory:          shared.FailureCategoryFatal.Ptr(),
+		NextRetryIntervalSeconds: common.Int32Ptr(int32(testdata.Duration2.Seconds)),
+	}
+
+	failure := proto.FailureWithOptions(&testdata.FailureReason, testdata.FailureDetails, options)
+	assert.NotNil(t, failure)
+	assert.Equal(t, testdata.FailureReason, *thrift.FailureReason(failure))
+	assert.Equal(t, testdata.FailureDetails, thrift.FailureDetails(failure))
+	assert.Equal(t, apiv1.FailureCategory_FAILURE_CATEGORY_FATAL, failure.GetOptions().GetFailureCategory())
+	assert.Equal(t, testdata.Duration2, failure.GetOptions().GetNextRetryInterval())
+	assert.Equal(t, options, thrift.FailureOptions(failure))
+}
+
 func TestHistoryEvent(t *testing.T) {
 	historyEvents := []*apiv1.HistoryEvent{
 		nil,
@@ -3408,6 +3441,32 @@ func TestListOpenWorkflowExecutionsRequest(t *testing.T) {
 	}
 }
 
+// Thrift doesn't have a Failure type, with reason, details, and options all being separate fields.
+// Several Thrift types that a Failure is mapped into don't support the FailureOptions field.
+func fuzzFailureWithoutOptions(failure *apiv1.Failure, c fuzz.Continue) {
+	c.Fuzz(&failure.Reason)
+	if failure.GetReason() != "" {
+		length := c.Intn(MaxPayloadBytes) + 1
+		failure.Details = make([]byte, length)
+		for i := 0; i < length; i++ {
+			failure.Details[i] = byte(c.Uint32())
+		}
+	}
+	failure.Options = nil
+}
+
+func fuzzFailureWithOptions(failure *apiv1.Failure, c fuzz.Continue) {
+	c.Fuzz(&failure.Reason)
+	if failure.GetReason() != "" {
+		length := c.Intn(MaxPayloadBytes) + 1
+		failure.Details = make([]byte, length)
+		for i := 0; i < length; i++ {
+			failure.Details[i] = byte(c.Uint32())
+		}
+		c.Fuzz(&failure.Options)
+	}
+}
+
 // runFuzzTest provides a more type-safe version of runFuzzTest using generics
 func runFuzzTest[TProto protobuf.Message, TThrift any](
 	t *testing.T,
@@ -3444,6 +3503,18 @@ func runFuzzTest[TProto protobuf.Message, TThrift any](
 			for i := 0; i < length; i++ {
 				p.Data[i] = byte(c.Uint32())
 			}
+		},
+		// Default: keep Failure.Options nil unless a test explicitly overrides this type fuzzer.
+		fuzzFailureWithoutOptions,
+		// Default: constrain FailureCategory to known enum values.
+		func(category *apiv1.FailureCategory, c fuzz.Continue) {
+			validValues := []apiv1.FailureCategory{
+				apiv1.FailureCategory_FAILURE_CATEGORY_INVALID,
+				apiv1.FailureCategory_FAILURE_CATEGORY_POLL,
+				apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD,
+				apiv1.FailureCategory_FAILURE_CATEGORY_FATAL,
+			}
+			*category = validValues[c.Intn(len(validValues))]
 		},
 	}
 

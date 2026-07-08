@@ -174,14 +174,16 @@ func ScheduleInfo(t *apiv1.ScheduleInfo) *shared.ScheduleInfo {
 		return nil
 	}
 	return &shared.ScheduleInfo{
-		LastRunTimeNano:    timeToUnixNano(t.LastRunTime),
-		NextRunTimeNano:    timeToUnixNano(t.NextRunTime),
-		TotalRuns:          common.Int64Ptr(t.TotalRuns),
-		CreateTimeNano:     timeToUnixNano(t.CreateTime),
-		LastUpdateTimeNano: timeToUnixNano(t.LastUpdateTime),
-		OngoingBackfills:   BackfillInfoArray(t.OngoingBackfills),
-		MissedRuns:         common.Int64Ptr(t.MissedRuns),
-		SkippedRuns:        common.Int64Ptr(t.SkippedRuns),
+		LastRunTimeNano:      timeToUnixNano(t.LastRunTime),
+		NextRunTimeNano:      timeToUnixNano(t.NextRunTime),
+		TotalRuns:            common.Int64Ptr(t.TotalRuns),
+		CreateTimeNano:       timeToUnixNano(t.CreateTime),
+		LastUpdateTimeNano:   timeToUnixNano(t.LastUpdateTime),
+		OngoingBackfills:     BackfillInfoArray(t.OngoingBackfills),
+		MissedRuns:           common.Int64Ptr(t.MissedRuns),
+		SkippedRuns:          common.Int64Ptr(t.SkippedRuns),
+		BufferedFireCount:    common.Int64Ptr(t.BufferedFireCount),
+		RunningWorkflowCount: common.Int64Ptr(t.RunningWorkflowCount),
 	}
 }
 

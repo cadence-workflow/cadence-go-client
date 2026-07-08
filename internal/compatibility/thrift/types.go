@@ -62,6 +62,16 @@ func FailureDetails(failure *apiv1.Failure) []byte {
 	return failure.Details
 }
 
+func FailureOptions(failure *apiv1.Failure) *shared.FailureOptions {
+	if failure == nil || failure.Options == nil {
+		return nil
+	}
+	return &shared.FailureOptions{
+		FailureCategory:          FailureCategory(failure.Options.GetFailureCategory()),
+		NextRetryIntervalSeconds: durationToSeconds(failure.Options.GetNextRetryInterval()),
+	}
+}
+
 func WorkflowExecution(t *apiv1.WorkflowExecution) *shared.WorkflowExecution {
 	if t == nil {
 		return nil
@@ -490,6 +500,7 @@ func PendingActivityInfo(t *apiv1.PendingActivityInfo) *shared.PendingActivityIn
 		ExpirationTimestamp:    timeToUnixNano(t.ExpirationTime),
 		LastFailureReason:      FailureReason(t.LastFailure),
 		LastFailureDetails:     FailureDetails(t.LastFailure),
+		LastFailureOptions:     FailureOptions(t.LastFailure),
 		LastWorkerIdentity:     &t.LastWorkerIdentity,
 	}
 }

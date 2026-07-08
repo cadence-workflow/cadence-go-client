@@ -205,10 +205,16 @@ func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivit
 		logger.Warn("Activity timeout.")
 		return nil, ctx.Err()
 	}
-	if err != nil && err != ErrActivityResultPending {
+	if err != nil && err != ErrActivityResultPending && !isFailureCategoryPoll(err) {
 		logger.Error("Activity error.", zap.Error(err))
 	}
 	return convertActivityResultToRespondRequest(ath.identity, t.TaskToken, output, err, ath.dataConverter), nil
+}
+
+// errors with a FailureCategory of Poll indicate an expected failure. We don't log them as an activity error
+func isFailureCategoryPoll(err error) bool {
+	asCustom, ok := err.(*CustomError)
+	return ok && asCustom.GetFailureCategory() == s.FailureCategoryPoll
 }
 
 func (ath *activityTaskHandlerImpl) getActivity(name string) activity {

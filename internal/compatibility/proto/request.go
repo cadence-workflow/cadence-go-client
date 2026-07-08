@@ -329,8 +329,9 @@ func RespondActivityTaskFailedByIDRequest(t *shared.RespondActivityTaskFailedByI
 		Domain:            t.GetDomain(),
 		WorkflowExecution: WorkflowRunPair(t.GetWorkflowID(), t.GetRunID()),
 		ActivityId:        t.GetActivityID(),
-		Failure:           Failure(t.Reason, t.Details),
+		Failure:           FailureWithOptions(t.Reason, t.Details, t.FailureOptions),
 		Identity:          t.GetIdentity(),
+		HeartbeatDetails:  Payload(t.HeartbeatDetails),
 	}
 }
 
@@ -339,9 +340,10 @@ func RespondActivityTaskFailedRequest(t *shared.RespondActivityTaskFailedRequest
 		return nil
 	}
 	return &apiv1.RespondActivityTaskFailedRequest{
-		TaskToken: t.TaskToken,
-		Failure:   Failure(t.Reason, t.Details),
-		Identity:  t.GetIdentity(),
+		TaskToken:        t.TaskToken,
+		Failure:          FailureWithOptions(t.Reason, t.Details, t.FailureOptions),
+		Identity:         t.GetIdentity(),
+		HeartbeatDetails: Payload(t.HeartbeatDetails),
 	}
 }
 
