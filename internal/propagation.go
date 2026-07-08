@@ -38,6 +38,7 @@ const (
 	tagCadenceActivityType = "cadenceActivityType"
 	tagCadenceWorkflowID   = "cadenceWorkflowID"
 	tagCadenceRunID        = "cadenceRunID"
+	tagCadenceIsCron       = "cadenceIsCron"
 )
 
 // createOpenTracingWorkflowSpan creates a new context with a workflow started span
@@ -46,9 +47,11 @@ func createOpenTracingWorkflowSpan(
 	tracer opentracing.Tracer,
 	start time.Time,
 	workflowType, workflowID string,
+	isCron bool,
 ) (context.Context, opentracing.Span) {
 	tags := opentracing.Tags{
 		tagCadenceWorkflowID: workflowID,
+		tagCadenceIsCron:     isCron,
 	}
 	var parent opentracing.SpanContext
 	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {

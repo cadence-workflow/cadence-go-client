@@ -5,10 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
+	"go.uber.org/cadence/.gen/go/shared"
+	"go.uber.org/cadence/internal/common"
 )
 
 func TestStartOpenTracingSpan_NoopTracer_DoesNotWrapContext(t *testing.T) {
@@ -53,7 +58,7 @@ func TestCreateOpenTracingWorkflowSpan_NoopTracer(t *testing.T) {
 	ctx := context.Background()
 	tracer := opentracing.NoopTracer{}
 
-	returnedCtx, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id")
+	returnedCtx, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id", true)
 
 	assert.NotNil(t, span)
 	assert.Nil(t, opentracing.SpanFromContext(returnedCtx))
@@ -65,7 +70,7 @@ func TestCreateOpenTracingWorkflowSpan_WithActiveSpan(t *testing.T) {
 	parentSpan := tracer.StartSpan("parent")
 	ctx := opentracing.ContextWithSpan(context.Background(), parentSpan)
 
-	returnedCtx, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id")
+	returnedCtx, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id", true)
 
 	require.NotNil(t, span)
 	assert.NotNil(t, opentracing.SpanFromContext(returnedCtx))
@@ -79,7 +84,7 @@ func TestCreateOpenTracingWorkflowSpan_WithSpanContextKey(t *testing.T) {
 	parentSpan := tracer.StartSpan("parent")
 	ctx := context.WithValue(context.Background(), activeSpanContextKey, parentSpan.Context())
 
-	_, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id")
+	_, span := createOpenTracingWorkflowSpan(ctx, tracer, time.Now(), "test-workflow", "wf-id", true)
 
 	require.NotNil(t, span)
 	ms := span.(*mocktracer.MockSpan)
@@ -122,4 +127,67 @@ func TestCreateOpenTracingSpanFromHeaders_IgnoresActiveSpan(t *testing.T) {
 	require.NotNil(t, span)
 	ms := span.(*mocktracer.MockSpan)
 	assert.Equal(t, 0, ms.ParentID, "should not use active span as parent — only uses activeSpanContextKey")
+}
+
+// TestStartWorkflowCronTagPropagation verifies end-to-end that starting a
+// workflow records the cadenceIsCron span tag on the tracer, reflecting whether
+// a cron schedule was configured on the start options.
+func TestStartWorkflowCronTagPropagation(t *testing.T) {
+	tests := []struct {
+		name           string
+		cronSchedule   string
+		expectedIsCron bool
+	}{
+		{
+			name:           "cron workflow sets tag to true",
+			cronSchedule:   "* * * * *",
+			expectedIsCron: true,
+		},
+		{
+			name:           "non-cron workflow sets tag to false",
+			cronSchedule:   "",
+			expectedIsCron: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+
+			service := workflowservicetest.NewMockClient(mockCtrl)
+			tracer := mocktracer.New()
+			client := NewClient(service, domain, &ClientOptions{
+				Identity: identity,
+				Tracer:   tracer,
+			})
+
+			service.EXPECT().
+				StartWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&shared.StartWorkflowExecutionResponse{RunId: common.StringPtr(runID)}, nil).
+				Times(1)
+
+			options := StartWorkflowOptions{
+				ID:                              workflowID,
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    timeoutInSeconds,
+				DecisionTaskStartToCloseTimeout: timeoutInSeconds,
+				CronSchedule:                    tt.cronSchedule,
+			}
+			f1 := func(ctx Context, r []byte) string { return "result" }
+
+			resp, err := client.StartWorkflow(context.Background(), options, f1, []byte("test"))
+			require.NoError(t, err)
+			require.Equal(t, runID, resp.RunID)
+
+			finished := tracer.FinishedSpans()
+			require.Len(t, finished, 1, "starting a workflow should produce exactly one span")
+			span := finished[0]
+
+			require.Equal(t, tt.expectedIsCron, span.Tag(tagCadenceIsCron),
+				"cadenceIsCron tag should reflect the cron schedule")
+			require.Equal(t, workflowID, span.Tag(tagCadenceWorkflowID))
+		})
+	}
 }

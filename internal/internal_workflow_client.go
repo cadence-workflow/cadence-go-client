@@ -1139,7 +1139,7 @@ func (wc *workflowClient) getWorkflowStartRequest(
 	// workflow start span and passing in that context to the workflow. So
 	// everything beginning with the StartWorkflowExecutionRequest will be
 	// parented by the created start workflow span.
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID, options.CronSchedule != "")
 	span.Finish()
 
 	// get workflow headers from the context
@@ -1247,7 +1247,7 @@ func (wc *workflowClient) getSignalWithStartRequest(
 	}
 
 	// create a workflow start span and attach it to the context object. finish it immediately
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID, options.CronSchedule != "")
 	span.Finish()
 
 	// get workflow headers from the context
