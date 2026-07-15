@@ -325,6 +325,8 @@ func TestActivityOutcome(t *testing.T) {
 		want   string
 	}{
 		{"classifies error", &s.RespondActivityTaskCompletedRequest{}, assert.AnError, "failed_to_report"},
+		{"classifies deadline exceeded as timeout", nil, context.DeadlineExceeded, "timeout"},
+		{"classifies wrapped deadline exceeded as failed_to_report", nil, fmt.Errorf("wrapped: %w", context.DeadlineExceeded), "failed_to_report"},
 		{"classifies pending", ErrActivityResultPending, nil, "pending"},
 		{"classifies completed", &s.RespondActivityTaskCompletedRequest{}, nil, "succeeded"},
 		{"classifies canceled", &s.RespondActivityTaskCanceledRequest{}, nil, "canceled"},

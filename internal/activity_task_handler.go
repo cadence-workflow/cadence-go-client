@@ -233,6 +233,8 @@ func (ath *activityTaskHandlerImpl) getRegisteredActivityNames() (activityNames 
 // activityOutcome classifies the values Execute returns
 func activityOutcome(result interface{}, err error) string {
 	switch {
+	case err == context.DeadlineExceeded:
+		return "timeout"
 	case err != nil:
 		return "failed_to_report"
 	case result == ErrActivityResultPending:

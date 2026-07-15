@@ -298,9 +298,7 @@ type (
 
 		// Optional: Enable logging of activity lifecycle events.
 		// When enabled, the worker logs a message when each activity attempt starts and when it ends,
-		// including the outcome (succeeded / failed / canceled / pending / failed_to_report).
-		// All messages are tagged with ActivityID, ActivityType, Attempt, WorkflowID,
-		// RunID, WorkflowType and Domain.
+		// including the outcome (succeeded / failed / canceled / timeout / pending / failed_to_report).
 		// default: false
 		EnableActivityLifecycleLogging bool
 
