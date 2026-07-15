@@ -39,21 +39,22 @@ import (
 type (
 	// activityTaskHandlerImpl is the implementation of ActivityTaskHandler
 	activityTaskHandlerImpl struct {
-		clock              clockwork.Clock
-		taskListName       string
-		identity           string
-		service            workflowserviceclient.Interface
-		metricsScope       *metrics.TaggedScope
-		logger             *zap.Logger
-		userContext        context.Context
-		registry           *registry
-		activityProvider   activityProvider
-		dataConverter      DataConverter
-		workerStopCh       <-chan struct{}
-		contextPropagators []ContextPropagator
-		tracer             opentracing.Tracer
-		featureFlags       FeatureFlags
-		activityTracker    debug.ActivityTracker
+		clock                  clockwork.Clock
+		taskListName           string
+		identity               string
+		service                workflowserviceclient.Interface
+		metricsScope           *metrics.TaggedScope
+		logger                 *zap.Logger
+		userContext            context.Context
+		registry               *registry
+		activityProvider       activityProvider
+		dataConverter          DataConverter
+		workerStopCh           <-chan struct{}
+		contextPropagators     []ContextPropagator
+		tracer                 opentracing.Tracer
+		featureFlags           FeatureFlags
+		activityTracker        debug.ActivityTracker
+		enableLifecycleLogging bool
 	}
 )
 
@@ -79,32 +80,49 @@ func newActivityTaskHandlerWithCustomProvider(
 		params.WorkerStats.ActivityTracker = debug.NewNoopActivityTracker()
 	}
 	return &activityTaskHandlerImpl{
-		clock:              clock,
-		taskListName:       params.TaskList.GetName(),
-		identity:           params.Identity,
-		service:            service,
-		logger:             params.Logger,
-		metricsScope:       metrics.NewTaggedScope(params.MetricsScope),
-		userContext:        params.UserContext,
-		registry:           registry,
-		activityProvider:   activityProvider,
-		dataConverter:      params.DataConverter,
-		workerStopCh:       params.WorkerStopChannel,
-		contextPropagators: params.ContextPropagators,
-		tracer:             params.Tracer,
-		featureFlags:       params.FeatureFlags,
-		activityTracker:    params.WorkerStats.ActivityTracker,
+		clock:                  clock,
+		taskListName:           params.TaskList.GetName(),
+		identity:               params.Identity,
+		service:                service,
+		logger:                 params.Logger,
+		metricsScope:           metrics.NewTaggedScope(params.MetricsScope),
+		userContext:            params.UserContext,
+		registry:               registry,
+		activityProvider:       activityProvider,
+		dataConverter:          params.DataConverter,
+		workerStopCh:           params.WorkerStopChannel,
+		contextPropagators:     params.ContextPropagators,
+		tracer:                 params.Tracer,
+		featureFlags:           params.FeatureFlags,
+		activityTracker:        params.WorkerStats.ActivityTracker,
+		enableLifecycleLogging: params.EnableActivityLifecycleLogging,
 	}
 }
 
 // Execute executes an implementation of the activity.
 func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivityTaskResponse) (result interface{}, err error) {
+	logger := ath.logger.With(
+		zap.String(tagWorkflowID, t.GetWorkflowExecution().GetWorkflowId()),
+		zap.String(tagWorkflowType, t.GetWorkflowType().GetName()),
+		zap.String(tagRunID, t.GetWorkflowExecution().GetRunId()),
+		zap.String(tagActivityID, t.GetActivityId()),
+		zap.String(tagActivityType, t.GetActivityType().GetName()),
+		zap.Int32(tagAttempt, t.GetAttempt()),
+	)
 	traceLog(func() {
-		ath.logger.Debug("Processing new activity task",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, t.ActivityType.GetName()))
+		logger.Debug("Processing new activity task")
 	})
+
+	if ath.enableLifecycleLogging {
+		logger.Info("Activity started.")
+		defer func() {
+			fields := []zap.Field{zap.String(tagActivityOutcome, activityOutcome(result, err))}
+			if err != nil {
+				fields = append(fields, zap.Error(err))
+			}
+			logger.Info("Activity completed.", fields...)
+		}()
+	}
 
 	rootCtx := ath.userContext
 	if rootCtx == nil {
@@ -136,10 +154,7 @@ func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivit
 		if p := recover(); p != nil {
 			topLine := fmt.Sprintf("activity for %s [panic]:", ath.taskListName)
 			st := getStackTraceRaw(topLine, 7, 0)
-			ath.logger.Error("Activity panic.",
-				zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-				zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-				zap.String(tagActivityType, activityType),
+			logger.Error("Activity panic.",
 				zap.String(tagPanicError, fmt.Sprintf("%v", p)),
 				zap.String(tagPanicStack, st))
 			metricsScope.Counter(metrics.ActivityTaskPanicCounter).Inc(1)
@@ -187,20 +202,11 @@ func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivit
 
 	dlCancelFunc()
 	if <-ctx.Done(); ctx.Err() == context.DeadlineExceeded {
-		ath.logger.Warn("Activity timeout.",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, activityType),
-		)
+		logger.Warn("Activity timeout.")
 		return nil, ctx.Err()
 	}
 	if err != nil && err != ErrActivityResultPending {
-		ath.logger.Error("Activity error.",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, activityType),
-			zap.Error(err),
-		)
+		logger.Error("Activity error.", zap.Error(err))
 	}
 	return convertActivityResultToRespondRequest(ath.identity, t.TaskToken, output, err, ath.dataConverter), nil
 }
@@ -222,4 +228,24 @@ func (ath *activityTaskHandlerImpl) getRegisteredActivityNames() (activityNames 
 		activityNames = append(activityNames, a.ActivityType().Name)
 	}
 	return
+}
+
+// activityOutcome classifies the values Execute returns
+func activityOutcome(result interface{}, err error) string {
+	switch {
+	case err != nil:
+		return "failed_to_report"
+	case result == ErrActivityResultPending:
+		return "pending"
+	}
+	switch result.(type) {
+	case *s.RespondActivityTaskCompletedRequest:
+		return "succeeded"
+	case *s.RespondActivityTaskCanceledRequest:
+		return "canceled"
+	case *s.RespondActivityTaskFailedRequest:
+		return "failed"
+	default:
+		return "unknown"
+	}
 }

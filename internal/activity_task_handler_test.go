@@ -317,6 +317,28 @@ func TestActivityTaskHandler_Execute_with_auto_heartbeat(t *testing.T) {
 	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest but of type %T", res)
 }
 
+func TestActivityOutcome(t *testing.T) {
+	tests := []struct {
+		name   string
+		result interface{}
+		err    error
+		want   string
+	}{
+		{"classifies error", &s.RespondActivityTaskCompletedRequest{}, assert.AnError, "failed_to_report"},
+		{"classifies pending", ErrActivityResultPending, nil, "pending"},
+		{"classifies completed", &s.RespondActivityTaskCompletedRequest{}, nil, "succeeded"},
+		{"classifies canceled", &s.RespondActivityTaskCanceledRequest{}, nil, "canceled"},
+		{"classifies failed", &s.RespondActivityTaskFailedRequest{}, nil, "failed"},
+		{"classifies unrecognized result as unknown", "surprise", nil, "unknown"},
+		{"classifies nil result as unknown", nil, nil, "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, activityOutcome(tt.result, tt.err))
+		})
+	}
+}
+
 func activityWithWorkerStop(ctx context.Context) error {
 	fmt.Println("Executing Activity with worker stop")
 	workerStopCh := GetWorkerStopChannel(ctx)
