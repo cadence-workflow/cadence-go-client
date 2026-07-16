@@ -95,7 +95,7 @@ func newActivityTaskHandlerWithCustomProvider(
 		tracer:                 params.Tracer,
 		featureFlags:           params.FeatureFlags,
 		activityTracker:        params.WorkerStats.ActivityTracker,
-		enableLifecycleLogging: params.EnableActivityLifecycleLogging,
+		enableLifecycleLogging: params.EnableWorkflowLifecycleLogging,
 	}
 }
 
