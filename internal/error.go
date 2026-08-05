@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/util"
@@ -89,9 +90,14 @@ That decision task will be retried at a later time (with exponential backoff ret
 type (
 	// CustomError returned from workflow and activity implementations with reason and optional details.
 	CustomError struct {
-		reason  string
-		details Values
+		reason          string
+		details         Values
+		failureCategory *shared.FailureCategory
+		nextRetryDelay  time.Duration
 	}
+
+	// CustomErrorOption defines and additional option that can be specified on a CustomError
+	CustomErrorOption func(customError *CustomError)
 
 	// GenericError returned from workflow/workflow when the implementations return errors other than from NewCustomError() API.
 	GenericError struct {
@@ -220,8 +226,34 @@ func NewCustomError(reason string, details ...interface{}) *CustomError {
 			return &CustomError{reason: reason, details: d}
 		}
 	}
-	// When create error for server, use ErrorDetailsValues as details to hold values and encode later
-	return &CustomError{reason: reason, details: ErrorDetailsValues(details)}
+	if details == nil {
+		// details must be a valid implementation of Values, so we use a typed-nil
+		return &CustomError{reason: reason, details: ErrorDetailsValues(nil)}
+	}
+	customError := &CustomError{reason: reason}
+	// CustomErrorOptions get immediately applied, everything else goes to the ErrorDetailsValues
+	detailsValues := make(ErrorDetailsValues, 0, len(details))
+	for _, detail := range details {
+		if asOption, ok := detail.(CustomErrorOption); ok {
+			asOption(customError)
+			continue
+		}
+		detailsValues = append(detailsValues, detail)
+	}
+	customError.details = detailsValues
+	return customError
+}
+
+func WithFailureCategory(failureCategory shared.FailureCategory) CustomErrorOption {
+	return func(customError *CustomError) {
+		customError.failureCategory = failureCategory.Ptr()
+	}
+}
+
+func WithNextRetryDelay(delay time.Duration) CustomErrorOption {
+	return func(customError *CustomError) {
+		customError.nextRetryDelay = delay
+	}
 }
 
 // NewTimeoutError creates TimeoutError instance.
@@ -319,6 +351,17 @@ func (e *CustomError) Details(d ...interface{}) error {
 		return ErrNoData
 	}
 	return e.details.Get(d...)
+}
+
+func (e *CustomError) GetFailureCategory() shared.FailureCategory {
+	if e.failureCategory == nil {
+		return shared.FailureCategoryStandard
+	}
+	return *e.failureCategory
+}
+
+func (e *CustomError) GetNextRetryDelay() time.Duration {
+	return e.nextRetryDelay
 }
 
 // Error from error interface

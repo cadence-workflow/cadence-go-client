@@ -329,13 +329,15 @@ func RespondActivityTaskFailedByIDRequest(t *apiv1.RespondActivityTaskFailedByID
 		return nil
 	}
 	return &shared.RespondActivityTaskFailedByIDRequest{
-		Domain:     &t.Domain,
-		WorkflowID: WorkflowID(t.WorkflowExecution),
-		RunID:      RunID(t.WorkflowExecution),
-		ActivityID: &t.ActivityId,
-		Reason:     FailureReason(t.Failure),
-		Details:    FailureDetails(t.Failure),
-		Identity:   &t.Identity,
+		Domain:           &t.Domain,
+		WorkflowID:       WorkflowID(t.WorkflowExecution),
+		RunID:            RunID(t.WorkflowExecution),
+		ActivityID:       &t.ActivityId,
+		Reason:           FailureReason(t.Failure),
+		Details:          FailureDetails(t.Failure),
+		FailureOptions:   FailureOptions(t.Failure),
+		Identity:         &t.Identity,
+		HeartbeatDetails: Payload(t.HeartbeatDetails),
 	}
 }
 
@@ -344,10 +346,12 @@ func RespondActivityTaskFailedRequest(t *apiv1.RespondActivityTaskFailedRequest)
 		return nil
 	}
 	return &shared.RespondActivityTaskFailedRequest{
-		TaskToken: t.TaskToken,
-		Reason:    FailureReason(t.Failure),
-		Details:   FailureDetails(t.Failure),
-		Identity:  &t.Identity,
+		TaskToken:        t.TaskToken,
+		Reason:           FailureReason(t.Failure),
+		Details:          FailureDetails(t.Failure),
+		FailureOptions:   FailureOptions(t.Failure),
+		Identity:         &t.Identity,
+		HeartbeatDetails: Payload(t.HeartbeatDetails),
 	}
 }
 

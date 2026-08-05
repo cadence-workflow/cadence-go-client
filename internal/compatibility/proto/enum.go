@@ -423,3 +423,18 @@ func FailoverType(t *shared.FailoverType) apiv1.FailoverType {
 	}
 	return apiv1.FailoverType_FAILOVER_TYPE_INVALID
 }
+
+func FailureCategory(t *shared.FailureCategory) apiv1.FailureCategory {
+	if t == nil {
+		return apiv1.FailureCategory_FAILURE_CATEGORY_INVALID
+	}
+	switch *t {
+	case shared.FailureCategoryPoll:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_POLL
+	case shared.FailureCategoryStandard:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD
+	case shared.FailureCategoryFatal:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_FATAL
+	}
+	return apiv1.FailureCategory_FAILURE_CATEGORY_INVALID
+}

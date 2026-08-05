@@ -358,3 +358,15 @@ func TestFailoverType(t *testing.T) {
 	}
 	assert.Equal(t, apiv1.FailoverType_FAILOVER_TYPE_INVALID, proto.FailoverType(thrift.FailoverType(999)))
 }
+
+func TestFailureCategory(t *testing.T) {
+	for _, v := range []apiv1.FailureCategory{
+		apiv1.FailureCategory_FAILURE_CATEGORY_INVALID,
+		apiv1.FailureCategory_FAILURE_CATEGORY_POLL,
+		apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD,
+		apiv1.FailureCategory_FAILURE_CATEGORY_FATAL,
+	} {
+		assert.Equal(t, v, proto.FailureCategory(thrift.FailureCategory(v)))
+	}
+	assert.Equal(t, apiv1.FailureCategory_FAILURE_CATEGORY_INVALID, proto.FailureCategory(thrift.FailureCategory(999)))
+}

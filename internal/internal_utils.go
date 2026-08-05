@@ -318,6 +318,16 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	}
 }
 
+func getFailureOptions(err error) *s.FailureOptions {
+	if asCustom, ok := err.(*CustomError); ok {
+		return &s.FailureOptions{
+			FailureCategory:          asCustom.GetFailureCategory().Ptr(),
+			NextRetryIntervalSeconds: durationToThriftSeconds(asCustom.GetNextRetryDelay()),
+		}
+	}
+	return nil
+}
+
 // constructError construct error from reason and details sending down from server.
 func constructError(reason string, details []byte, dataConverter DataConverter) error {
 	if strings.HasPrefix(reason, errReasonTimeout) {

@@ -1449,10 +1449,12 @@ func convertActivityResultToRespondRequest(identity string, taskToken, result []
 	}
 
 	return &s.RespondActivityTaskFailedRequest{
-		TaskToken: taskToken,
-		Reason:    common.StringPtr(reason),
-		Details:   details,
-		Identity:  common.StringPtr(identity)}
+		TaskToken:      taskToken,
+		Reason:         common.StringPtr(reason),
+		Details:        details,
+		Identity:       common.StringPtr(identity),
+		FailureOptions: getFailureOptions(err),
+	}
 }
 
 func convertActivityResultToRespondRequestByID(identity, domain, workflowID, runID, activityID string,
@@ -1485,11 +1487,13 @@ func convertActivityResultToRespondRequestByID(identity, domain, workflowID, run
 	}
 
 	return &s.RespondActivityTaskFailedByIDRequest{
-		Domain:     common.StringPtr(domain),
-		WorkflowID: common.StringPtr(workflowID),
-		RunID:      common.StringPtr(runID),
-		ActivityID: common.StringPtr(activityID),
-		Reason:     common.StringPtr(reason),
-		Details:    details,
-		Identity:   common.StringPtr(identity)}
+		Domain:         common.StringPtr(domain),
+		WorkflowID:     common.StringPtr(workflowID),
+		RunID:          common.StringPtr(runID),
+		ActivityID:     common.StringPtr(activityID),
+		Reason:         common.StringPtr(reason),
+		Details:        details,
+		Identity:       common.StringPtr(identity),
+		FailureOptions: getFailureOptions(err),
+	}
 }

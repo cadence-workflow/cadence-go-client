@@ -44,7 +44,14 @@ import (
 
 func TestActivityTaskHandler_Execute_deadline(t *testing.T) {
 	now := time.Now()
-	deadlineTests := []deadlineTest{
+	deadlineTests := []struct {
+		actWaitDuration  time.Duration
+		ScheduleTS       time.Time
+		ScheduleDuration int32
+		StartTS          time.Time
+		StartDuration    int32
+		err              error
+	}{
 		{time.Duration(0), now, 3, now, 3, nil},
 		{time.Duration(0), now, 4, now, 3, nil},
 		{time.Duration(0), now, 3, now, 4, nil},
@@ -58,29 +65,24 @@ func TestActivityTaskHandler_Execute_deadline(t *testing.T) {
 
 	for i, d := range deadlineTests {
 		t.Run(fmt.Sprintf("testIndex: %v, testDetails: %v", i, d), func(t *testing.T) {
-			logger := testlogger.NewZap(t)
-			a := &testActivityDeadline{logger: logger}
-			registry := newRegistry()
-			registry.addActivityWithLock(a.ActivityType().Name, a)
-
-			mockCtrl := gomock.NewController(t)
-			mockService := workflowservicetest.NewMockClient(mockCtrl)
-			a.d = d.actWaitDuration
-			wep := workerExecutionParameters{
-				WorkerOptions: WorkerOptions{
-					Logger:        logger,
-					DataConverter: getDefaultDataConverter(),
-					Tracer:        opentracing.NoopTracer{},
-				},
+			activityDefn := func(ctx context.Context) error {
+				if deadline, _ := ctx.Deadline(); deadline.IsZero() {
+					panic("invalid deadline provided")
+				}
+				if d.actWaitDuration != 0 {
+					// Wait till deadline expires.
+					<-ctx.Done()
+					return ctx.Err()
+				}
+				return nil
 			}
-			ensureRequiredParams(&wep)
-			activityHandler := newActivityTaskHandler(mockService, wep, registry)
+			activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityDefn)
 			pats := &s.PollForActivityTaskResponse{
 				TaskToken: []byte("token"),
 				WorkflowExecution: &s.WorkflowExecution{
 					WorkflowId: common.StringPtr("wID"),
 					RunId:      common.StringPtr("rID")},
-				ActivityType:                    &s.ActivityType{Name: common.StringPtr("test")},
+				ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityType")},
 				ActivityId:                      common.StringPtr(uuid.New()),
 				ScheduledTimestamp:              common.Int64Ptr(d.ScheduleTS.UnixNano()),
 				ScheduledTimestampOfThisAttempt: common.Int64Ptr(d.ScheduleTS.UnixNano()),
@@ -103,60 +105,38 @@ func TestActivityTaskHandler_Execute_deadline(t *testing.T) {
 }
 
 func TestActivityTaskHandler_Execute_worker_stop(t *testing.T) {
-	logger := testlogger.NewZap(t)
-
-	a := &testActivityDeadline{logger: logger}
-	registry := newRegistry()
-	registry.RegisterActivityWithOptions(
-		activityWithWorkerStop,
-		RegisterActivityOptions{Name: a.ActivityType().Name, DisableAlreadyRegisteredCheck: true},
-	)
-
-	now := time.Now()
-
-	mockCtrl := gomock.NewController(t)
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
 	workerStopCh := make(chan struct{}, 1)
 	ctx, cancel := context.WithCancel(context.Background())
+	activityDefn := func(ctx context.Context) error {
+		workerStopCh := GetWorkerStopChannel(ctx)
+
+		select {
+		case <-workerStopCh:
+			return nil
+		case <-time.NewTimer(time.Second * 5).C:
+			return fmt.Errorf("Activity failed to handle worker stop event")
+		}
+	}
+
 	wep := workerExecutionParameters{
 		WorkerOptions: WorkerOptions{
-			Logger:        logger,
 			DataConverter: getDefaultDataConverter(),
 		},
 		UserContext:       ctx,
 		UserContextCancel: cancel,
 		WorkerStopChannel: workerStopCh,
 	}
-	activityHandler := newActivityTaskHandler(mockService, wep, registry)
-	pats := &s.PollForActivityTaskResponse{
-		TaskToken: []byte("token"),
-		WorkflowExecution: &s.WorkflowExecution{
-			WorkflowId: common.StringPtr("wID"),
-			RunId:      common.StringPtr("rID")},
-		ActivityType:                    &s.ActivityType{Name: common.StringPtr("test")},
-		ActivityId:                      common.StringPtr(uuid.New()),
-		ScheduledTimestamp:              common.Int64Ptr(now.UnixNano()),
-		ScheduledTimestampOfThisAttempt: common.Int64Ptr(now.UnixNano()),
-		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
-		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
-		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
-		Attempt:                         common.Int32Ptr(0),
-		WorkflowType: &s.WorkflowType{
-			Name: common.StringPtr("wType"),
-		},
-		WorkflowDomain: common.StringPtr("domain"),
-	}
+	activityHandler := newHandlerForTest(t, wep, activityDefn)
+	pats := createBasicPollForActivityTaskResponse()
+
 	close(workerStopCh)
 	r, err := activityHandler.Execute(tasklist, pats)
+
 	assert.NoError(t, err)
 	assert.NotNil(t, r)
 }
 
 func TestActivityTaskHandler_Execute_with_propagators(t *testing.T) {
-	logger := testlogger.NewZap(t)
-
-	now := time.Now()
-
 	testKey, testValue := testHeader, "test_value"
 
 	// inline activity using value passing through user context.
@@ -167,44 +147,20 @@ func TestActivityTaskHandler_Execute_with_propagators(t *testing.T) {
 		}
 		return "", errors.New("value not found from ctx")
 	}
-	registry := newRegistry()
-	err := registry.registerActivityFunction(activityWithUserContext, RegisterActivityOptions{Name: "activityWithUserContext"})
-	require.NoError(t, err)
-
-	mockCtrl := gomock.NewController(t)
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
 	wep := workerExecutionParameters{
 		WorkerOptions: WorkerOptions{
-			Logger:             logger,
-			DataConverter:      getDefaultDataConverter(),
-			Tracer:             opentracing.NoopTracer{},
 			ContextPropagators: []ContextPropagator{NewStringMapPropagator([]string{testHeader})},
 		},
 	}
-	ensureRequiredParams(&wep)
-	activityHandler := newActivityTaskHandler(mockService, wep, registry)
-	pats := &s.PollForActivityTaskResponse{
-		TaskToken: []byte("token"),
-		WorkflowExecution: &s.WorkflowExecution{
-			WorkflowId: common.StringPtr("wID"),
-			RunId:      common.StringPtr("rID")},
-		ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityWithUserContext")},
-		ActivityId:                      common.StringPtr(uuid.New()),
-		ScheduledTimestamp:              common.Int64Ptr(now.UnixNano()),
-		ScheduledTimestampOfThisAttempt: common.Int64Ptr(now.UnixNano()),
-		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
-		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
-		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
-		Attempt:                         common.Int32Ptr(0),
-		WorkflowType: &s.WorkflowType{
-			Name: common.StringPtr("wType"),
-		},
-		WorkflowDomain: common.StringPtr("domain"),
-		Header: &s.Header{
-			Fields: map[string][]byte{testHeader: []byte(testValue)},
-		},
+	activityHandler := newHandlerForTest(t, wep, activityWithUserContext)
+
+	pats := createBasicPollForActivityTaskResponse()
+	pats.Header = &s.Header{
+		Fields: map[string][]byte{testHeader: []byte(testValue)},
 	}
+
 	res, err := activityHandler.Execute(tasklist, pats)
+
 	require.NoError(t, err)
 	response, ok := res.(*s.RespondActivityTaskCompletedRequest)
 	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest")
@@ -212,57 +168,26 @@ func TestActivityTaskHandler_Execute_with_propagators(t *testing.T) {
 }
 
 func TestActivityTaskHandler_Execute_with_propagator_failure(t *testing.T) {
-	logger := testlogger.NewZap(t)
-
-	now := time.Now()
-
 	// inline activity using value passing through user context.
 	activityWithUserContext := func(ctx context.Context) (string, error) {
 		return "", nil
 	}
-	registry := newRegistry()
-	err := registry.registerActivityFunction(activityWithUserContext, RegisterActivityOptions{Name: "activityWithUserContext"})
-	require.NoError(t, err)
-
-	mockCtrl := gomock.NewController(t)
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
 	wep := workerExecutionParameters{
 		WorkerOptions: WorkerOptions{
-			Logger:             logger,
 			DataConverter:      getDefaultDataConverter(),
 			Tracer:             opentracing.NoopTracer{},
 			ContextPropagators: []ContextPropagator{failingContextPropagator{err: assert.AnError}},
 		},
 	}
-	ensureRequiredParams(&wep)
-	activityHandler := newActivityTaskHandler(mockService, wep, registry)
-	pats := &s.PollForActivityTaskResponse{
-		TaskToken: []byte("token"),
-		WorkflowExecution: &s.WorkflowExecution{
-			WorkflowId: common.StringPtr("wID"),
-			RunId:      common.StringPtr("rID")},
-		ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityWithUserContext")},
-		ActivityId:                      common.StringPtr(uuid.New()),
-		ScheduledTimestamp:              common.Int64Ptr(now.UnixNano()),
-		ScheduledTimestampOfThisAttempt: common.Int64Ptr(now.UnixNano()),
-		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
-		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
-		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
-		Attempt:                         common.Int32Ptr(0),
-		WorkflowType: &s.WorkflowType{
-			Name: common.StringPtr("wType"),
-		},
-		WorkflowDomain: common.StringPtr("domain"),
-	}
-	_, err = activityHandler.Execute(tasklist, pats)
+	activityHandler := newHandlerForTest(t, wep, activityWithUserContext)
+
+	pats := createBasicPollForActivityTaskResponse()
+
+	_, err := activityHandler.Execute(tasklist, pats)
 	assert.ErrorIs(t, err, assert.AnError)
 }
 
 func TestActivityTaskHandler_Execute_with_auto_heartbeat(t *testing.T) {
-	logger := testlogger.NewZap(t)
-
-	now := time.Now()
-
 	clock := clockwork.NewFakeClock()
 
 	// inline activity using value passing through user context.
@@ -271,50 +196,78 @@ func TestActivityTaskHandler_Execute_with_auto_heartbeat(t *testing.T) {
 		clock.Advance(time.Second / 2)
 		return nil
 	}
-	registry := newRegistry()
-	err := registry.registerActivityFunction(activityWithUserContext, RegisterActivityOptions{
-		Name:                "activityWithUserContext",
-		EnableAutoHeartbeat: true,
-	})
-	require.NoError(t, err)
 
-	mockCtrl := gomock.NewController(t)
-	mockService := workflowservicetest.NewMockClient(mockCtrl)
-	wep := workerExecutionParameters{
-		WorkerOptions: WorkerOptions{
-			Logger:        logger,
-			DataConverter: getDefaultDataConverter(),
-			Tracer:        opentracing.NoopTracer{},
-		},
-	}
-	ensureRequiredParams(&wep)
-	activityHandler := newActivityTaskHandler(mockService, wep, registry)
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityWithUserContext)
 	activityHandlerImpl := activityHandler.(*activityTaskHandlerImpl)
 	activityHandlerImpl.clock = clock
 
-	pats := &s.PollForActivityTaskResponse{
+	pats := createBasicPollForActivityTaskResponse()
+	pats.HeartbeatTimeoutSeconds = common.Int32Ptr(1)
+
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+	_, ok := res.(*s.RespondActivityTaskCompletedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest but of type %T", res)
+}
+
+func TestActivityTaskHandler_Execute_CustomError(t *testing.T) {
+	activityWithCustomError := func(ctx context.Context) error {
+		testFailureCategory := s.FailureCategoryFatal
+		testNextRetryDelay := 30 * time.Second
+		return NewCustomError(
+			"test-error",
+			WithFailureCategory(testFailureCategory),
+			WithNextRetryDelay(testNextRetryDelay),
+			"details",
+		)
+	}
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityWithCustomError)
+
+	pats := createBasicPollForActivityTaskResponse()
+
+	// Execute
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+
+	failedRequest, ok := res.(*s.RespondActivityTaskFailedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskFailedRequest but of type %T", res)
+	require.Equal(t, s.FailureCategoryFatal, failedRequest.GetFailureOptions().GetFailureCategory())
+	require.Equal(t, int32(30), failedRequest.GetFailureOptions().GetNextRetryIntervalSeconds())
+}
+
+func newHandlerForTest(t *testing.T, params workerExecutionParameters, activityFunction any) ActivityTaskHandler {
+	registry := newRegistry()
+	err := registry.registerActivityFunction(activityFunction, RegisterActivityOptions{Name: "activityType"})
+	require.NoError(t, err)
+
+	params.WorkerOptions.Logger = testlogger.NewZap(t)
+	ensureRequiredParams(&params)
+	mockCtrl := gomock.NewController(t)
+	mockService := workflowservicetest.NewMockClient(mockCtrl)
+	return newActivityTaskHandler(mockService, params, registry)
+}
+
+func createBasicPollForActivityTaskResponse() *s.PollForActivityTaskResponse {
+	now := time.Now()
+	return &s.PollForActivityTaskResponse{
 		TaskToken: []byte("token"),
 		WorkflowExecution: &s.WorkflowExecution{
 			WorkflowId: common.StringPtr("wID"),
-			RunId:      common.StringPtr("rID")},
-		ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityWithUserContext")},
+			RunId:      common.StringPtr("rID"),
+		},
+		ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityType")},
 		ActivityId:                      common.StringPtr(uuid.New()),
 		ScheduledTimestamp:              common.Int64Ptr(now.UnixNano()),
 		ScheduledTimestampOfThisAttempt: common.Int64Ptr(now.UnixNano()),
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
-		HeartbeatTimeoutSeconds:         common.Int32Ptr(1),
 		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &s.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},
 		WorkflowDomain: common.StringPtr("domain"),
 	}
-	res, err := activityHandler.Execute(tasklist, pats)
-	require.NoError(t, err)
-	_, ok := res.(*s.RespondActivityTaskCompletedRequest)
-	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest but of type %T", res)
 }
 
 func TestActivityOutcome(t *testing.T) {
@@ -351,15 +304,6 @@ func activityWithWorkerStop(ctx context.Context) error {
 	case <-time.NewTimer(time.Second * 5).C:
 		return fmt.Errorf("Activity failed to handle worker stop event")
 	}
-}
-
-type deadlineTest struct {
-	actWaitDuration  time.Duration
-	ScheduleTS       time.Time
-	ScheduleDuration int32
-	StartTS          time.Time
-	StartDuration    int32
-	err              error
 }
 
 type failingContextPropagator struct {
