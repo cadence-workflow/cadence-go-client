@@ -473,6 +473,24 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 	assert.Equal(t, "start paused", gotPaused.State.PauseInfo.GetReason())
 	assert.Equal(t, "ci", gotPaused.State.PauseInfo.GetPausedBy())
 
+	// State paused with no PauseInfo: PauseInfo field is nil on wire
+	gotPausedNoPauseInfo, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+		State: &ScheduleState{Paused: true},
+	}, dc)
+	require.NoError(t, err)
+	require.NotNil(t, gotPausedNoPauseInfo.State)
+	assert.True(t, gotPausedNoPauseInfo.State.GetPaused())
+	assert.Nil(t, gotPausedNoPauseInfo.State.PauseInfo)
+
 	// nil State -> nil on wire
 	gotNoPause, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
 		ScheduleID: "id",
