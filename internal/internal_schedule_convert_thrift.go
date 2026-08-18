@@ -329,7 +329,7 @@ func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc D
 		Policies:         schedulePoliciesToThrift(r.Policies),
 		Memo:             memo,
 		SearchAttributes: searchAttr,
-		InitialState:     scheduleStateToThrift(r.InitialState),
+		State:            scheduleStateToThrift(r.State),
 	}, nil
 }
 

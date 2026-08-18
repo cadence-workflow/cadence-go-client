@@ -38,7 +38,7 @@ func CreateScheduleRequest(t *shared.CreateScheduleRequest) *apiv1.CreateSchedul
 		Policies:         SchedulePolicies(t.Policies),
 		Memo:             Memo(t.Memo),
 		SearchAttributes: SearchAttributes(t.SearchAttributes),
-		InitialState:     ScheduleState(t.InitialState),
+		State:            ScheduleState(t.State),
 	}
 }
 
