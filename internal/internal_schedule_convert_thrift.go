@@ -329,6 +329,7 @@ func scheduleCreateRequestToThrift(domain string, r *CreateScheduleRequest, dc D
 		Policies:         schedulePoliciesToThrift(r.Policies),
 		Memo:             memo,
 		SearchAttributes: searchAttr,
+		InitialState:     scheduleStateToThrift(r.InitialState),
 	}, nil
 }
 
@@ -577,6 +578,26 @@ func scheduleStateFromThrift(st *shared.ScheduleState) *ScheduleState {
 	return &ScheduleState{
 		Paused:    st.GetPaused(),
 		PauseInfo: schedulePauseInfoFromThrift(st.PauseInfo),
+	}
+}
+
+func scheduleStateToThrift(s *ScheduleState) *shared.ScheduleState {
+	if s == nil {
+		return nil
+	}
+	return &shared.ScheduleState{
+		Paused:    common.BoolPtr(s.Paused),
+		PauseInfo: schedulePauseInfoToThrift(s.PauseInfo),
+	}
+}
+
+func schedulePauseInfoToThrift(pi *SchedulePauseInfo) *shared.SchedulePauseInfo {
+	if pi == nil {
+		return nil
+	}
+	return &shared.SchedulePauseInfo{
+		Reason:   common.StringPtr(pi.Reason),
+		PausedBy: common.StringPtr(pi.PausedBy),
 	}
 }
 
