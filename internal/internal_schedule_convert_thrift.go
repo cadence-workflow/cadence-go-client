@@ -595,6 +595,8 @@ func schedulePauseInfoToThrift(pi *SchedulePauseInfo) *shared.SchedulePauseInfo 
 	if pi == nil {
 		return nil
 	}
+	// PausedAt is intentionally not sent: it is server-populated (set to CreateTime
+	// by the scheduler workflow on first execution) and ignored by the server on input.
 	return &shared.SchedulePauseInfo{
 		Reason:   common.StringPtr(pi.Reason),
 		PausedBy: common.StringPtr(pi.PausedBy),
