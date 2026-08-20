@@ -213,6 +213,9 @@ type CreateScheduleRequest struct {
 	// SearchAttributes are indexed attributes on the schedule itself. Optional.
 	// Values are JSON-encoded.
 	SearchAttributes map[string]interface{}
+	// State, if set and Paused is true, starts the schedule in a paused state
+	// immediately without requiring a subsequent PauseSchedule call. Optional.
+	State *ScheduleState
 }
 
 // ScheduleUpdate is the mutable view of a schedule's current state passed to the callback

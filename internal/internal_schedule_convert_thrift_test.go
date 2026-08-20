@@ -449,6 +449,62 @@ func TestScheduleCreateRequestToThrift(t *testing.T) {
 	assert.Equal(t, int32(1), got.Spec.GetJitterInSeconds(), "500ms jitter must ceil to 1s")
 	assert.Equal(t, "my-wf", got.Action.StartWorkflow.WorkflowType.GetName())
 	assert.Equal(t, backoff.DefaultBackoffCoefficient, got.Action.StartWorkflow.RetryPolicy.GetBackoffCoefficient())
+
+	// State propagated when set with paused=true
+	gotPaused, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+		State: &ScheduleState{
+			Paused:    true,
+			PauseInfo: &SchedulePauseInfo{Reason: "start paused", PausedBy: "ci"},
+		},
+	}, dc)
+	require.NoError(t, err)
+	require.NotNil(t, gotPaused.State)
+	assert.True(t, gotPaused.State.GetPaused())
+	require.NotNil(t, gotPaused.State.PauseInfo)
+	assert.Equal(t, "start paused", gotPaused.State.PauseInfo.GetReason())
+	assert.Equal(t, "ci", gotPaused.State.PauseInfo.GetPausedBy())
+
+	// State paused with no PauseInfo: PauseInfo field is nil on wire
+	gotPausedNoPauseInfo, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+		State: &ScheduleState{Paused: true},
+	}, dc)
+	require.NoError(t, err)
+	require.NotNil(t, gotPausedNoPauseInfo.State)
+	assert.True(t, gotPausedNoPauseInfo.State.GetPaused())
+	assert.Nil(t, gotPausedNoPauseInfo.State.PauseInfo)
+
+	// nil State -> nil on wire
+	gotNoPause, err := scheduleCreateRequestToThrift("dom", &CreateScheduleRequest{
+		ScheduleID: "id",
+		Spec:       &ScheduleSpec{CronExpression: "0 * * * *"},
+		Action: &ScheduleAction{
+			StartWorkflow: &ScheduleStartWorkflowAction{
+				WorkflowType:                 "my-wf",
+				TaskList:                     "my-tl",
+				ExecutionStartToCloseTimeout: time.Hour,
+			},
+		},
+	}, dc)
+	require.NoError(t, err)
+	assert.Nil(t, gotNoPause.State)
 }
 
 func TestScheduleActionDescriptionToThrift(t *testing.T) {
