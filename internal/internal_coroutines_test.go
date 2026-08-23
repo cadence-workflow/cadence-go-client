@@ -31,10 +31,25 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func createRootTestContext(t *testing.T) (ctx Context) {
 	env := newTestWorkflowEnv(t)
+	interceptors, envInterceptor := newWorkflowInterceptors(env.impl, env.impl.workflowInterceptors)
+	return newWorkflowContext(env.impl, interceptors, envInterceptor)
+}
+func createRootTestContextWithLogger(t *testing.T, logger *zap.Logger) (ctx Context) {
+	s := WorkflowTestSuite{}
+	s.SetLogger(logger)
+	// tally is not set since metrics are not noisy by default, and the test-instance
+	// is largely useless without access to the instance for snapshots.
+	env := s.NewTestWorkflowEnvironment()
+	env.Test(t)
 	interceptors, envInterceptor := newWorkflowInterceptors(env.impl, env.impl.workflowInterceptors)
 	return newWorkflowContext(env.impl, interceptors, envInterceptor)
 }
@@ -664,6 +679,7 @@ func TestDispatchClose(t *testing.T) {
 }
 
 func TestPanic(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	var history []string
 	d, _ := newDispatcher(createRootTestContext(t), func(ctx Context) {
 		c := NewNamedChannel(ctx, "forever_blocked")
@@ -680,6 +696,8 @@ func TestPanic(t *testing.T) {
 		history = append(history, "root")
 		c.Receive(ctx, nil) // blocked forever
 	})
+	defer d.Close() // stop other coroutines, as only one panicked
+
 	require.EqualValues(t, 0, len(history))
 	err := d.ExecuteUntilAllBlocked()
 	require.Error(t, err)
@@ -1202,4 +1220,42 @@ func TestChainedFuture(t *testing.T) {
 	var out int
 	require.NoError(t, env.GetWorkflowResult(&out))
 	require.Equal(t, 5, out)
+}
+
+func TestShutdownTimeout(t *testing.T) {
+	unblock := make(chan struct{})
+	// custom test context so logs can be checked
+	core, obs := observer.New(zap.InfoLevel)
+	logger := zap.New(core, zap.WrapCore(func(zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(core, zaptest.NewLogger(t).Core()) // tee to test logs
+	}))
+
+	ctx := createRootTestContextWithLogger(t, logger)
+	d, _ := newDispatcher(ctx, func(ctx Context) {
+		defer func() {
+			<-unblock // block until timeout, then unblock
+		}()
+		c := NewChannel(ctx)
+		c.Receive(ctx, nil) // block forever
+	})
+
+	before := time.Now()
+	require.NoError(t, d.ExecuteUntilAllBlocked())
+	go func() {
+		<-time.After(2 * time.Second) // current timeout is 1s
+		close(unblock)
+	}()
+	d.Close() // should hang until close(unblock) allows it to continue
+	blocked := time.Since(before)
+
+	// make sure it didn't give up after the internal 1s timeout,
+	// as this likely implies parallel coroutine closing, which risks crashes
+	// due to racy memory corruption.
+	assert.Greater(t, blocked, 2*time.Second, "d.Close should have waited for unblock to occur, but it returned too early")
+
+	logs := obs.FilterMessageSnippet("workflow failed to shut down").All()
+	assert.Len(t, logs, 1, "expected only one log")
+	if len(logs) > 0 { // check so it doesn't panic if wrong
+		assert.Contains(t, logs[0].ContextMap()["stacks"], t.Name(), "stacktrace field should mention this test func")
+	}
 }
