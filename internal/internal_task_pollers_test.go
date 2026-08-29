@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -343,6 +344,51 @@ func TestActivityTaskPoller_PollTask(t *testing.T) {
 			tt.validateResult(t, result)
 		})
 	}
+}
+
+func TestActivityTaskPoller_ProcessTask_UnregisteredActivity(t *testing.T) {
+	atp, mockService := buildActivityTaskPoller(t, false)
+
+	registry := newRegistry()
+	require.NoError(t, registry.registerActivityFunction(
+		func(ctx context.Context) error { return nil },
+		RegisterActivityOptions{Name: "registered"},
+	))
+	params := workerExecutionParameters{}
+	params.WorkerOptions.Logger = testlogger.NewZap(t)
+	ensureRequiredParams(&params)
+	atp.taskHandler = newActivityTaskHandler(mockService, params, registry)
+
+	var reported *s.RespondActivityTaskFailedRequest
+	mockService.EXPECT().
+		RespondActivityTaskFailed(gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, req *s.RespondActivityTaskFailedRequest, _ ...yarpc.CallOption) {
+			reported = req
+		}).
+		Return(nil).
+		Times(1)
+
+	task := &activityTask{
+		task: &s.PollForActivityTaskResponse{
+			TaskToken:                       []byte("token"),
+			WorkflowExecution:               &s.WorkflowExecution{WorkflowId: common.StringPtr("wID"), RunId: common.StringPtr("rID")},
+			ActivityType:                    &s.ActivityType{Name: common.StringPtr("notRegistered")},
+			ActivityId:                      common.StringPtr("aID"),
+			ScheduledTimestamp:              common.Int64Ptr(time.Now().UnixNano()),
+			ScheduledTimestampOfThisAttempt: common.Int64Ptr(time.Now().UnixNano()),
+			ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
+			StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
+			StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+			Attempt:                         common.Int32Ptr(0),
+			WorkflowType:                    &s.WorkflowType{Name: common.StringPtr("wType")},
+			WorkflowDomain:                  common.StringPtr(_testDomainName),
+		},
+	}
+
+	require.NoError(t, atp.ProcessTask(task))
+	require.NotNil(t, reported, "no RespondActivityTaskFailed was sent")
+	require.Equal(t, []byte("token"), reported.GetTaskToken())
+	require.Contains(t, string(reported.GetDetails()), "unable to find activityType=notRegistered")
 }
 
 func buildActivityTaskPoller(t *testing.T, shutdown bool) (*activityTaskPoller, *workflowservicetest.MockClient) {
