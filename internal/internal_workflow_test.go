@@ -473,6 +473,63 @@ func (s *WorkflowUnitTest) Test_ContinueAsNewWorkflow() {
 	s.EqualValues(1, *resultErr.params.executionStartToCloseTimeoutSeconds)
 	s.EqualValues(1, *resultErr.params.taskStartToCloseTimeoutSeconds)
 	s.EqualValues("default-test-tasklist", *resultErr.params.taskListName)
+	s.Empty(resultErr.params.cronSchedule)
+}
+
+func continueAsNewWorkflowWithCronTest(ctx Context) error {
+	ctx = WithCronSchedule(ctx, "0 * * * *")
+	return NewContinueAsNewError(ctx, "continueAsNewWorkflowWithCronTest")
+}
+
+func (s *WorkflowUnitTest) Test_ContinueAsNewWorkflow_WithCronSchedule() {
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(continueAsNewWorkflowWithCronTest)
+	s.True(env.IsWorkflowCompleted())
+	resultErr := env.GetWorkflowError().(*ContinueAsNewError)
+	s.Equal("0 * * * *", resultErr.params.cronSchedule)
+}
+
+func (s *WorkflowUnitTest) Test_WithCronSchedule_SetsChildWorkflowOptions() {
+	const cron = "*/5 * * * *"
+	var gotCron string
+	testWorkflow := func(ctx Context) error {
+		ctx = WithCronSchedule(ctx, cron)
+		opts, err := getValidatedWorkflowOptions(ctx)
+		if err != nil {
+			return err
+		}
+		gotCron = opts.cronSchedule
+		return nil
+	}
+
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(testWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	s.Equal(cron, gotCron)
+}
+
+func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_OverwritesCronSchedule() {
+	var gotCron string
+	testWorkflow := func(ctx Context) error {
+		ctx = WithCronSchedule(ctx, "0 * * * *")
+		ctx = WithChildWorkflowOptions(ctx, ChildWorkflowOptions{
+			ExecutionStartToCloseTimeout: time.Minute,
+			CronSchedule:                 "",
+		})
+		opts, err := getValidatedWorkflowOptions(ctx)
+		if err != nil {
+			return err
+		}
+		gotCron = opts.cronSchedule
+		return nil
+	}
+
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(testWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	s.Empty(gotCron)
 }
 
 func cancelWorkflowTest(ctx Context) (string, error) {

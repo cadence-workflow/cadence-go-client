@@ -1332,7 +1332,7 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 		// Continue as new error.
 		metricsScope.Counter(metrics.WorkflowContinueAsNewCounter).Inc(1)
 		closeDecision = createNewDecision(s.DecisionTypeContinueAsNewWorkflowExecution)
-		closeDecision.ContinueAsNewWorkflowExecutionDecisionAttributes = &s.ContinueAsNewWorkflowExecutionDecisionAttributes{
+		continueAsNewAttr := &s.ContinueAsNewWorkflowExecutionDecisionAttributes{
 			WorkflowType:                        workflowTypePtr(*contErr.params.workflowType),
 			Input:                               contErr.params.input,
 			TaskList:                            common.TaskListPtr(s.TaskList{Name: contErr.params.taskListName}),
@@ -1343,6 +1343,10 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 			SearchAttributes:                    workflowContext.workflowInfo.SearchAttributes,
 			RetryPolicy:                         workflowContext.workflowInfo.RetryPolicy,
 		}
+		if len(contErr.params.cronSchedule) > 0 {
+			continueAsNewAttr.CronSchedule = common.StringPtr(contErr.params.cronSchedule)
+		}
+		closeDecision.ContinueAsNewWorkflowExecutionDecisionAttributes = continueAsNewAttr
 	} else if workflowContext.err != nil {
 		// Workflow failures
 		metricsScope.Counter(metrics.WorkflowFailedCounter).Inc(1)

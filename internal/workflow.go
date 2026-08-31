@@ -1445,6 +1445,24 @@ func WithWorkflowTaskList(ctx Context, name string) Context {
 	return ctx1
 }
 
+// WithCronSchedule sets a cron schedule on the context.
+//
+// The same workflow options are used for ContinueAsNew (via NewContinueAsNewError)
+// and for child workflows (via ExecuteChildWorkflow). Cron is not copied from the
+// current run automatically; pass it explicitly when the next run or child should
+// keep a schedule.
+//
+// WithChildWorkflowOptions overwrites this field with ChildWorkflowOptions.CronSchedule.
+// Apply WithCronSchedule after WithChildWorkflowOptions if both are used.
+//
+// An empty schedule clears a previously set value. Invalid specs are rejected when
+// ContinueAsNew or child workflow options are validated.
+func WithCronSchedule(ctx Context, cronSchedule string) Context {
+	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
+	getWorkflowEnvOptions(ctx1).cronSchedule = cronSchedule
+	return ctx1
+}
+
 // GetWorkflowTaskList retrieves current workflow tasklist from context
 func GetWorkflowTaskList(ctx Context) *string {
 	wo := getWorkflowEnvOptions(ctx)

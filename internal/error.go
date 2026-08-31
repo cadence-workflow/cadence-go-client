@@ -293,11 +293,13 @@ func IsCanceledError(err error) bool {
 // the new execution with same workflow ID is started automatically with options
 // provided to this function.
 //
-//	 ctx - use context to override any options for the new workflow like execution timeout, decision task timeout, task list.
-//		  if not mentioned it would use the defaults that the current workflow is using.
+//	 ctx - use context to override any options for the new workflow like execution timeout, decision task timeout, task list, cron schedule.
+//		  if not mentioned it would use the defaults that the current workflow is using
+//		  (except cron schedule, which is not inherited; use WithCronSchedule to keep it).
 //	       ctx := WithExecutionStartToCloseTimeout(ctx, 30 * time.Minute)
 //	       ctx := WithWorkflowTaskStartToCloseTimeout(ctx, time.Minute)
 //		  ctx := WithWorkflowTaskList(ctx, "example-group")
+//		  ctx := WithCronSchedule(ctx, "* * * * *")
 //	 wfn - workflow function. for new execution it can be different from the currently running.
 //	 args - arguments for the new workflow.
 func NewContinueAsNewError(ctx Context, wfn interface{}, args ...interface{}) *ContinueAsNewError {
@@ -319,6 +321,9 @@ func NewContinueAsNewError(ctx Context, wfn interface{}, args ...interface{}) *C
 	}
 	if options.taskStartToCloseTimeoutSeconds == nil || *options.taskStartToCloseTimeoutSeconds <= 0 {
 		panic("invalid taskStartToCloseTimeoutSeconds provided")
+	}
+	if err := validateCronSchedule(options.cronSchedule); err != nil {
+		panic(err)
 	}
 
 	params := &executeWorkflowParams{
