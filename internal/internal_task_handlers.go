@@ -816,6 +816,18 @@ func (wth *workflowTaskHandlerImpl) ProcessWorkflowTask(
 		workflowContext.Unlock(errRet)
 	}()
 
+	// laStopCh is closed when the worker starts shutting down. At that point the
+	// local activity pool stops accepting tasks, so a pending local activity (and
+	// any retry) can no longer be dispatched and its result will never arrive.
+	// Without this signal the loop below would keep heartbeating the decision task
+	// until the server's decisionHeartbeatTimeout (default 30m). laTunnel is nil
+	// during history replay (no worker); a nil channel never selects, leaving the
+	// replay path unchanged.
+	var laStopCh <-chan struct{}
+	if workflowContext.laTunnel != nil {
+		laStopCh = workflowContext.laTunnel.stopCh
+	}
+
 	var response interface{}
 process_Workflow_Loop:
 	for {
@@ -827,6 +839,13 @@ process_Workflow_Loop:
 				deadlineToTrigger := time.Duration(float32(ratioToForceCompleteDecisionTaskComplete) * float32(workflowContext.GetDecisionTimeout()))
 				delayDuration := startTime.Add(deadlineToTrigger).Sub(time.Now())
 				select {
+				case <-laStopCh:
+					// Worker is shutting down and the pending local activity can no
+					// longer be dispatched. Abandon this decision task so the server
+					// reschedules it on a healthy worker, instead of holding it open
+					// until decisionHeartbeatTimeout.
+					return nil, &decisionHeartbeatError{Message: "worker is shutting down with a pending local activity; abandoning decision task for reschedule"}
+
 				case <-time.After(delayDuration):
 					// force complete, call the decision heartbeat function
 					workflowTask, err = heartbeatFunc(

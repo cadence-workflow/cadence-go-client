@@ -1293,6 +1293,78 @@ func (t *TaskHandlersTestSuite) TestLocalActivityRetry_DecisionHeartbeatFail() {
 	<-doneCh
 }
 
+func (t *TaskHandlersTestSuite) TestLocalActivity_WorkerShutdownAbandonsDecisionTask() {
+	// Once the worker starts shutting down, a pending local activity can no longer
+	// be dispatched and its result will never arrive. The decision task must be
+	// abandoned (surfaced as a decisionHeartbeatError so the poller lets the server
+	// reschedule it) instead of heartbeating until the server's
+	// decisionHeartbeatTimeout.
+	localActivityWorkflowFunc := func(ctx Context, input []byte) error {
+		ctx = WithLocalActivityOptions(ctx, LocalActivityOptions{ScheduleToCloseTimeout: time.Minute})
+		return ExecuteLocalActivity(ctx, func() error { return nil }).Get(ctx, nil)
+	}
+	t.registry.RegisterWorkflowWithOptions(
+		localActivityWorkflowFunc,
+		RegisterWorkflowOptions{Name: "ShutdownLocalActivityWorkflow"},
+	)
+
+	// A long decision timeout ensures the heartbeat branch cannot fire during the
+	// test, so the only way the loop returns is via the worker-shutdown branch.
+	decisionTaskStartedEvent := createTestEventDecisionTaskStarted(3)
+	decisionTaskStartedEvent.Timestamp = common.Int64Ptr(time.Now().UnixNano())
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskStartToCloseTimeoutSeconds: common.Int32Ptr(60),
+			TaskList:                       &s.TaskList{Name: &testWorkflowTaskTasklist},
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{}),
+		decisionTaskStartedEvent,
+	}
+	task := createWorkflowTask(testEvents, 0, "ShutdownLocalActivityWorkflow")
+
+	stopCh := make(chan struct{})
+	params := workerExecutionParameters{
+		TaskList:          &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()},
+		WorkerOptions:     WorkerOptions{Identity: "test-id-1", Logger: t.logger},
+		WorkerStopChannel: stopCh,
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	taskHandlerImpl, ok := taskHandler.(*workflowTaskHandlerImpl)
+	t.True(ok)
+	taskHandlerImpl.laTunnel = newLocalActivityTunnel(params.WorkerStopChannel)
+
+	type processResult struct {
+		response interface{}
+		err      error
+	}
+	resultCh := make(chan processResult, 1)
+	go func() {
+		response, err := taskHandler.ProcessWorkflowTask(
+			&workflowTask{task: task, laResultCh: make(chan *localActivityResult)},
+			func(interface{}, time.Time) (*workflowTask, error) {
+				return nil, errors.New("heartbeat must not be called on shutdown")
+			},
+		)
+		resultCh <- processResult{response, err}
+	}()
+
+	// Let the workflow dispatch the local activity and enter the wait loop while
+	// the worker is still healthy, then signal shutdown.
+	time.Sleep(100 * time.Millisecond)
+	close(stopCh)
+
+	select {
+	case r := <-resultCh:
+		t.Nil(r.response)
+		var hbErr *decisionHeartbeatError
+		t.True(errors.As(r.err, &hbErr))
+		t.Contains(r.err.Error(), "shutting down")
+	case <-time.After(5 * time.Second):
+		t.Fail("ProcessWorkflowTask did not return after worker shutdown")
+	}
+}
+
 func (t *TaskHandlersTestSuite) TestHeartBeat_NoError() {
 	mockCtrl := gomock.NewController(t.T())
 	mockService := workflowservicetest.NewMockClient(mockCtrl)
