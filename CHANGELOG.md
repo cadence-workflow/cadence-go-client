@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Added RequestID (`uuid.UUID`) to StartWorkflowOptions so start and signal-with-start requests can supply an idempotency key instead of always generating a new UUID. The server only accepts UUID strings.
+
 ### Fixed
 - Skip seeding the workflow span context when the tracer is a `NoopTracer`, preventing panics for workflow tests that mix the testsuite (which defaults to `NoopTracer`) with a real tracer such as `mocktracer`. Follow-up to the span activation added in #1506 and the `NoopTracer` guard in #1516.
 

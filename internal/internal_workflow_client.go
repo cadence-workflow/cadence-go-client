@@ -1148,7 +1148,7 @@ func (wc *workflowClient) getWorkflowStartRequest(
 	// run propagators to extract information about tracing and other stuff, store in headers field
 	startRequest := &s.StartWorkflowExecutionRequest{
 		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
+		RequestId:                           common.StringPtr(requestIDOrNew(options.RequestID)),
 		WorkflowId:                          common.StringPtr(workflowID),
 		WorkflowType:                        workflowTypePtr(*workflowType),
 		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
@@ -1255,7 +1255,7 @@ func (wc *workflowClient) getSignalWithStartRequest(
 
 	signalWithStartRequest := &s.SignalWithStartWorkflowExecutionRequest{
 		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
+		RequestId:                           common.StringPtr(requestIDOrNew(options.RequestID)),
 		WorkflowId:                          common.StringPtr(workflowID),
 		WorkflowType:                        workflowTypePtr(*workflowType),
 		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
@@ -1287,6 +1287,13 @@ func getRunID(runID string) *string {
 		return nil
 	}
 	return common.StringPtr(runID)
+}
+
+func requestIDOrNew(requestID uuid.UUID) string {
+	if len(requestID) == 0 {
+		return uuid.New()
+	}
+	return requestID.String()
 }
 
 func (iter *historyEventIteratorImpl) HasNext() bool {
