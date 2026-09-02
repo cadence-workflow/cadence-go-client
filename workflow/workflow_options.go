@@ -53,9 +53,9 @@ func WithWorkflowTaskList(ctx Context, name string) Context {
 //	}
 //	return workflow.NewContinueAsNewError(ctx, myWorkflow, args...)
 //
-// The same option is read by ExecuteChildWorkflow. WithChildOptions overwrites
-// CronSchedule from ChildWorkflowOptions; call WithCronSchedule after
-// WithChildOptions if both are used. Omit it (or pass "") to start a non-cron run.
+// The same option is read by ExecuteChildWorkflow. WithChildOptions copies
+// CronSchedule only when it is non-empty, so WithCronSchedule then
+// WithChildOptions still keeps the schedule. Pass "" here to start a non-cron run.
 func WithCronSchedule(ctx Context, cronSchedule string) Context {
 	return internal.WithCronSchedule(ctx, cronSchedule)
 }

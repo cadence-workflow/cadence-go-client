@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Added RequestID to StartWorkflowOptions so start and signal-with-start requests can supply an idempotency key instead of always generating a new UUID. The value must be a UUID string; the client validates it before sending.
-- `workflow.WithCronSchedule` to set a cron schedule on ContinueAsNew and child-workflow context options. Cron is not inherited from the current run; pass it explicitly to keep a schedule.
+- `workflow.WithCronSchedule` to set a cron schedule on ContinueAsNew and child-workflow context options. Cron is not inherited from the current run; pass it explicitly to keep a schedule. `WithChildOptions` copies `CronSchedule` only when it is non-empty so it does not clear a prior `WithCronSchedule`.
 
 ### Fixed
 - Skip seeding the workflow span context when the tracer is a `NoopTracer`, preventing panics for workflow tests that mix the testsuite (which defaults to `NoopTracer`) with a real tracer such as `mocktracer`. Follow-up to the span activation added in #1506 and the `NoopTracer` guard in #1516.

@@ -509,13 +509,13 @@ func (s *WorkflowUnitTest) Test_WithCronSchedule_SetsChildWorkflowOptions() {
 	s.Equal(cron, gotCron)
 }
 
-func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_OverwritesCronSchedule() {
+func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_PreservesCronScheduleWhenEmpty() {
+	const cron = "*/5 * * * *"
 	var gotCron string
 	testWorkflow := func(ctx Context) error {
-		ctx = WithCronSchedule(ctx, "0 * * * *")
+		ctx = WithCronSchedule(ctx, cron)
 		ctx = WithChildWorkflowOptions(ctx, ChildWorkflowOptions{
 			ExecutionStartToCloseTimeout: time.Minute,
-			CronSchedule:                 "",
 		})
 		opts, err := getValidatedWorkflowOptions(ctx)
 		if err != nil {
@@ -529,7 +529,31 @@ func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_OverwritesCronSchedule(
 	env.ExecuteWorkflow(testWorkflow)
 	s.True(env.IsWorkflowCompleted())
 	s.NoError(env.GetWorkflowError())
-	s.Empty(gotCron)
+	s.Equal(cron, gotCron)
+}
+
+func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_SetsCronScheduleWhenNonEmpty() {
+	const cron = "*/5 * * * *"
+	var gotCron string
+	testWorkflow := func(ctx Context) error {
+		ctx = WithCronSchedule(ctx, "0 * * * *")
+		ctx = WithChildWorkflowOptions(ctx, ChildWorkflowOptions{
+			ExecutionStartToCloseTimeout: time.Minute,
+			CronSchedule:                 cron,
+		})
+		opts, err := getValidatedWorkflowOptions(ctx)
+		if err != nil {
+			return err
+		}
+		gotCron = opts.cronSchedule
+		return nil
+	}
+
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(testWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	s.Equal(cron, gotCron)
 }
 
 func cancelWorkflowTest(ctx Context) (string, error) {

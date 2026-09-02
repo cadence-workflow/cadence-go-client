@@ -366,6 +366,37 @@ func (w *Workflows) ChildWorkflowSuccess(ctx workflow.Context) (result string, e
 	return
 }
 
+func (w *Workflows) ChildWorkflowsWithCronSchedule(ctx workflow.Context, childID, cron string) (string, error) {
+	ctx = workflow.WithCronSchedule(ctx, cron)
+	ctx = workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID:                   childID,
+		TaskStartToCloseTimeout:      5 * time.Second,
+		ExecutionStartToCloseTimeout: 10 * time.Second,
+	})
+	var result string
+	err := workflow.ExecuteChildWorkflow(ctx, w.childReportsCron).Get(ctx, &result)
+	return result, err
+}
+
+func (w *Workflows) ChildWorkflowsWithoutWithCronSchedule(ctx workflow.Context, childID string) (string, error) {
+	ctx = workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID:                   childID,
+		TaskStartToCloseTimeout:      5 * time.Second,
+		ExecutionStartToCloseTimeout: 10 * time.Second,
+	})
+	var result string
+	err := workflow.ExecuteChildWorkflow(ctx, w.childReportsCron).Get(ctx, &result)
+	return result, err
+}
+
+func (w *Workflows) childReportsCron(ctx workflow.Context) (string, error) {
+	info := workflow.GetInfo(ctx)
+	if info.CronSchedule == nil {
+		return "", nil
+	}
+	return *info.CronSchedule, nil
+}
+
 func (w *Workflows) ChildWorkflowSuccessWithParentClosePolicyTerminate(ctx workflow.Context) (result string, err error) {
 	opts := workflow.ChildWorkflowOptions{
 		TaskStartToCloseTimeout:      5 * time.Second,
@@ -736,6 +767,9 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.ChildWorkflowSuccessWithParentClosePolicyTerminate)
 	worker.RegisterWorkflow(w.ChildWorkflowSuccessWithParentClosePolicyAbandon)
 	worker.RegisterWorkflow(w.ChildWorkflowCancel)
+	worker.RegisterWorkflow(w.ChildWorkflowsWithCronSchedule)
+	worker.RegisterWorkflow(w.ChildWorkflowsWithoutWithCronSchedule)
+	worker.RegisterWorkflow(w.childReportsCron)
 	worker.RegisterWorkflow(w.InspectActivityInfo)
 	worker.RegisterWorkflow(w.InspectLocalActivityInfo)
 	worker.RegisterWorkflow(w.sleep)

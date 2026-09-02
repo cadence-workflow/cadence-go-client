@@ -264,7 +264,7 @@ func (ts *IntegrationTestSuite) TestContinueAsNewCarryOver() {
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNewWithCronSchedule() {
-	const cron = "0 0 1 1 *"
+	const cron = "* * * * *"
 	wfID := "test-continueasnew-cronschedule"
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
@@ -306,7 +306,7 @@ func (ts *IntegrationTestSuite) TestContinueAsNewWithCronSchedule() {
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNewInCronWithoutWithCronSchedule() {
-	const cron = "0 0 1 1 *"
+	const cron = "* * * * *"
 	wfID := "test-continueasnew-cron-without-withcronschedule"
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
@@ -553,6 +553,82 @@ func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 	ts.Equal("memoVal, searchAttrVal", result)
 	ts.Equal([]string{"ExecuteWorkflow begin", "ExecuteChildWorkflow", "ExecuteWorkflow end"},
 		ts.tracer.GetTrace("go.uber.org/cadence/test.(*Workflows).ChildWorkflowSuccess"))
+}
+
+func (ts *IntegrationTestSuite) TestChildWorkflowsWithCronSchedule() {
+	const cron = "* * * * *"
+	parentID := "test-childwf-with-cronschedule"
+	childID := parentID + "-child"
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+		defer cancel()
+		_ = ts.libClient.TerminateWorkflow(ctx, parentID, "", "integration test cleanup", nil)
+		_ = ts.libClient.TerminateWorkflow(ctx, childID, "", "integration test cleanup", nil)
+	}()
+
+	var result string
+	execution, err := ts.executeWorkflow(parentID, ts.workflows.ChildWorkflowsWithCronSchedule, &result, childID, cron)
+	ts.NoError(err)
+	ts.Equal(cron, result)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	ts.assertChildCronSchedule(ctx, execution.ID, execution.RunID, childID, cron)
+}
+
+func (ts *IntegrationTestSuite) TestChildWorkflowsWithoutWithCronSchedule() {
+	const cron = "* * * * *"
+	parentID := "test-childwf-without-withcronschedule"
+	childID := parentID + "-child"
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+		defer cancel()
+		_ = ts.libClient.TerminateWorkflow(ctx, parentID, "", "integration test cleanup", nil)
+		_ = ts.libClient.TerminateWorkflow(ctx, childID, "", "integration test cleanup", nil)
+	}()
+
+	startOptions := ts.startWorkflowOptions(parentID)
+	startOptions.CronSchedule = cron
+
+	var result string
+	execution, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ChildWorkflowsWithoutWithCronSchedule, &result, childID)
+	ts.NoError(err)
+	ts.Empty(result)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	iter := ts.libClient.GetWorkflowHistory(ctx, execution.ID, execution.RunID, false, shared.HistoryEventFilterTypeAllEvent)
+	ts.True(iter.HasNext())
+	started, err := iter.Next()
+	ts.NoError(err)
+	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
+	ts.Equal(cron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+
+	ts.assertChildCronSchedule(ctx, execution.ID, execution.RunID, childID, "")
+}
+
+func (ts *IntegrationTestSuite) assertChildCronSchedule(ctx context.Context, parentID, parentRunID, childID, wantCron string) {
+	iter := ts.libClient.GetWorkflowHistory(ctx, parentID, parentRunID, false, shared.HistoryEventFilterTypeAllEvent)
+	var initiated *shared.HistoryEvent
+	for iter.HasNext() {
+		event, err := iter.Next()
+		ts.NoError(err)
+		if event.GetEventType() == shared.EventTypeStartChildWorkflowExecutionInitiated {
+			initiated = event
+			break
+		}
+	}
+	ts.NotNil(initiated)
+	ts.Equal(childID, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetWorkflowId())
+	ts.Equal(wantCron, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
+
+	iter = ts.libClient.GetWorkflowHistory(ctx, childID, "", false, shared.HistoryEventFilterTypeAllEvent)
+	ts.True(iter.HasNext())
+	started, err := iter.Next()
+	ts.NoError(err)
+	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
+	ts.Equal(wantCron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
