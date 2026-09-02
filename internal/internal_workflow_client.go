@@ -1297,19 +1297,18 @@ func getRunID(runID string) *string {
 	return common.StringPtr(runID)
 }
 
-func requestIDOrNew(requestID uuid.UUID) string {
-	if len(requestID) == 0 {
+func requestIDOrNew(requestID string) string {
+	if requestID == "" {
 		return uuid.New()
 	}
-	return requestID.String()
+	return requestID
 }
 
-func validateRequestID(requestID uuid.UUID) error {
-	if len(requestID) == 0 {
+func validateRequestID(requestID string) error {
+	if requestID == "" {
 		return nil
 	}
-	// pborman UUID is a []byte; only a 16-byte value formats as a UUID string.
-	if uuid.Parse(requestID.String()) == nil {
+	if uuid.Parse(requestID) == nil {
 		return errors.New("invalid RequestID")
 	}
 	return nil

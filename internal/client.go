@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
@@ -429,19 +428,19 @@ type (
 
 		// RequestID - Unique identifier for this start request. Used for idempotency so retries of the
 		// same start or signal-with-start call do not create duplicate executions.
-		// Must be a UUID; the server rejects other strings.
+		// Must be a UUID string; the client rejects other values before sending the request.
 		// Optional: defaulted to a generated UUID.
 		//
 		// To derive a RequestID deterministically from a business string, use a name-based UUID
 		// (RFC 4122 version 5). The same namespace and name always produce the same UUID:
 		//
 		//   ns := uuid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8") // or uuid.NameSpace_OID
-		//   options.RequestID = uuid.NewSHA1(ns, []byte("order-123:start"))
+		//   options.RequestID = uuid.NewSHA1(ns, []byte("order-123:start")).String()
 		//
 		// Prefer a stable, service-specific namespace UUID so names do not collide with UUIDs
 		// generated for other purposes. Do not hash the business string with SHA-1/MD5 and
-		// format it yourself; only RFC 4122 UUID strings are accepted by the server.
-		RequestID uuid.UUID
+		// format it yourself; only RFC 4122 UUID strings are accepted.
+		RequestID string
 
 		// TaskList - The decisions of the workflow are scheduled on this queue.
 		// This is also the default task list on which activities are scheduled. The workflow author can choose

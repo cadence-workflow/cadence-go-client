@@ -2906,7 +2906,7 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			name: "with RequestID",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
-				RequestID:                       uuid.Parse("550e8400-e29b-41d4-a716-446655440000"),
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
 				TaskList:                        tasklist,
 				ExecutionStartToCloseTimeout:    10 * time.Second,
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
@@ -2937,7 +2937,7 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			name: "invalid RequestID",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
-				RequestID:                       uuid.UUID("not-a-uuid"),
+				RequestID:                       "not-a-uuid",
 				TaskList:                        tasklist,
 				ExecutionStartToCloseTimeout:    10 * time.Second,
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
@@ -3088,7 +3088,7 @@ func TestGetSignalWithStartRequest(t *testing.T) {
 			signalName: "signal",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
-				RequestID:                       uuid.Parse("550e8400-e29b-41d4-a716-446655440000"),
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
 				TaskList:                        tasklist,
 				ExecutionStartToCloseTimeout:    10 * time.Second,
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
@@ -3123,7 +3123,7 @@ func TestGetSignalWithStartRequest(t *testing.T) {
 			signalName: "signal",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
-				RequestID:                       uuid.UUID("not-a-uuid"),
+				RequestID:                       "not-a-uuid",
 				TaskList:                        tasklist,
 				ExecutionStartToCloseTimeout:    10 * time.Second,
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
