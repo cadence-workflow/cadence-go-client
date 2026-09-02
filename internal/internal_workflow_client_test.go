@@ -2934,6 +2934,18 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "invalid RequestID",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       uuid.UUID("not-a-uuid"),
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
+		},
+		{
 			name: "missing TaskList",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
@@ -3104,6 +3116,20 @@ func TestGetSignalWithStartRequest(t *testing.T) {
 				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
 				CronOverlapPolicy:                   shared.CronOverlapPolicySkipped.Ptr(),
 			},
+		},
+		{
+			name:       "invalid RequestID",
+			workflowID: workflowID,
+			signalName: "signal",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       uuid.UUID("not-a-uuid"),
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
 		},
 		{
 			name: "first run at negative",

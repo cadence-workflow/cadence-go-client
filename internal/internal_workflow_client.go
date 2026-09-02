@@ -1093,6 +1093,10 @@ func (wc *workflowClient) getWorkflowStartRequest(
 		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
 	}
 
+	if err := validateRequestID(options.RequestID); err != nil {
+		return nil, err
+	}
+
 	// Validate type and its arguments.
 	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, args, wc.dataConverter, wc.registry)
 	if err != nil {
@@ -1207,6 +1211,10 @@ func (wc *workflowClient) getSignalWithStartRequest(
 		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
 	}
 
+	if err := validateRequestID(options.RequestID); err != nil {
+		return nil, err
+	}
+
 	// Validate type and its arguments.
 	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, workflowArgs, wc.dataConverter, wc.registry)
 	if err != nil {
@@ -1294,6 +1302,17 @@ func requestIDOrNew(requestID uuid.UUID) string {
 		return uuid.New()
 	}
 	return requestID.String()
+}
+
+func validateRequestID(requestID uuid.UUID) error {
+	if len(requestID) == 0 {
+		return nil
+	}
+	// pborman UUID is a []byte; only a 16-byte value formats as a UUID string.
+	if uuid.Parse(requestID.String()) == nil {
+		return errors.New("invalid RequestID")
+	}
+	return nil
 }
 
 func (iter *historyEventIteratorImpl) HasNext() bool {
