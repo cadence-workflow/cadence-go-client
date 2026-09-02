@@ -2903,6 +2903,49 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "with RequestID",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantRequest: &shared.StartWorkflowExecutionRequest{
+				Domain:     common.StringPtr(domain),
+				RequestId:  common.StringPtr("550e8400-e29b-41d4-a716-446655440000"),
+				WorkflowId: common.StringPtr(workflowID),
+				WorkflowType: &shared.WorkflowType{
+					Name: common.StringPtr("go.uber.org/cadence/internal.TestGetWorkflowStartRequest.func2"),
+				},
+				TaskList: &shared.TaskList{
+					Name: common.StringPtr(tasklist),
+				},
+				ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(10),
+				TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(5),
+				DelayStartSeconds:                   common.Int32Ptr(0),
+				JitterStartSeconds:                  common.Int32Ptr(0),
+				FirstRunAtTimestamp:                 common.Int64Ptr(0),
+				CronSchedule:                        common.StringPtr(""),
+				Header:                              &shared.Header{Fields: map[string][]byte{}},
+				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
+				CronOverlapPolicy:                   shared.CronOverlapPolicySkipped.Ptr(),
+			},
+		},
+		{
+			name: "invalid RequestID",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "not-a-uuid",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
+		},
+		{
 			name: "missing TaskList",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
@@ -3018,7 +3061,9 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 
 			// set the randomized fields in the expected request before comparison
 			tc.wantRequest.Identity = &wc.identity
-			tc.wantRequest.RequestId = gotReq.RequestId
+			if tc.wantRequest.RequestId == nil {
+				tc.wantRequest.RequestId = gotReq.RequestId
+			}
 
 			assert.Equal(t, tc.wantRequest, gotReq)
 		})
@@ -3037,6 +3082,55 @@ func TestGetSignalWithStartRequest(t *testing.T) {
 		wantRequest  *shared.SignalWithStartWorkflowExecutionRequest
 		wantErr      string
 	}{
+		{
+			name:       "with RequestID",
+			workflowID: workflowID,
+			signalName: "signal",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantRequest: &shared.SignalWithStartWorkflowExecutionRequest{
+				Domain:     common.StringPtr(domain),
+				RequestId:  common.StringPtr("550e8400-e29b-41d4-a716-446655440000"),
+				WorkflowId: common.StringPtr(workflowID),
+				WorkflowType: &shared.WorkflowType{
+					Name: common.StringPtr("go.uber.org/cadence/internal.TestGetSignalWithStartRequest.func1"),
+				},
+				TaskList: &shared.TaskList{
+					Name: common.StringPtr(tasklist),
+				},
+				ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(10),
+				TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(5),
+				SignalName:                          common.StringPtr("signal"),
+				SignalInput:                         []byte("null\n"),
+				DelayStartSeconds:                   common.Int32Ptr(0),
+				JitterStartSeconds:                  common.Int32Ptr(0),
+				FirstRunAtTimestamp:                 common.Int64Ptr(0),
+				CronSchedule:                        common.StringPtr(""),
+				Header:                              &shared.Header{Fields: map[string][]byte{}},
+				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
+				CronOverlapPolicy:                   shared.CronOverlapPolicySkipped.Ptr(),
+			},
+		},
+		{
+			name:       "invalid RequestID",
+			workflowID: workflowID,
+			signalName: "signal",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "not-a-uuid",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
+		},
 		{
 			name: "first run at negative",
 			options: StartWorkflowOptions{
@@ -3074,7 +3168,9 @@ func TestGetSignalWithStartRequest(t *testing.T) {
 
 			// set the randomized fields in the expected request before comparison
 			tc.wantRequest.Identity = &wc.identity
-			tc.wantRequest.RequestId = gotReq.RequestId
+			if tc.wantRequest.RequestId == nil {
+				tc.wantRequest.RequestId = gotReq.RequestId
+			}
 
 			assert.Equal(t, tc.wantRequest, gotReq)
 		})
