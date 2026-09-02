@@ -238,6 +238,45 @@ func (w *Workflows) ContinueAsNewWithOptions(ctx workflow.Context, count int, ta
 	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithOptions, count-1, taskList)
 }
 
+func (w *Workflows) ContinueAsNewWithCronSchedule(ctx workflow.Context, remaining int, taskList, cron string) (string, error) {
+	info := workflow.GetInfo(ctx)
+	if info.TaskListName != taskList {
+		return "", fmt.Errorf("invalid taskListName name, expected=%v, got=%v", taskList, info.TaskListName)
+	}
+
+	var got string
+	if info.CronSchedule != nil {
+		got = *info.CronSchedule
+	}
+
+	if remaining == 0 {
+		return got, nil
+	}
+
+	ctx = workflow.WithTaskList(ctx, taskList)
+	ctx = workflow.WithCronSchedule(ctx, cron)
+	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithCronSchedule, remaining-1, taskList, cron)
+}
+
+func (w *Workflows) ContinueAsNewWithoutCronSchedule(ctx workflow.Context, remaining int, taskList string) (string, error) {
+	info := workflow.GetInfo(ctx)
+	if info.TaskListName != taskList {
+		return "", fmt.Errorf("invalid taskListName name, expected=%v, got=%v", taskList, info.TaskListName)
+	}
+
+	var got string
+	if info.CronSchedule != nil {
+		got = *info.CronSchedule
+	}
+
+	if remaining == 0 {
+		return got, nil
+	}
+
+	ctx = workflow.WithTaskList(ctx, taskList)
+	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithoutCronSchedule, remaining-1, taskList)
+}
+
 func (w *Workflows) IDReusePolicy(
 	ctx workflow.Context,
 	childWFID string,
@@ -688,6 +727,8 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.ActivityRetryOptionsChange)
 	worker.RegisterWorkflow(w.ContinueAsNew)
 	worker.RegisterWorkflow(w.ContinueAsNewWithOptions)
+	worker.RegisterWorkflow(w.ContinueAsNewWithCronSchedule)
+	worker.RegisterWorkflow(w.ContinueAsNewWithoutCronSchedule)
 	worker.RegisterWorkflow(w.IDReusePolicy)
 	worker.RegisterWorkflow(w.ChildWorkflowRetryOnError)
 	worker.RegisterWorkflow(w.ChildWorkflowRetryOnTimeout)
