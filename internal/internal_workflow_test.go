@@ -509,6 +509,27 @@ func (s *WorkflowUnitTest) Test_WithCronSchedule_SetsChildWorkflowOptions() {
 	s.Equal(cron, gotCron)
 }
 
+func (s *WorkflowUnitTest) Test_WithCronSchedule_ClearsCronScheduleWhenEmpty() {
+	const cron = "*/5 * * * *"
+	var gotCron string
+	testWorkflow := func(ctx Context) error {
+		ctx = WithCronSchedule(ctx, cron)
+		ctx = WithCronSchedule(ctx, "")
+		opts, err := getValidatedWorkflowOptions(ctx)
+		if err != nil {
+			return err
+		}
+		gotCron = opts.cronSchedule
+		return nil
+	}
+
+	env := newTestWorkflowEnv(s.T())
+	env.ExecuteWorkflow(testWorkflow)
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	s.Empty(gotCron)
+}
+
 func (s *WorkflowUnitTest) Test_WithChildWorkflowOptions_PreservesCronScheduleWhenEmpty() {
 	const cron = "*/5 * * * *"
 	var gotCron string
