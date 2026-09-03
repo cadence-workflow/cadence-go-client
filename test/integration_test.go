@@ -264,92 +264,45 @@ func (ts *IntegrationTestSuite) TestContinueAsNewCarryOver() {
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNewWithCronSchedule() {
-	const cron = "* * * * *"
-	wfID := "test-continueasnew-cronschedule"
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
-		defer cancel()
-		_ = ts.libClient.TerminateWorkflow(ctx, wfID, "", "integration test cleanup", nil)
-	}()
-
-	startOptions := ts.startWorkflowOptions(wfID)
-	startOptions.CronSchedule = cron
-
-	var result string
-	execution, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithCronSchedule, &result, 1, ts.taskListName, cron)
-	ts.NoError(err)
-	ts.Equal(cron, result)
+	wfID := "test-continueasnew-cronschedule-" + uuid.New()
+	defer ts.terminateWorkflows(wfID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	iter := ts.libClient.GetWorkflowHistory(ctx, wfID, execution.RunID, false, shared.HistoryEventFilterTypeAllEvent)
-	var continuedAsNew *shared.HistoryEvent
-	for iter.HasNext() {
-		event, err := iter.Next()
-		ts.NoError(err)
-		if event.GetEventType() == shared.EventTypeWorkflowExecutionContinuedAsNew {
-			continuedAsNew = event
-			break
-		}
-	}
-	ts.NotNil(continuedAsNew)
-	secondRunID := continuedAsNew.WorkflowExecutionContinuedAsNewEventAttributes.GetNewExecutionRunId()
-	ts.NotEmpty(secondRunID)
+	// The workflow is started on a schedule that fires within seconds and passes on a
+	// different one, so the schedule on the next run can only come from WithCronSchedule.
+	startOptions := ts.startWorkflowOptions(wfID)
+	startOptions.CronSchedule = frequentCronSchedule
 
-	iter = ts.libClient.GetWorkflowHistory(ctx, wfID, secondRunID, false, shared.HistoryEventFilterTypeAllEvent)
-	ts.True(iter.HasNext())
-	started, err := iter.Next()
+	// The workflow continues as new indefinitely, so assert on history rather than a result.
+	execution, err := ts.libClient.StartWorkflow(ctx, startOptions, ts.workflows.ContinueAsNewWithCronSchedule)
 	ts.NoError(err)
-	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
-	ts.Equal(cron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+
+	secondRunID := ts.continuedAsNewRunID(ctx, wfID, execution.RunID)
+	started := ts.waitForHistoryEvent(ctx, wfID, secondRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNewInCronWithoutWithCronSchedule() {
-	const cron = "* * * * *"
-	wfID := "test-continueasnew-cron-without-withcronschedule"
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
-		defer cancel()
-		_ = ts.libClient.TerminateWorkflow(ctx, wfID, "", "integration test cleanup", nil)
-	}()
-
-	startOptions := ts.startWorkflowOptions(wfID)
-	startOptions.CronSchedule = cron
-
-	var result string
-	execution, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithoutCronSchedule, &result, 1, ts.taskListName)
-	ts.NoError(err)
-	ts.Empty(result)
+	wfID := "test-continueasnew-cron-without-withcronschedule-" + uuid.New()
+	defer ts.terminateWorkflows(wfID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	iter := ts.libClient.GetWorkflowHistory(ctx, wfID, execution.RunID, false, shared.HistoryEventFilterTypeAllEvent)
-	ts.True(iter.HasNext())
-	started, err := iter.Next()
-	ts.NoError(err)
-	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
-	ts.Equal(cron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+	startOptions := ts.startWorkflowOptions(wfID)
+	startOptions.CronSchedule = frequentCronSchedule
 
-	var continuedAsNew *shared.HistoryEvent
-	for iter.HasNext() {
-		event, err := iter.Next()
-		ts.NoError(err)
-		if event.GetEventType() == shared.EventTypeWorkflowExecutionContinuedAsNew {
-			continuedAsNew = event
-			break
-		}
-	}
-	ts.NotNil(continuedAsNew)
-	secondRunID := continuedAsNew.WorkflowExecutionContinuedAsNewEventAttributes.GetNewExecutionRunId()
-	ts.NotEmpty(secondRunID)
-
-	iter = ts.libClient.GetWorkflowHistory(ctx, wfID, secondRunID, false, shared.HistoryEventFilterTypeAllEvent)
-	ts.True(iter.HasNext())
-	started, err = iter.Next()
+	// The workflow continues as new indefinitely, so assert on history rather than a result.
+	execution, err := ts.libClient.StartWorkflow(ctx, startOptions, ts.workflows.ContinueAsNewWithoutCronSchedule)
 	ts.NoError(err)
-	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
+
+	started := ts.waitForHistoryEvent(ctx, wfID, execution.RunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(frequentCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+
+	nextRunID := ts.continuedAsNewRunID(ctx, wfID, execution.RunID)
+	started = ts.waitForHistoryEvent(ctx, wfID, nextRunID, shared.EventTypeWorkflowExecutionStarted)
 	ts.Empty(started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
@@ -556,79 +509,54 @@ func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 }
 
 func (ts *IntegrationTestSuite) TestChildWorkflowsWithCronSchedule() {
-	const cron = "* * * * *"
-	parentID := "test-childwf-with-cronschedule"
+	parentID := "test-childwf-with-cronschedule-" + uuid.New()
 	childID := parentID + "-child"
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
-		defer cancel()
-		_ = ts.libClient.TerminateWorkflow(ctx, parentID, "", "integration test cleanup", nil)
-		_ = ts.libClient.TerminateWorkflow(ctx, childID, "", "integration test cleanup", nil)
-	}()
+	defer ts.terminateWorkflows(parentID, childID)
 
-	var result string
-	execution, err := ts.executeWorkflow(parentID, ts.workflows.ChildWorkflowsWithCronSchedule, &result, childID, cron)
+	// The parent returns as soon as the cron child has started, so the child itself never runs.
+	var childRunID string
+	execution, err := ts.executeWorkflow(parentID, ts.workflows.ChildWorkflowsWithCronSchedule, &childRunID, childID)
 	ts.NoError(err)
-	ts.Equal(cron, result)
+	ts.NotEmpty(childRunID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
-	ts.assertChildCronSchedule(ctx, execution.ID, execution.RunID, childID, cron)
+
+	initiated := ts.waitForHistoryEvent(ctx, parentID, execution.RunID, shared.EventTypeStartChildWorkflowExecutionInitiated)
+	ts.Equal(childID, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetWorkflowId())
+	ts.Equal(rareCronSchedule, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
+
+	started := ts.waitForHistoryEvent(ctx, childID, childRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
 func (ts *IntegrationTestSuite) TestChildWorkflowsWithoutWithCronSchedule() {
-	const cron = "* * * * *"
-	parentID := "test-childwf-without-withcronschedule"
+	parentID := "test-childwf-without-withcronschedule-" + uuid.New()
 	childID := parentID + "-child"
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
-		defer cancel()
-		_ = ts.libClient.TerminateWorkflow(ctx, parentID, "", "integration test cleanup", nil)
-		_ = ts.libClient.TerminateWorkflow(ctx, childID, "", "integration test cleanup", nil)
-	}()
-
-	startOptions := ts.startWorkflowOptions(parentID)
-	startOptions.CronSchedule = cron
-
-	var result string
-	execution, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ChildWorkflowsWithoutWithCronSchedule, &result, childID)
-	ts.NoError(err)
-	ts.Empty(result)
+	defer ts.terminateWorkflows(parentID, childID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	iter := ts.libClient.GetWorkflowHistory(ctx, execution.ID, execution.RunID, false, shared.HistoryEventFilterTypeAllEvent)
-	ts.True(iter.HasNext())
-	started, err := iter.Next()
+	// The run that starts the child has a cron schedule, so its own completion continues the
+	// chain as new rather than closing the workflow. Assert on history instead of the result.
+	execution, err := ts.libClient.StartWorkflow(ctx, ts.startWorkflowOptions(parentID), ts.workflows.ChildWorkflowsWithoutWithCronSchedule, childID)
 	ts.NoError(err)
-	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
-	ts.Equal(cron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 
-	ts.assertChildCronSchedule(ctx, execution.ID, execution.RunID, childID, "")
-}
+	cronRunID := ts.continuedAsNewRunID(ctx, parentID, execution.RunID)
+	started := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 
-func (ts *IntegrationTestSuite) assertChildCronSchedule(ctx context.Context, parentID, parentRunID, childID, wantCron string) {
-	iter := ts.libClient.GetWorkflowHistory(ctx, parentID, parentRunID, false, shared.HistoryEventFilterTypeAllEvent)
-	var initiated *shared.HistoryEvent
-	for iter.HasNext() {
-		event, err := iter.Next()
-		ts.NoError(err)
-		if event.GetEventType() == shared.EventTypeStartChildWorkflowExecutionInitiated {
-			initiated = event
-			break
-		}
-	}
-	ts.NotNil(initiated)
+	initiated := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeStartChildWorkflowExecutionInitiated)
 	ts.Equal(childID, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetWorkflowId())
-	ts.Equal(wantCron, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
+	ts.Empty(initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
 
-	iter = ts.libClient.GetWorkflowHistory(ctx, childID, "", false, shared.HistoryEventFilterTypeAllEvent)
-	ts.True(iter.HasNext())
-	started, err := iter.Next()
-	ts.NoError(err)
-	ts.Equal(shared.EventTypeWorkflowExecutionStarted, started.GetEventType())
-	ts.Equal(wantCron, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+	childStarted := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeChildWorkflowExecutionStarted)
+	childRunID := childStarted.ChildWorkflowExecutionStartedEventAttributes.GetWorkflowExecution().GetRunId()
+	ts.NotEmpty(childRunID)
+
+	started = ts.waitForHistoryEvent(ctx, childID, childRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Empty(started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
@@ -1022,6 +950,48 @@ func (ts *IntegrationTestSuite) startWorkflowOptions(wfID string) client.StartWo
 func (ts *IntegrationTestSuite) registerWorkflowsAndActivities(w worker.Worker) {
 	ts.workflows.register(w)
 	ts.activities.register(w)
+}
+
+// waitForHistoryEvent polls a single run's history until it contains an event of the given
+// type. Runs with a cron schedule never close on their own, so cron tests assert on the
+// events of a specific run rather than waiting for a result.
+func (ts *IntegrationTestSuite) waitForHistoryEvent(ctx context.Context, wfID, runID string, eventType shared.EventType) *shared.HistoryEvent {
+	for {
+		iter := ts.libClient.GetWorkflowHistory(ctx, wfID, runID, false, shared.HistoryEventFilterTypeAllEvent)
+		for iter.HasNext() {
+			event, err := iter.Next()
+			ts.NoError(err)
+			if event.GetEventType() == eventType {
+				return event
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			ts.FailNowf("history event not found",
+				"%v never appeared in run %v of workflow %v", eventType, runID, wfID)
+			return nil
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// continuedAsNewRunID returns the run ID that the given run continued as new into.
+func (ts *IntegrationTestSuite) continuedAsNewRunID(ctx context.Context, wfID, runID string) string {
+	event := ts.waitForHistoryEvent(ctx, wfID, runID, shared.EventTypeWorkflowExecutionContinuedAsNew)
+	newRunID := event.WorkflowExecutionContinuedAsNewEventAttributes.GetNewExecutionRunId()
+	ts.NotEmpty(newRunID)
+	return newRunID
+}
+
+// terminateWorkflows closes out workflows that outlive a test, such as cron chains that
+// would otherwise keep scheduling runs.
+func (ts *IntegrationTestSuite) terminateWorkflows(wfIDs ...string) {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	for _, wfID := range wfIDs {
+		_ = ts.libClient.TerminateWorkflow(ctx, wfID, "", "integration test cleanup", nil)
+	}
 }
 
 func (ts *IntegrationTestSuite) waitForWorkflowFinish(wid string, runID string) error {
