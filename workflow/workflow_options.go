@@ -42,6 +42,24 @@ func WithWorkflowTaskList(ctx Context, name string) Context {
 	return internal.WithWorkflowTaskList(ctx, name)
 }
 
+// WithCronSchedule sets a cron schedule on the context for ContinueAsNew and child workflows.
+//
+// Cron is not inherited from the current run. Pass it explicitly when the next
+// execution should keep a schedule, for example:
+//
+//	info := workflow.GetInfo(ctx)
+//	if info.CronSchedule != nil {
+//		ctx = workflow.WithCronSchedule(ctx, *info.CronSchedule)
+//	}
+//	return workflow.NewContinueAsNewError(ctx, myWorkflow, args...)
+//
+// The same option is read by ExecuteChildWorkflow. WithChildOptions copies
+// CronSchedule only when it is non-empty, so WithCronSchedule then
+// WithChildOptions still keeps the schedule. Pass "" here to start a non-cron run.
+func WithCronSchedule(ctx Context, cronSchedule string) Context {
+	return internal.WithCronSchedule(ctx, cronSchedule)
+}
+
 // GetWorkflowTaskList returns tasklist in the Context's current ChildWorkflowOptions
 // or workflow.GetInfo(ctx).TaskListName if not set or empty.
 func GetWorkflowTaskList(ctx Context) string {

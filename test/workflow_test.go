@@ -238,6 +238,30 @@ func (w *Workflows) ContinueAsNewWithOptions(ctx workflow.Context, count int, ta
 	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithOptions, count-1, taskList)
 }
 
+// rareCronSchedule fires at midnight on January 1st. The workflows below use it so tests can
+// assert on the schedule recorded in history without a scheduled run ever starting.
+const rareCronSchedule = "0 0 1 1 *"
+
+// frequentCronSchedule is for workflows that must actually be started by cron. The five field
+// syntax is minute-granular, so its first run would not begin for up to a minute, while this
+// descriptor form is accepted by the same parser and starts a run within seconds.
+const frequentCronSchedule = "@every 1s"
+
+// ContinueAsNewWithCronSchedule is can pass its own cron schedule with continue as new.
+func (w *Workflows) ContinueAsNewWithCronSchedule(ctx workflow.Context) (string, error) {
+	if got := w.cronSchedule(ctx); got != "" {
+		ctx = workflow.WithCronSchedule(ctx, rareCronSchedule)
+	}
+	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithCronSchedule)
+}
+
+// ContinueAsNewWithoutCronSchedule continues as new without passing on the cron schedule its
+// own run was started with. The run it continues into reports the schedule it sees, which is
+// empty because cron is not inherited.
+func (w *Workflows) ContinueAsNewWithoutCronSchedule(ctx workflow.Context) (string, error) {
+	return "", workflow.NewContinueAsNewError(ctx, w.ContinueAsNewWithoutCronSchedule)
+}
+
 func (w *Workflows) IDReusePolicy(
 	ctx workflow.Context,
 	childWFID string,
@@ -325,6 +349,54 @@ func (w *Workflows) ChildWorkflowSuccess(ctx workflow.Context) (result string, e
 	ctx = workflow.WithChildOptions(ctx, opts)
 	err = workflow.ExecuteChildWorkflow(ctx, w.childForMemoAndSearchAttr).Get(ctx, &result)
 	return
+}
+
+// ChildWorkflowsWithCronSchedule starts a child on a cron schedule and returns its run ID.
+// A cron child never reports completion to its parent because every run of it continues as
+// new on the schedule, so this only waits for the child to start.
+func (w *Workflows) ChildWorkflowsWithCronSchedule(ctx workflow.Context, childID string) (string, error) {
+	ctx = workflow.WithCronSchedule(ctx, rareCronSchedule)
+	ctx = workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID:                   childID,
+		TaskStartToCloseTimeout:      5 * time.Second,
+		ExecutionStartToCloseTimeout: 10 * time.Second,
+		WorkflowIDReusePolicy:        client.WorkflowIDReusePolicyAllowDuplicate,
+	})
+	var childWE workflow.Execution
+	err := workflow.ExecuteChildWorkflow(ctx, w.childReportsCron).GetChildWorkflowExecution().Get(ctx, &childWE)
+	return childWE.RunID, err
+}
+
+// ChildWorkflowsWithoutWithCronSchedule starts a child from a run that itself has a cron
+// schedule, without calling WithCronSchedule. The first run only exists to give the second
+// one a schedule, since a run started with cron options would not begin until its next
+// scheduled time.
+func (w *Workflows) ChildWorkflowsWithoutWithCronSchedule(ctx workflow.Context, childID string) (string, error) {
+	if w.cronSchedule(ctx) == "" {
+		ctx = workflow.WithCronSchedule(ctx, rareCronSchedule)
+		return "", workflow.NewContinueAsNewError(ctx, w.ChildWorkflowsWithoutWithCronSchedule, childID)
+	}
+
+	ctx = workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID:                   childID,
+		TaskStartToCloseTimeout:      5 * time.Second,
+		ExecutionStartToCloseTimeout: 10 * time.Second,
+		WorkflowIDReusePolicy:        client.WorkflowIDReusePolicyAllowDuplicate,
+	})
+	var result string
+	err := workflow.ExecuteChildWorkflow(ctx, w.childReportsCron).Get(ctx, &result)
+	return result, err
+}
+
+func (w *Workflows) childReportsCron(ctx workflow.Context) (string, error) {
+	return w.cronSchedule(ctx), nil
+}
+
+func (w *Workflows) cronSchedule(ctx workflow.Context) string {
+	if cron := workflow.GetInfo(ctx).CronSchedule; cron != nil {
+		return *cron
+	}
+	return ""
 }
 
 func (w *Workflows) ChildWorkflowSuccessWithParentClosePolicyTerminate(ctx workflow.Context) (result string, err error) {
@@ -688,6 +760,8 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.ActivityRetryOptionsChange)
 	worker.RegisterWorkflow(w.ContinueAsNew)
 	worker.RegisterWorkflow(w.ContinueAsNewWithOptions)
+	worker.RegisterWorkflow(w.ContinueAsNewWithCronSchedule)
+	worker.RegisterWorkflow(w.ContinueAsNewWithoutCronSchedule)
 	worker.RegisterWorkflow(w.IDReusePolicy)
 	worker.RegisterWorkflow(w.ChildWorkflowRetryOnError)
 	worker.RegisterWorkflow(w.ChildWorkflowRetryOnTimeout)
@@ -695,6 +769,9 @@ func (w *Workflows) register(worker worker.Worker) {
 	worker.RegisterWorkflow(w.ChildWorkflowSuccessWithParentClosePolicyTerminate)
 	worker.RegisterWorkflow(w.ChildWorkflowSuccessWithParentClosePolicyAbandon)
 	worker.RegisterWorkflow(w.ChildWorkflowCancel)
+	worker.RegisterWorkflow(w.ChildWorkflowsWithCronSchedule)
+	worker.RegisterWorkflow(w.ChildWorkflowsWithoutWithCronSchedule)
+	worker.RegisterWorkflow(w.childReportsCron)
 	worker.RegisterWorkflow(w.InspectActivityInfo)
 	worker.RegisterWorkflow(w.InspectLocalActivityInfo)
 	worker.RegisterWorkflow(w.sleep)

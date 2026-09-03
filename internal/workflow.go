@@ -1411,6 +1411,11 @@ func (wc *workflowEnvironmentInterceptor) UpsertSearchAttributes(ctx Context, at
 // WithChildWorkflowOptions adds all workflow options to the context.
 // The current timeout resolution implementation is in seconds and uses math.Ceil(d.Seconds()) as the duration. But is
 // subjected to change in the future.
+//
+// CronSchedule is applied only when non-empty so a prior WithCronSchedule is not
+// cleared by typical child options (timeouts, task list, and so on). Pass a
+// non-empty CronSchedule here to set or replace it, or WithCronSchedule(ctx, "")
+// to clear it.
 func WithChildWorkflowOptions(ctx Context, cwo ChildWorkflowOptions) Context {
 	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
 	wfOptions := getWorkflowEnvOptions(ctx1)
@@ -1422,7 +1427,9 @@ func WithChildWorkflowOptions(ctx Context, cwo ChildWorkflowOptions) Context {
 	wfOptions.waitForCancellation = cwo.WaitForCancellation
 	wfOptions.workflowIDReusePolicy = cwo.WorkflowIDReusePolicy
 	wfOptions.retryPolicy = convertRetryPolicy(cwo.RetryPolicy)
-	wfOptions.cronSchedule = cwo.CronSchedule
+	if cwo.CronSchedule != "" {
+		wfOptions.cronSchedule = cwo.CronSchedule
+	}
 	wfOptions.memo = cwo.Memo
 	wfOptions.searchAttributes = cwo.SearchAttributes
 	wfOptions.parentClosePolicy = cwo.ParentClosePolicy
@@ -1442,6 +1449,24 @@ func WithWorkflowDomain(ctx Context, name string) Context {
 func WithWorkflowTaskList(ctx Context, name string) Context {
 	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
 	getWorkflowEnvOptions(ctx1).taskListName = common.StringPtr(name)
+	return ctx1
+}
+
+// WithCronSchedule sets a cron schedule on the context.
+//
+// The same workflow options are used for ContinueAsNew (via NewContinueAsNewError)
+// and for child workflows (via ExecuteChildWorkflow). Cron is not copied from the
+// current run automatically; pass it explicitly when the next run or child should
+// keep a schedule.
+//
+// ChildWorkflowOptions.CronSchedule is applied only when non-empty, so
+// WithCronSchedule then WithChildWorkflowOptions still keeps the schedule.
+// A non-empty ChildWorkflowOptions.CronSchedule replaces it. Pass "" here to
+// clear a previously set value. Invalid specs are rejected when ContinueAsNew
+// or child workflow options are validated.
+func WithCronSchedule(ctx Context, cronSchedule string) Context {
+	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
+	getWorkflowEnvOptions(ctx1).cronSchedule = cronSchedule
 	return ctx1
 }
 

@@ -1029,6 +1029,105 @@ func (t *TaskHandlersTestSuite) TestGetWorkflowInfo() {
 	t.EqualValues(retryPolicy, result.RetryPolicy)
 }
 
+func (t *TaskHandlersTestSuite) TestWorkflowTask_ContinueAsNew_WithCronSchedule() {
+	cronSchedule := "0 * * * *"
+	workflowName := "ContinueAsNewWithCronWorkflow"
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error {
+			ctx = WithCronSchedule(ctx, cronSchedule)
+			return NewContinueAsNewError(ctx, workflowName)
+		},
+		RegisterWorkflowOptions{Name: workflowName},
+	)
+
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	var executionTimeout int32 = 10
+	var taskTimeout int32 = 1
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskList:                            taskList,
+			ExecutionStartToCloseTimeoutSeconds: &executionTimeout,
+			TaskStartToCloseTimeoutSeconds:      &taskTimeout,
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+	}
+	task := createWorkflowTask(testEvents, 3, workflowName)
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity:                       "test-id-1",
+			Logger:                         zap.NewNop(),
+			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
+		},
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+	t.NoError(err)
+	r, ok := request.(*s.RespondDecisionTaskCompletedRequest)
+	t.True(ok)
+	t.Equal(s.DecisionTypeContinueAsNewWorkflowExecution, r.Decisions[0].GetDecisionType())
+	attr := r.Decisions[0].ContinueAsNewWorkflowExecutionDecisionAttributes
+	t.Equal(cronSchedule, attr.GetCronSchedule())
+}
+
+func (t *TaskHandlersTestSuite) TestWorkflowTask_StartChildWorkflow_WithCronSchedule() {
+	cronSchedule := "0 * * * *"
+	childName := "NoopChildForCron"
+	parentName := "ParentStartsCronChild"
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error { return nil },
+		RegisterWorkflowOptions{Name: childName},
+	)
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error {
+			ctx = WithCronSchedule(ctx, cronSchedule)
+			ExecuteChildWorkflow(ctx, childName)
+			return nil
+		},
+		RegisterWorkflowOptions{Name: parentName},
+	)
+
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	var executionTimeout int32 = 10
+	var taskTimeout int32 = 1
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskList:                            taskList,
+			ExecutionStartToCloseTimeoutSeconds: &executionTimeout,
+			TaskStartToCloseTimeoutSeconds:      &taskTimeout,
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+	}
+	task := createWorkflowTask(testEvents, 3, parentName)
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity:                       "test-id-1",
+			Logger:                         zap.NewNop(),
+			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
+		},
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+	t.NoError(err)
+	r, ok := request.(*s.RespondDecisionTaskCompletedRequest)
+	t.True(ok)
+
+	var childAttr *s.StartChildWorkflowExecutionDecisionAttributes
+	for _, d := range r.Decisions {
+		if d.GetDecisionType() == s.DecisionTypeStartChildWorkflowExecution {
+			childAttr = d.StartChildWorkflowExecutionDecisionAttributes
+			break
+		}
+	}
+	t.NotNil(childAttr)
+	t.Equal(cronSchedule, childAttr.GetCronSchedule())
+}
+
 func (t *TaskHandlersTestSuite) TestConsistentQuery_InvalidQueryTask() {
 	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
 	params := workerExecutionParameters{
