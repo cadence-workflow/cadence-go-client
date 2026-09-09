@@ -1029,6 +1029,105 @@ func (t *TaskHandlersTestSuite) TestGetWorkflowInfo() {
 	t.EqualValues(retryPolicy, result.RetryPolicy)
 }
 
+func (t *TaskHandlersTestSuite) TestWorkflowTask_ContinueAsNew_WithCronSchedule() {
+	cronSchedule := "0 * * * *"
+	workflowName := "ContinueAsNewWithCronWorkflow"
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error {
+			ctx = WithCronSchedule(ctx, cronSchedule)
+			return NewContinueAsNewError(ctx, workflowName)
+		},
+		RegisterWorkflowOptions{Name: workflowName},
+	)
+
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	var executionTimeout int32 = 10
+	var taskTimeout int32 = 1
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskList:                            taskList,
+			ExecutionStartToCloseTimeoutSeconds: &executionTimeout,
+			TaskStartToCloseTimeoutSeconds:      &taskTimeout,
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+	}
+	task := createWorkflowTask(testEvents, 3, workflowName)
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity:                       "test-id-1",
+			Logger:                         zap.NewNop(),
+			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
+		},
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+	t.NoError(err)
+	r, ok := request.(*s.RespondDecisionTaskCompletedRequest)
+	t.True(ok)
+	t.Equal(s.DecisionTypeContinueAsNewWorkflowExecution, r.Decisions[0].GetDecisionType())
+	attr := r.Decisions[0].ContinueAsNewWorkflowExecutionDecisionAttributes
+	t.Equal(cronSchedule, attr.GetCronSchedule())
+}
+
+func (t *TaskHandlersTestSuite) TestWorkflowTask_StartChildWorkflow_WithCronSchedule() {
+	cronSchedule := "0 * * * *"
+	childName := "NoopChildForCron"
+	parentName := "ParentStartsCronChild"
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error { return nil },
+		RegisterWorkflowOptions{Name: childName},
+	)
+	t.registry.RegisterWorkflowWithOptions(
+		func(ctx Context) error {
+			ctx = WithCronSchedule(ctx, cronSchedule)
+			ExecuteChildWorkflow(ctx, childName)
+			return nil
+		},
+		RegisterWorkflowOptions{Name: parentName},
+	)
+
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	var executionTimeout int32 = 10
+	var taskTimeout int32 = 1
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskList:                            taskList,
+			ExecutionStartToCloseTimeoutSeconds: &executionTimeout,
+			TaskStartToCloseTimeoutSeconds:      &taskTimeout,
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+	}
+	task := createWorkflowTask(testEvents, 3, parentName)
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity:                       "test-id-1",
+			Logger:                         zap.NewNop(),
+			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
+		},
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+	t.NoError(err)
+	r, ok := request.(*s.RespondDecisionTaskCompletedRequest)
+	t.True(ok)
+
+	var childAttr *s.StartChildWorkflowExecutionDecisionAttributes
+	for _, d := range r.Decisions {
+		if d.GetDecisionType() == s.DecisionTypeStartChildWorkflowExecution {
+			childAttr = d.StartChildWorkflowExecutionDecisionAttributes
+			break
+		}
+	}
+	t.NotNil(childAttr)
+	t.Equal(cronSchedule, childAttr.GetCronSchedule())
+}
+
 func (t *TaskHandlersTestSuite) TestConsistentQuery_InvalidQueryTask() {
 	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
 	params := workerExecutionParameters{
@@ -1291,6 +1390,78 @@ func (t *TaskHandlersTestSuite) TestLocalActivityRetry_DecisionHeartbeatFail() {
 	time.Sleep(backoffDuration)
 	t.False(workflowComplete)
 	<-doneCh
+}
+
+func (t *TaskHandlersTestSuite) TestLocalActivity_WorkerShutdownAbandonsDecisionTask() {
+	// Once the worker starts shutting down, a pending local activity can no longer
+	// be dispatched and its result will never arrive. The decision task must be
+	// abandoned (surfaced as a decisionHeartbeatError so the poller lets the server
+	// reschedule it) instead of heartbeating until the server's
+	// decisionHeartbeatTimeout.
+	localActivityWorkflowFunc := func(ctx Context, input []byte) error {
+		ctx = WithLocalActivityOptions(ctx, LocalActivityOptions{ScheduleToCloseTimeout: time.Minute})
+		return ExecuteLocalActivity(ctx, func() error { return nil }).Get(ctx, nil)
+	}
+	t.registry.RegisterWorkflowWithOptions(
+		localActivityWorkflowFunc,
+		RegisterWorkflowOptions{Name: "ShutdownLocalActivityWorkflow"},
+	)
+
+	// A long decision timeout ensures the heartbeat branch cannot fire during the
+	// test, so the only way the loop returns is via the worker-shutdown branch.
+	decisionTaskStartedEvent := createTestEventDecisionTaskStarted(3)
+	decisionTaskStartedEvent.Timestamp = common.Int64Ptr(time.Now().UnixNano())
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{
+			TaskStartToCloseTimeoutSeconds: common.Int32Ptr(60),
+			TaskList:                       &s.TaskList{Name: &testWorkflowTaskTasklist},
+		}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{}),
+		decisionTaskStartedEvent,
+	}
+	task := createWorkflowTask(testEvents, 0, "ShutdownLocalActivityWorkflow")
+
+	stopCh := make(chan struct{})
+	params := workerExecutionParameters{
+		TaskList:          &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()},
+		WorkerOptions:     WorkerOptions{Identity: "test-id-1", Logger: t.logger},
+		WorkerStopChannel: stopCh,
+	}
+
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	taskHandlerImpl, ok := taskHandler.(*workflowTaskHandlerImpl)
+	t.True(ok)
+	taskHandlerImpl.laTunnel = newLocalActivityTunnel(params.WorkerStopChannel)
+
+	type processResult struct {
+		response interface{}
+		err      error
+	}
+	resultCh := make(chan processResult, 1)
+	go func() {
+		response, err := taskHandler.ProcessWorkflowTask(
+			&workflowTask{task: task, laResultCh: make(chan *localActivityResult)},
+			func(interface{}, time.Time) (*workflowTask, error) {
+				return nil, errors.New("heartbeat must not be called on shutdown")
+			},
+		)
+		resultCh <- processResult{response, err}
+	}()
+
+	// Let the workflow dispatch the local activity and enter the wait loop while
+	// the worker is still healthy, then signal shutdown.
+	time.Sleep(100 * time.Millisecond)
+	close(stopCh)
+
+	select {
+	case r := <-resultCh:
+		t.Nil(r.response)
+		var hbErr *decisionHeartbeatError
+		t.True(errors.As(r.err, &hbErr))
+		t.Contains(r.err.Error(), "shutting down")
+	case <-time.After(5 * time.Second):
+		t.Fail("ProcessWorkflowTask did not return after worker shutdown")
+	}
 }
 
 func (t *TaskHandlersTestSuite) TestHeartBeat_NoError() {
