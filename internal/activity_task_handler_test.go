@@ -235,6 +235,23 @@ func TestActivityTaskHandler_Execute_CustomError(t *testing.T) {
 	require.Equal(t, int32(30), failedRequest.GetFailureOptions().GetNextRetryIntervalSeconds())
 }
 
+func TestActivityTaskHandler_Execute_UnregisteredActivity(t *testing.T) {
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, func(ctx context.Context) error { return nil })
+
+	pats := createBasicPollForActivityTaskResponse()
+	pats.ActivityType = &s.ActivityType{Name: common.StringPtr("notRegistered")}
+
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+
+	failedRequest, ok := res.(*s.RespondActivityTaskFailedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskFailedRequest but of type %T", res)
+	require.Equal(t, pats.TaskToken, failedRequest.GetTaskToken())
+	require.Equal(t, errReasonGeneric, failedRequest.GetReason())
+	require.Contains(t, string(failedRequest.GetDetails()), "unable to find activityType=notRegistered")
+	require.Contains(t, string(failedRequest.GetDetails()), "activityType")
+}
+
 func newHandlerForTest(t *testing.T, params workerExecutionParameters, activityFunction any) ActivityTaskHandler {
 	registry := newRegistry()
 	err := registry.registerActivityFunction(activityFunction, RegisterActivityOptions{Name: "activityType"})

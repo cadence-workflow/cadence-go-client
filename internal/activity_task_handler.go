@@ -144,9 +144,13 @@ func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivit
 
 	activityImplementation := ath.getActivity(activityType)
 	if activityImplementation == nil {
-		// Couldn't find the activity implementation.
+		// Report the failure to the server instead of returning an error, so the
+		// activity fails now rather than at its schedule-to-close timeout.
 		supported := strings.Join(ath.getRegisteredActivityNames(), ", ")
-		return nil, fmt.Errorf("unable to find activityType=%v. Supported types: [%v]", activityType, supported)
+		notRegistered := fmt.Errorf("unable to find activityType=%v. Supported types: [%v]", activityType, supported)
+		logger.Error("Activity error.", zap.Error(notRegistered))
+		metricsScope.Counter(metrics.ActivityExecutionFailedCounter).Inc(1)
+		return convertActivityResultToRespondRequest(ath.identity, t.TaskToken, nil, notRegistered, ath.dataConverter), nil
 	}
 
 	// panic handler
