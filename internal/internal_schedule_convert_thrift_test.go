@@ -251,12 +251,20 @@ func TestScheduleInfoFromThrift(t *testing.T) {
 	startNs := int64(1_700_000_000_000_000_000)
 	endNs := int64(1_800_000_000_000_000_000)
 	total := int64(42)
+	missed := int64(3)
+	skipped := int64(5)
+	buffered := int64(2)
+	running := int64(1)
 	in := &s.ScheduleInfo{
-		LastRunTimeNano:    &startNs,
-		NextRunTimeNano:    &endNs,
-		TotalRuns:          &total,
-		CreateTimeNano:     &startNs,
-		LastUpdateTimeNano: &endNs,
+		LastRunTimeNano:      &startNs,
+		NextRunTimeNano:      &endNs,
+		TotalRuns:            &total,
+		CreateTimeNano:       &startNs,
+		LastUpdateTimeNano:   &endNs,
+		MissedRuns:           &missed,
+		SkippedRuns:          &skipped,
+		BufferedFireCount:    &buffered,
+		RunningWorkflowCount: &running,
 		OngoingBackfills: []*s.BackfillInfo{
 			{BackfillId: common.StringPtr("bf-1")},
 		},
@@ -264,10 +272,58 @@ func TestScheduleInfoFromThrift(t *testing.T) {
 	got := scheduleInfoFromThrift(in)
 	require.NotNil(t, got)
 	assert.Equal(t, int64(42), got.TotalRuns)
-	assert.Equal(t, startNs, got.CreateTime.UnixNano(), "CreateTime must be populated from server")
-	assert.Equal(t, endNs, got.LastUpdateTime.UnixNano(), "LastUpdateTime must be populated from server")
+	assert.Equal(t, startNs, got.CreateTime.UnixNano())
+	assert.Equal(t, endNs, got.LastUpdateTime.UnixNano())
+	assert.Equal(t, int64(3), got.MissedRuns)
+	assert.Equal(t, int64(5), got.SkippedRuns)
+	assert.Equal(t, int64(2), got.BufferedFireCount)
+	assert.Equal(t, int64(1), got.RunningWorkflowCount)
 	require.Len(t, got.OngoingBackfills, 1)
 	assert.Equal(t, "bf-1", got.OngoingBackfills[0].BackfillID)
+}
+
+// FuzzScheduleInfoFromThrift fills all scalar fields of the thrift ScheduleInfo and verifies
+// that every one round-trips exactly through scheduleInfoFromThrift. Covering all fields means
+// that if a future field is added to shared.ScheduleInfo but forgotten in the converter, adding
+// an assertion here will immediately catch it.
+func FuzzScheduleInfoFromThrift(f *testing.F) {
+	f.Add(
+		int64(1_700_000_000_000_000_000), // lastRunNano
+		int64(1_800_000_000_000_000_000), // nextRunNano
+		int64(42),                        // totalRuns
+		int64(1_600_000_000_000_000_000), // createNano
+		int64(1_700_000_000_000_000_000), // lastUpdateNano
+		int64(3), int64(5), int64(2), int64(1),
+	)
+	f.Add(int64(0), int64(0), int64(0), int64(0), int64(0), int64(0), int64(0), int64(0), int64(0))
+	f.Add(int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62), int64(1<<62))
+
+	f.Fuzz(func(t *testing.T, lastRunNano, nextRunNano, totalRuns, createNano, lastUpdateNano, missed, skipped, buffered, running int64) {
+		in := &s.ScheduleInfo{
+			LastRunTimeNano:      &lastRunNano,
+			NextRunTimeNano:      &nextRunNano,
+			TotalRuns:            &totalRuns,
+			CreateTimeNano:       &createNano,
+			LastUpdateTimeNano:   &lastUpdateNano,
+			MissedRuns:           &missed,
+			SkippedRuns:          &skipped,
+			BufferedFireCount:    &buffered,
+			RunningWorkflowCount: &running,
+		}
+		got := scheduleInfoFromThrift(in)
+		if got == nil {
+			t.Fatal("scheduleInfoFromThrift returned nil for non-nil input")
+		}
+		assert.Equal(t, lastRunNano, got.LastRunTime.UnixNano())
+		assert.Equal(t, nextRunNano, got.NextRunTime.UnixNano())
+		assert.Equal(t, totalRuns, got.TotalRuns)
+		assert.Equal(t, createNano, got.CreateTime.UnixNano())
+		assert.Equal(t, lastUpdateNano, got.LastUpdateTime.UnixNano())
+		assert.Equal(t, missed, got.MissedRuns)
+		assert.Equal(t, skipped, got.SkippedRuns)
+		assert.Equal(t, buffered, got.BufferedFireCount)
+		assert.Equal(t, running, got.RunningWorkflowCount)
+	})
 }
 
 func TestScheduleListEntryFromThrift(t *testing.T) {

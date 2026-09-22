@@ -2527,6 +2527,8 @@ func TestDescribeScheduleResponse(t *testing.T) {
 	assert.Equal(t, testdata.ScheduleInfo.TotalRuns, result.Info.GetTotalRuns())
 	assert.Equal(t, testdata.ScheduleInfo.MissedRuns, result.Info.GetMissedRuns())
 	assert.Equal(t, testdata.ScheduleInfo.SkippedRuns, result.Info.GetSkippedRuns())
+	assert.Equal(t, testdata.ScheduleInfo.BufferedFireCount, result.Info.GetBufferedFireCount())
+	assert.Equal(t, testdata.ScheduleInfo.RunningWorkflowCount, result.Info.GetRunningWorkflowCount())
 	assert.NotNil(t, result.Action)
 	assert.NotNil(t, result.Memo)
 	assert.NotNil(t, result.SearchAttributes)

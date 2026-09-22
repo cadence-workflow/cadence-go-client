@@ -632,12 +632,16 @@ func scheduleInfoFromThrift(si *shared.ScheduleInfo) *ScheduleInfo {
 		}
 	}
 	return &ScheduleInfo{
-		LastRunTime:      thriftNanoToTime(si.LastRunTimeNano),
-		NextRunTime:      thriftNanoToTime(si.NextRunTimeNano),
-		TotalRuns:        si.GetTotalRuns(),
-		CreateTime:       thriftNanoToTime(si.CreateTimeNano),
-		LastUpdateTime:   thriftNanoToTime(si.LastUpdateTimeNano),
-		OngoingBackfills: ongoing,
+		LastRunTime:          thriftNanoToTime(si.LastRunTimeNano),
+		NextRunTime:          thriftNanoToTime(si.NextRunTimeNano),
+		TotalRuns:            si.GetTotalRuns(),
+		CreateTime:           thriftNanoToTime(si.CreateTimeNano),
+		LastUpdateTime:       thriftNanoToTime(si.LastUpdateTimeNano),
+		OngoingBackfills:     ongoing,
+		MissedRuns:           si.GetMissedRuns(),
+		SkippedRuns:          si.GetSkippedRuns(),
+		BufferedFireCount:    si.GetBufferedFireCount(),
+		RunningWorkflowCount: si.GetRunningWorkflowCount(),
 	}
 }
 

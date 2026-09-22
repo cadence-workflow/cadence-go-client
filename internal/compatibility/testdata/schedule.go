@@ -79,14 +79,16 @@ var (
 	}
 
 	ScheduleInfo = apiv1.ScheduleInfo{
-		LastRunTime:      Timestamp1,
-		NextRunTime:      Timestamp2,
-		TotalRuns:        42,
-		CreateTime:       Timestamp3,
-		LastUpdateTime:   Timestamp4,
-		OngoingBackfills: []*apiv1.BackfillInfo{&BackfillInfo},
-		MissedRuns:       7,
-		SkippedRuns:      3,
+		LastRunTime:          Timestamp1,
+		NextRunTime:          Timestamp2,
+		TotalRuns:            42,
+		CreateTime:           Timestamp3,
+		LastUpdateTime:       Timestamp4,
+		OngoingBackfills:     []*apiv1.BackfillInfo{&BackfillInfo},
+		MissedRuns:           7,
+		SkippedRuns:          3,
+		BufferedFireCount:    4,
+		RunningWorkflowCount: 2,
 	}
 
 	ScheduleListEntry = apiv1.ScheduleListEntry{
