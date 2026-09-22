@@ -155,8 +155,7 @@ type SchedulePolicies struct {
 
 // SchedulePauseInfo records when and why a schedule was paused.
 type SchedulePauseInfo struct {
-	Reason string
-	// PausedAt is not currently populated by the server; it will always be the zero time.Time.
+	Reason   string
 	PausedAt time.Time
 	PausedBy string
 }
@@ -178,14 +177,11 @@ type BackfillInfo struct {
 
 // ScheduleInfo contains runtime statistics for a schedule.
 type ScheduleInfo struct {
-	LastRunTime time.Time
-	NextRunTime time.Time
-	TotalRuns   int64
-	// CreateTime is not currently populated by the server; it will always be the zero time.Time.
-	CreateTime time.Time
-	// LastUpdateTime is not currently populated by the server; it will always be the zero time.Time.
-	LastUpdateTime time.Time
-	// OngoingBackfills is not currently populated by the server; it will always be nil.
+	LastRunTime      time.Time
+	NextRunTime      time.Time
+	TotalRuns        int64
+	CreateTime       time.Time
+	LastUpdateTime   time.Time
 	OngoingBackfills []*BackfillInfo
 }
 
