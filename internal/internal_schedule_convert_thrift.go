@@ -129,6 +129,10 @@ func thriftNanoToTime(n *int64) time.Time {
 	return time.Unix(0, *n).UTC()
 }
 
+// durationToThriftSeconds converts a duration to an int32 second count using ceiling rounding.
+// Sub-second values (e.g. 500ms) are rounded up to 1s rather than truncated to 0.
+// This is the direct SDK→thrift write path; the compat proto→thrift layer uses durationToSeconds
+// (truncation) for most fields, with durationToSecondsCeil used specifically for Jitter.
 func durationToThriftSeconds(d time.Duration) *int32 {
 	if d == 0 {
 		return nil

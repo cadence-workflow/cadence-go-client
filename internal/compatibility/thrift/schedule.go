@@ -104,7 +104,7 @@ func ScheduleSpec(t *apiv1.ScheduleSpec) *shared.ScheduleSpec {
 		CronExpression:  common.StringPtr(t.CronExpression),
 		StartTimeNano:   timeToUnixNano(t.StartTime),
 		EndTimeNano:     timeToUnixNano(t.EndTime),
-		JitterInSeconds: durationToSeconds(t.Jitter),
+		JitterInSeconds: durationToSecondsCeil(t.Jitter),
 	}
 }
 
