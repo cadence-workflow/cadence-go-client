@@ -2246,6 +2246,17 @@ func TestScheduleSpec(t *testing.T) {
 		FuzzOptions{},
 	)
 }
+
+func TestScheduleSpecJitterRounding(t *testing.T) {
+	// The thrift wire format stores jitter as int32 seconds, so sub-second values must be
+	// rounded. Both the direct thrift path and the compat proto→thrift path use ceiling
+	// rounding so that a sub-second jitter is never silently truncated to zero (no jitter).
+	halfSecond, _ := gogo.DurationProto(500*time.Millisecond), false
+	spec := &apiv1.ScheduleSpec{Jitter: halfSecond}
+	got := thrift.ScheduleSpec(spec)
+	assert.NotNil(t, got)
+	assert.Equal(t, int32(1), got.GetJitterInSeconds(), "500ms jitter must ceil to 1s, not truncate to 0")
+}
 func TestSchedulePauseInfo(t *testing.T) {
 	for _, item := range []*apiv1.SchedulePauseInfo{nil, {}, &testdata.SchedulePauseInfo} {
 		assert.Equal(t, item, proto.SchedulePauseInfo(thrift.SchedulePauseInfo(item)))
