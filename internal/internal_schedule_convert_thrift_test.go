@@ -264,6 +264,8 @@ func TestScheduleInfoFromThrift(t *testing.T) {
 	got := scheduleInfoFromThrift(in)
 	require.NotNil(t, got)
 	assert.Equal(t, int64(42), got.TotalRuns)
+	assert.Equal(t, startNs, got.CreateTime.UnixNano(), "CreateTime must be populated from server")
+	assert.Equal(t, endNs, got.LastUpdateTime.UnixNano(), "LastUpdateTime must be populated from server")
 	require.Len(t, got.OngoingBackfills, 1)
 	assert.Equal(t, "bf-1", got.OngoingBackfills[0].BackfillID)
 }

@@ -468,10 +468,6 @@ func TestScheduleClient_Describe_Validation(t *testing.T) {
 func TestScheduleClient_Describe_FullResponse(t *testing.T) {
 	td := newScheduleClientTestData(t)
 
-	// NOTE: This test uses a hand-crafted synthetic Thrift response to verify the
-	// conversion logic for all fields. In practice, the server does not populate
-	// CreateTimeNano, LastUpdateTimeNano, OngoingBackfills, or PausedTimeNano —
-	// those fields always arrive as nil and convert to zero values.
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 	startNano := start.UnixNano()
