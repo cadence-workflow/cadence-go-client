@@ -183,7 +183,7 @@ type ScheduleInfo struct {
 	CreateTime       time.Time
 	LastUpdateTime   time.Time
 	OngoingBackfills []*BackfillInfo
-	// MissedRuns is the number of runs that were skipped because they fell outside the catch-up window.
+	// MissedRuns is the number of scheduled fires the server failed to start.
 	MissedRuns int64
 	// SkippedRuns is the number of runs that were skipped due to the overlap policy.
 	SkippedRuns int64
