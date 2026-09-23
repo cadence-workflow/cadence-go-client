@@ -183,6 +183,14 @@ type ScheduleInfo struct {
 	CreateTime       time.Time
 	LastUpdateTime   time.Time
 	OngoingBackfills []*BackfillInfo
+	// MissedRuns is the number of scheduled fires the server failed to start.
+	MissedRuns int64
+	// SkippedRuns is the number of runs that were skipped due to the overlap policy.
+	SkippedRuns int64
+	// BufferedFireCount is the number of runs currently waiting in the buffer to be started.
+	BufferedFireCount int64
+	// RunningWorkflowCount is the number of workflows actively running under this schedule.
+	RunningWorkflowCount int64
 }
 
 // ScheduleListEntry is a summary of a schedule returned by ScheduleClient.List.
