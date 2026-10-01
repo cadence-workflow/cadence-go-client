@@ -26,7 +26,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
+	"go.uber.org/zap/zaptest/observer"
 
 	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/worker"
@@ -188,4 +190,59 @@ func TestContinueAsNew(t *testing.T) {
 	replayer.RegisterWorkflowWithOptions(ContinueAsNewWorkflow, workflow.RegisterOptions{Name: "fx.SimpleSignalWorkflow"})
 	err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), "continue_as_new.json")
 	assert.ErrorContains(t, err, "missing replay decision for WorkflowExecutionContinuedAsNew")
+}
+
+// TestGetVersionRemoved replays a history with a Version marker between two activities
+// against workflow code that no longer calls GetVersion. Unconsumed version markers are skipped,
+// so removing a GetVersion call whose result is unused keeps old histories replayable.
+func TestGetVersionRemoved(t *testing.T) {
+	replayer := worker.NewWorkflowReplayer()
+	replayer.RegisterWorkflowWithOptions(getVersionRemovedWorkflow, workflow.RegisterOptions{Name: "GetVersionRemovedWorkflow"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityA"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityB"})
+
+	err := replayer.ReplayWorkflowHistoryFromJSONFile(zaptest.NewLogger(t), "version_marker_present.json")
+	require.NoError(t, err)
+}
+
+// TestVersionMarkerMissing is the reverse of TestGetVersionRemoved: a history written after the
+// GetVersion call was removed, replayed by code that still has the call. With no marker the replay
+// gets DefaultVersion, so it panics when minSupported is 1 and succeeds when minSupported is DefaultVersion.
+func TestVersionMarkerMissing(t *testing.T) {
+	tests := []struct {
+		name         string
+		minSupported workflow.Version
+		wantPanic    string
+	}{
+		{
+			name:         "minSupported 1 panics",
+			minSupported: 1,
+			wantPanic:    `Workflow code removed support of version -1. for "foo" changeID. The oldest supported version is 1`,
+		},
+		{
+			name:         "minSupported DefaultVersion replays",
+			minSupported: workflow.DefaultVersion,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			replayer := worker.NewWorkflowReplayer()
+			replayer.RegisterWorkflowWithOptions(newVersionMarkerMissingWorkflow(tt.minSupported), workflow.RegisterOptions{Name: "VersionMarkerMissingWorkflow"})
+			replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityA"})
+			replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityB"})
+
+			core, logs := observer.New(zap.ErrorLevel)
+			err := replayer.ReplayWorkflowHistoryFromJSONFile(zap.New(core), "version_marker_missing.json")
+			panics := logs.FilterMessage("Workflow panic.").All()
+
+			if tt.wantPanic == "" {
+				require.NoError(t, err)
+				assert.Empty(t, panics)
+				return
+			}
+			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
+			require.Len(t, panics, 1)
+			assert.Equal(t, tt.wantPanic, panics[0].ContextMap()["PanicError"])
+		})
+	}
 }
