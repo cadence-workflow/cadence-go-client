@@ -885,6 +885,51 @@ func (t *TaskHandlersTestSuite) TestWorkflowTask_NondeterministicLogNonexistingI
 			"replay decision is ScheduleActivityTask: (ActivityId:0, ActivityType:(Name:Greeter_Activity), TaskList:(Name:taskList, Kind:NORMAL)")
 }
 
+func (t *TaskHandlersTestSuite) TestWorkflowTask_QueryWithIllegalStatePanic() {
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+		createTestEventDecisionTaskCompleted(4, &s.DecisionTaskCompletedEventAttributes{ScheduledEventId: common.Int64Ptr(2)}),
+		createTestEventActivityTaskScheduled(5, &s.ActivityTaskScheduledEventAttributes{
+			// Insert an ID which does not exist, so replay panics on the decision state machine
+			ActivityId:   common.StringPtr("NotAnActivityID"),
+			ActivityType: &s.ActivityType{Name: common.StringPtr("pkg.Greeter_Activity")},
+			TaskList:     taskList,
+		}),
+	}
+
+	for _, policy := range []NonDeterministicWorkflowPolicy{
+		NonDeterministicWorkflowPolicyBlockWorkflow,
+		NonDeterministicWorkflowPolicyFailWorkflow,
+	} {
+		obs, logs := observer.New(zap.WarnLevel)
+		params := workerExecutionParameters{
+			TaskList: taskList,
+			WorkerOptions: WorkerOptions{
+				Identity:                       "test-id-1",
+				Logger:                         zap.New(obs),
+				NonDeterministicWorkflowPolicy: policy,
+			},
+		}
+		taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+
+		task := createQueryTask(testEvents, 5, "HelloWorld_Workflow", queryType)
+		request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+
+		// The query must be answered rather than turned into a failed decision task,
+		// otherwise the caller waits until the query times out.
+		t.NoError(err, "policy %v", policy)
+		t.verifyQueryResult(request, "waiting-activity-result")
+		t.Len(logs.FilterMessage("non-deterministic-error").All(), 1, "policy %v", policy)
+		t.Len(logs.FilterMessage("Ignored workflow panic error for query, query result may be partial").All(), 1, "policy %v", policy)
+
+		// The workflow context must not be kept in the cache.
+		t.Nil(getWorkflowContext(task.WorkflowExecution.GetRunId()), "policy %v", policy)
+	}
+}
+
 func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowReturnsPanicError() {
 	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
 	testEvents := []*s.HistoryEvent{

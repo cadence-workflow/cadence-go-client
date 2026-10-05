@@ -1021,6 +1021,14 @@ ProcessEvents:
 			zap.String(tagRunID, task.WorkflowExecution.GetRunId()),
 			zap.Error(nonDeterministicErr))
 
+		// A query task cannot change workflow state, so neither policy applies to it. Answer the query
+		// from the state replay reached (completeWorkflow warns that the result may be partial).
+		// Returning an error here would turn the query into a failed decision task, leaving the
+		// caller waiting until the query times out.
+		if task.Query != nil {
+			return w.CompleteDecisionTask(workflowTask, true), nil
+		}
+
 		switch w.wth.nonDeterministicWorkflowPolicy {
 		case NonDeterministicWorkflowPolicyFailWorkflow:
 			// complete workflow with custom error will fail the workflow
