@@ -60,6 +60,20 @@ func Test_newWorkflowTaskPoller(t *testing.T) {
 			t.Error("unexpected not nil ldaTunnel")
 		}
 	})
+
+	t.Run("sticky UUID comes from UniqueIdentity", func(t *testing.T) {
+		poller := newWorkflowTaskPoller(
+			nil,
+			nil,
+			nil,
+			_testDomainName,
+			workerExecutionParameters{
+				WorkerOptions: WorkerOptions{
+					UniqueIdentity: "my-unique-identity",
+				},
+			})
+		assert.Equal(t, "my-unique-identity", poller.stickyTaskList)
+	})
 }
 
 func TestLocalActivityPanic(t *testing.T) {
@@ -599,7 +613,7 @@ func buildWorkflowTaskPoller(t *testing.T) (*workflowTaskPoller, *workflowservic
 		ldaTunnel:                    lda,
 		metricsScope:                 &metrics.TaggedScope{Scope: tally.NewTestScope("test", nil)},
 		logger:                       testlogger.NewZap(t),
-		stickyUUID:                   "sticky-uuid",
+		stickyTaskList:               "sticky-uuid",
 		disableStickyExecution:       false,
 		StickyScheduleToStartTimeout: time.Millisecond,
 		featureFlags:                 FeatureFlags{},
