@@ -253,6 +253,10 @@ type (
 		// default: default identity that include hostname, groupName and process ID.
 		Identity string
 
+		// Optional: Sets a unique identity for this worker, used as its sticky tasklist identifier.
+		// default: same value as Identity if Identity is also unset, otherwise a distinct generated value.
+		UniqueIdentity string
+
 		// Optional: Defines the 'zone' or the failure group that the worker belongs to
 		IsolationGroup string
 

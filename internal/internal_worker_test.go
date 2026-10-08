@@ -1627,6 +1627,67 @@ func TestAugmentWorkerOptions_MetricEmitMode(t *testing.T) {
 	}
 }
 
+func TestEnsureRequiredParams_UniqueIdentity(t *testing.T) {
+	tests := []struct {
+		name           string
+		identity       string
+		uniqueIdentity string
+		assertIdentity func(t *testing.T, identity, uniqueIdentity string)
+	}{
+		{
+			name:           "both unset default to the same value",
+			identity:       "",
+			uniqueIdentity: "",
+			assertIdentity: func(t *testing.T, identity, uniqueIdentity string) {
+				assert.NotEmpty(t, identity)
+				assert.Equal(t, identity, uniqueIdentity)
+			},
+		},
+		{
+			name:           "identity set, unique identity unset defaults to a different value",
+			identity:       "custom-identity",
+			uniqueIdentity: "",
+			assertIdentity: func(t *testing.T, identity, uniqueIdentity string) {
+				assert.Equal(t, "custom-identity", identity)
+				assert.NotEmpty(t, uniqueIdentity)
+				assert.NotEqual(t, identity, uniqueIdentity)
+			},
+		},
+		{
+			name:           "both set are preserved as-is",
+			identity:       "custom-identity",
+			uniqueIdentity: "custom-unique-identity",
+			assertIdentity: func(t *testing.T, identity, uniqueIdentity string) {
+				assert.Equal(t, "custom-identity", identity)
+				assert.Equal(t, "custom-unique-identity", uniqueIdentity)
+			},
+		},
+		{
+			name:           "unique identity set, identity unset still generates identity independently",
+			identity:       "",
+			uniqueIdentity: "custom-unique-identity",
+			assertIdentity: func(t *testing.T, identity, uniqueIdentity string) {
+				assert.NotEmpty(t, identity)
+				assert.Equal(t, "custom-unique-identity", uniqueIdentity)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := workerExecutionParameters{
+				WorkerOptions: WorkerOptions{
+					Identity:       tt.identity,
+					UniqueIdentity: tt.uniqueIdentity,
+				},
+				TaskList: &shared.TaskList{Name: common.StringPtr("test-tasklist")},
+			}
+			ensureRequiredParams(&params)
+			tt.assertIdentity(t, params.Identity, params.UniqueIdentity)
+		})
+	}
+}
+
 func TestNewAggregatedWorker_SetsMetricEmitMode(t *testing.T) {
 	// This test verifies that creating a worker actually sets the global metric emit mode
 	mockCtrl := gomock.NewController(t)

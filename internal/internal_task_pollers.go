@@ -35,7 +35,6 @@ import (
 	"go.uber.org/cadence/internal/common/debug"
 
 	"github.com/opentracing/opentracing-go"
-	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
@@ -307,7 +306,7 @@ func newWorkflowTaskPoller(
 		ldaTunnel:                    ldaTunnelInterface,
 		metricsScope:                 metrics.NewTaggedScope(params.MetricsScope),
 		logger:                       params.Logger,
-		stickyUUID:                   uuid.New(),
+		stickyUUID:                   params.UniqueIdentity,
 		disableStickyExecution:       params.DisableStickyExecution,
 		StickyScheduleToStartTimeout: params.StickyScheduleToStartTimeout,
 		featureFlags:                 params.FeatureFlags,
@@ -506,7 +505,7 @@ func (wtp *workflowTaskPoller) handleDecisionFailedRequest(ctx context.Context, 
 func (wtp *workflowTaskPoller) handleDecisionTaskCompletedRequest(ctx context.Context, task *s.PollForDecisionTaskResponse, request *s.RespondDecisionTaskCompletedRequest, opts ...yarpc.CallOption) (response *s.RespondDecisionTaskCompletedResponse, err error) {
 	if request.StickyAttributes == nil && !wtp.disableStickyExecution {
 		request.StickyAttributes = &s.StickyExecutionAttributes{
-			WorkerTaskList:                &s.TaskList{Name: common.StringPtr(getWorkerTaskList(wtp.stickyUUID))},
+			WorkerTaskList:                &s.TaskList{Name: common.StringPtr(wtp.stickyUUID)},
 			ScheduleToStartTimeoutSeconds: common.Int32Ptr(common.Int32Ceil(wtp.StickyScheduleToStartTimeout.Seconds())),
 		}
 	} else {
@@ -812,7 +811,7 @@ func (wtp *workflowTaskPoller) getNextPollRequest() (request *s.PollForDecisionT
 		if wtp.stickyBacklog > 0 || wtp.pendingStickyPollCount <= wtp.pendingRegularPollCount {
 			wtp.pendingStickyPollCount++
 			taskList = s.TaskList{
-				Name:     common.StringPtr(getWorkerTaskList(wtp.stickyUUID)),
+				Name:     common.StringPtr(wtp.stickyUUID),
 				Kind:     common.TaskListKindPtr(s.TaskListKindSticky),
 				BaseName: common.StringPtr(wtp.taskListName),
 			}

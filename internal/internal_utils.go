@@ -224,11 +224,6 @@ func getHostName() string {
 	return hostName
 }
 
-func getWorkerTaskList(stickyUUID string) string {
-	// includes hostname for debuggability, stickyUUID guarantees the uniqueness
-	return fmt.Sprintf("%s:%s", getHostName(), stickyUUID)
-}
-
 // ActivityTypePtr makes a copy and returns the pointer to a ActivityType.
 func activityTypePtr(v ActivityType) *s.ActivityType {
 	return &s.ActivityType{Name: common.StringPtr(v.Name)}

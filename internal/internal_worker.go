@@ -168,8 +168,17 @@ func ensureRequiredParams(params *workerExecutionParameters) {
 	if params.Tracer == nil {
 		params.Tracer = opentracing.NoopTracer{}
 	}
+	identityWasSet := params.Identity != ""
 	if params.Identity == "" {
 		params.Identity = getWorkerIdentity(params.TaskList.GetName())
+	}
+	if params.UniqueIdentity == "" {
+		if identityWasSet {
+			// Identity was explicitly provided, so UniqueIdentity must not silently collide with it.
+			params.UniqueIdentity = getWorkerIdentity(params.TaskList.GetName())
+		} else {
+			params.UniqueIdentity = params.Identity
+		}
 	}
 	if params.Logger == nil {
 		// create default logger if user does not supply one.
