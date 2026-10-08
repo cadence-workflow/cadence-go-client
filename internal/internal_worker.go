@@ -168,13 +168,15 @@ func ensureRequiredParams(params *workerExecutionParameters) {
 	if params.Tracer == nil {
 		params.Tracer = opentracing.NoopTracer{}
 	}
+	// A caller-provided Identity isn't guaranteed to be unique, but a generated one is.
+	// If Identity was generated here, reuse it for UniqueIdentity to keep them consistent.
+	// If Identity was provided by the caller, generate UniqueIdentity independently instead.
 	identityWasSet := params.Identity != ""
 	if params.Identity == "" {
 		params.Identity = getWorkerIdentity(params.TaskList.GetName())
 	}
 	if params.UniqueIdentity == "" {
 		if identityWasSet {
-			// Identity was explicitly provided, so UniqueIdentity must not silently collide with it.
 			params.UniqueIdentity = getWorkerIdentity(params.TaskList.GetName())
 		} else {
 			params.UniqueIdentity = params.Identity

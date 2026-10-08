@@ -72,7 +72,7 @@ func Test_newWorkflowTaskPoller(t *testing.T) {
 					UniqueIdentity: "my-unique-identity",
 				},
 			})
-		assert.Equal(t, "my-unique-identity", poller.stickyUUID)
+		assert.Equal(t, "my-unique-identity", poller.stickyTaskList)
 	})
 }
 
@@ -613,7 +613,7 @@ func buildWorkflowTaskPoller(t *testing.T) (*workflowTaskPoller, *workflowservic
 		ldaTunnel:                    lda,
 		metricsScope:                 &metrics.TaggedScope{Scope: tally.NewTestScope("test", nil)},
 		logger:                       testlogger.NewZap(t),
-		stickyUUID:                   "sticky-uuid",
+		stickyTaskList:               "sticky-uuid",
 		disableStickyExecution:       false,
 		StickyScheduleToStartTimeout: time.Millisecond,
 		featureFlags:                 FeatureFlags{},
