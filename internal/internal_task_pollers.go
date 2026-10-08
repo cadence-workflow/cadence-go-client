@@ -44,7 +44,6 @@ import (
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
 	"go.uber.org/cadence/internal/common/metrics"
-	"go.uber.org/cadence/internal/common/serializer"
 )
 
 //go:generate mockery --name localDispatcher --inpackage --with-expecter --case snake --filename local_dispatcher_mock.go
@@ -1025,17 +1024,11 @@ func newGetHistoryPageFunc(
 			metrics.Default1ms100s,
 		)
 
-		var h *s.History
-
-		if resp.RawHistory != nil {
-			var err1 error
-			h, err1 = serializer.DeserializeBlobDataToHistoryEvents(resp.RawHistory, s.HistoryEventFilterTypeAllEvent)
-			if err1 != nil {
-				return nil, nil, err1
-			}
-		} else {
-			h = resp.History
+		// TODO support raw history feature once server removes default Thrift encoding
+		if len(resp.RawHistory) > 0 {
+			return nil, nil, errRawHistoryNotSupported
 		}
+		h := resp.History
 
 		// TODO: is this check valid/useful? atDecisionTaskCompletedEventID is startedEventID in pollForDecisionTaskResponse and
 		// - For decision tasks, since there's only one inflight decision task, there won't be any event after startEventID.

@@ -112,6 +112,9 @@ func isServiceTransientError(err error) bool {
 	if errors.Is(err, errShutdown) {
 		return false
 	}
+	if errors.Is(err, errRawHistoryNotSupported) {
+		return false
+	}
 
 	if target := (*s.ServiceBusyError)(nil); errors.As(err, &target) {
 		return true

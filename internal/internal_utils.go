@@ -24,6 +24,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -92,6 +93,10 @@ type (
 )
 
 var (
+	// errRawHistoryNotSupported is returned when the frontend sends Thrift-encoded raw history.
+	// History is stored as Thrift encoded binary; sending raw history will no longer be supported.
+	errRawHistoryNotSupported = errors.New("Raw history is not supported. Please turn off frontend.sendRawWorkflowHistory feature flag in frontend service to recover")
+
 	// call header to cadence server
 	_yarpcCallOptions = []yarpc.CallOption{
 		yarpc.WithHeader(libraryVersionHeaderName, LibraryVersion),

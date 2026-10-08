@@ -29,8 +29,6 @@ import (
 	"reflect"
 	"time"
 
-	"go.uber.org/cadence/internal/common/serializer"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/pborman/uuid"
 
@@ -527,18 +525,6 @@ func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, req
 					})
 					defer cancel()
 					response, err1 = wc.workflowService.GetWorkflowExecutionHistory(tchCtx, req, opt...)
-
-					if err1 != nil {
-						return err1
-					}
-
-					if response.RawHistory != nil {
-						history, err := serializer.DeserializeBlobDataToHistoryEvents(response.RawHistory, request.FilterType)
-						if err != nil {
-							return err
-						}
-						response.History = history
-					}
 					return err1
 				},
 				createDynamicServiceRetryPolicy(ctx),
@@ -549,6 +535,10 @@ func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, req
 
 			if err != nil {
 				return nil, err
+			}
+			// TODO support raw history feature once server removes default Thrift encoding
+			if len(response.RawHistory) > 0 {
+				return nil, errRawHistoryNotSupported
 			}
 			if request.IsLongPoll && len(response.History.Events) == 0 && len(response.NextPageToken) != 0 {
 				if isFinalLongPoll {
