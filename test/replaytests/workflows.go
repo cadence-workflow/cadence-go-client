@@ -131,3 +131,40 @@ func childWorkflow(ctx workflow.Context) error {
 	_ = workflow.Sleep(ctx, 10*time.Second)
 	return nil
 }
+
+// getVersionRemovedWorkflow runs activityA and activityB.
+// The history in version_marker_present.json was recorded by a previous version that called
+// workflow.GetVersion(ctx, "foo", workflow.DefaultVersion, 1) between the two activities,
+// so it has a Version marker that this code never asks for.
+func getVersionRemovedWorkflow(ctx workflow.Context) error {
+	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		ScheduleToStartTimeout: time.Minute,
+		StartToCloseTimeout:    time.Minute,
+	})
+	if err := workflow.ExecuteActivity(ctx, "activityA").Get(ctx, nil); err != nil {
+		return err
+	}
+	return workflow.ExecuteActivity(ctx, "activityB").Get(ctx, nil)
+}
+
+// newVersionMarkerMissingWorkflow returns the code from before the GetVersion call was removed:
+// activityA, GetVersion(ctx, "foo", minSupported, 1), activityB.
+// version_marker_missing.json was recorded after the call was removed, so it has no marker.
+// Replaying it here panics when minSupported is 1 and succeeds when minSupported is DefaultVersion.
+func newVersionMarkerMissingWorkflow(minSupported workflow.Version) func(ctx workflow.Context) error {
+	return func(ctx workflow.Context) error {
+		ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			ScheduleToStartTimeout: time.Minute,
+			StartToCloseTimeout:    time.Minute,
+		})
+		if err := workflow.ExecuteActivity(ctx, "activityA").Get(ctx, nil); err != nil {
+			return err
+		}
+		workflow.GetVersion(ctx, "foo", minSupported, 1)
+		return workflow.ExecuteActivity(ctx, "activityB").Get(ctx, nil)
+	}
+}
+
+func noopActivity(ctx context.Context) error {
+	return nil
+}
