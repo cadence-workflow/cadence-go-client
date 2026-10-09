@@ -34,9 +34,9 @@ type (
 	PollerTracker interface {
 		// Start collects information on poller start up.
 		// consumers should provide a concurrency-safe implementation.
-		Start() Stopper
+		Start(workerType string) Stopper
 		// Stats return the number or running pollers
-		Stats() int32
+		Stats() Pollers
 	}
 
 	// WorkerStats provides a set of methods that can be used to collect
@@ -67,6 +67,11 @@ type (
 	// Deprecated: in development and very likely to change
 	Activities []struct {
 		Info  ActivityInfo
+		Count int64
+	}
+
+	Pollers []struct {
+		Type  string
 		Count int64
 	}
 
