@@ -172,6 +172,7 @@ func scheduleRetryPolicyToThrift(p *RetryPolicy) *shared.RetryPolicy {
 	return &shared.RetryPolicy{
 		InitialIntervalInSeconds:    durationToThriftSeconds(p.InitialInterval),
 		BackoffCoefficient:          &backoffCoeff,
+		JitterCoefficient:           common.Float64Ptr(p.JitterCoefficient),
 		MaximumIntervalInSeconds:    durationToThriftSeconds(p.MaximumInterval),
 		ExpirationIntervalInSeconds: durationToThriftSeconds(p.ExpirationInterval),
 		MaximumAttempts:             common.Int32Ptr(p.MaximumAttempts),
@@ -510,6 +511,7 @@ func scheduleRetryPolicyFromThrift(p *shared.RetryPolicy) *RetryPolicy {
 	return &RetryPolicy{
 		InitialInterval:          thriftSecondsToDuration(p.InitialIntervalInSeconds),
 		BackoffCoefficient:       p.GetBackoffCoefficient(),
+		JitterCoefficient:        p.GetJitterCoefficient(),
 		MaximumInterval:          thriftSecondsToDuration(p.MaximumIntervalInSeconds),
 		ExpirationInterval:       thriftSecondsToDuration(p.ExpirationIntervalInSeconds),
 		MaximumAttempts:          p.GetMaximumAttempts(),

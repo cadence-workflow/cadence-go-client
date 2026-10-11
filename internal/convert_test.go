@@ -56,6 +56,7 @@ func TestConvertRetryPolicy(t *testing.T) {
 				InitialIntervalInSeconds:    common.Int32Ptr(1),
 				MaximumIntervalInSeconds:    common.Int32Ptr(10),
 				BackoffCoefficient:          common.Float64Ptr(2.0),
+				JitterCoefficient:           common.Float64Ptr(0),
 				MaximumAttempts:             common.Int32Ptr(3),
 				NonRetriableErrorReasons:    []string{"error1", "error2"},
 				ExpirationIntervalInSeconds: common.Int32Ptr(10),
@@ -78,6 +79,24 @@ func TestConvertRetryPolicy(t *testing.T) {
 				MaximumAttempts:             common.Int32Ptr(3),
 				NonRetriableErrorReasons:    []string{"error1", "error2"},
 				ExpirationIntervalInSeconds: common.Int32Ptr(10),
+				JitterCoefficient:           common.Float64Ptr(0),
+			},
+		},
+		{
+			name: "jitter coefficient - use provided",
+			retryPolicy: &RetryPolicy{
+				InitialInterval:    1 * time.Second,
+				BackoffCoefficient: 2.0,
+				JitterCoefficient:  0.2,
+				MaximumAttempts:    3,
+			},
+			thriftPolicy: &s.RetryPolicy{
+				InitialIntervalInSeconds:    common.Int32Ptr(1),
+				MaximumIntervalInSeconds:    common.Int32Ptr(0),
+				BackoffCoefficient:          common.Float64Ptr(2.0),
+				MaximumAttempts:             common.Int32Ptr(3),
+				ExpirationIntervalInSeconds: common.Int32Ptr(0),
+				JitterCoefficient:           common.Float64Ptr(0.2),
 			},
 		},
 	}

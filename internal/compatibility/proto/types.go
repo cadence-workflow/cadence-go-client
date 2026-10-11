@@ -142,6 +142,7 @@ func RetryPolicy(t *shared.RetryPolicy) *apiv1.RetryPolicy {
 	return &apiv1.RetryPolicy{
 		InitialInterval:          secondsToDuration(t.InitialIntervalInSeconds),
 		BackoffCoefficient:       t.GetBackoffCoefficient(),
+		JitterCoefficient:        t.GetJitterCoefficient(),
 		MaximumInterval:          secondsToDuration(t.MaximumIntervalInSeconds),
 		MaximumAttempts:          t.GetMaximumAttempts(),
 		NonRetryableErrorReasons: t.NonRetriableErrorReasons,
