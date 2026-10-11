@@ -146,9 +146,11 @@ func TestScheduleRetryPolicyRoundTrip(t *testing.T) {
 	exp := int32(300)
 	coeff := 1.5
 	maxA := int32(3)
+	jitter := 0.1
 	orig := &s.RetryPolicy{
 		InitialIntervalInSeconds:    &init,
 		BackoffCoefficient:          &coeff,
+		JitterCoefficient:           &jitter,
 		MaximumIntervalInSeconds:    &maxI,
 		ExpirationIntervalInSeconds: &exp,
 		MaximumAttempts:             &maxA,

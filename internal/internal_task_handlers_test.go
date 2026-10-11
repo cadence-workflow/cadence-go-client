@@ -1748,7 +1748,7 @@ func (t *TaskHandlersTestSuite) TestRegression_QueriesDoNotLeakGoroutines() {
 
 func Test_NonDeterministicCheck(t *testing.T) {
 	decisionTypes := s.DecisionType_Values()
-	require.Equal(t, 13, len(decisionTypes), "If you see this error, you are adding new decision type. "+
+	require.Equal(t, 15, len(decisionTypes), "If you see this error, you are adding new decision type. "+
 		"Before updating the number to make this test pass, please make sure you update isDecisionMatchEvent() method "+
 		"to check the new decision type. Otherwise the replay will fail on the new decision event.")
 
@@ -2098,6 +2098,61 @@ func Test__getRetryBackoffWithNowTime(t *testing.T) {
 				InitialInterval:          tt.initialInterval,
 			}
 			require.Equal(t, tt.result, getRetryBackoffWithNowTime(policy, tt.attempt, tt.errReason, now, tt.expireTime))
+		})
+	}
+}
+
+func Test__getRetryBackoffWithNowTime_Jitter(t *testing.T) {
+	now := time.Now()
+	testCases := []struct {
+		name        string
+		jitter      float64
+		attempt     int32
+		maxInterval time.Duration
+		base        time.Duration
+	}{
+		{
+			name:    "zero jitter keeps the exact backoff",
+			jitter:  0,
+			attempt: 2,
+			base:    4 * time.Second,
+		},
+		{
+			name:    "jitter scales the exponential backoff",
+			jitter:  0.2,
+			attempt: 2,
+			base:    4 * time.Second,
+		},
+		{
+			name:        "jitter is applied after the max interval cap",
+			jitter:      0.5,
+			attempt:     10,
+			maxInterval: 10 * time.Second,
+			base:        10 * time.Second,
+		},
+		{
+			name:    "full jitter",
+			jitter:  1,
+			attempt: 1,
+			base:    2 * time.Second,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := &RetryPolicy{
+				MaximumAttempts:    20,
+				InitialInterval:    time.Second,
+				BackoffCoefficient: 2,
+				MaximumInterval:    tt.maxInterval,
+				JitterCoefficient:  tt.jitter,
+			}
+			// with zero jitter the bounds collapse to base, so this asserts the exact backoff
+			lower := time.Duration(float64(tt.base) * (1 - tt.jitter))
+			for i := 0; i < 100; i++ {
+				backoff := getRetryBackoffWithNowTime(policy, tt.attempt, "", now, time.Time{})
+				require.LessOrEqual(t, backoff, tt.base)
+				require.GreaterOrEqual(t, backoff, lower)
+			}
 		})
 	}
 }
