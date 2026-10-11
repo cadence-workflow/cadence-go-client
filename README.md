@@ -3,6 +3,7 @@
 [![Coverage](https://codecov.io/gh/uber-go/cadence-client/graph/badge.svg?token=iEpqo5HbDe)](https://codecov.io/gh/uber-go/cadence-client)
 [![Slack Status](https://img.shields.io/badge/slack-join_chat-white.svg?logo=slack&style=social)](https://communityinviter.com/apps/cloud-native/cncf)
 [![GoDoc](https://godoc.org/go.uber.org/cadence?status.svg)](https://godoc.org/go.uber.org/cadence)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fcadence-workflow%2Fcadence-go-client.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcadence-workflow%2Fcadence-go-client?ref=badge_shield)
 
 [Cadence](https://github.com/uber/cadence) is a distributed, scalable, durable, and highly available orchestration engine we developed at Uber Engineering to execute asynchronous long-running business logic in a scalable and resilient way.
 
@@ -34,3 +35,6 @@ If you'd like to propose a new feature or discuss issues, join the [CNCF Slack w
 
 ## License
 Apache 2.0 License, please see [LICENSE](LICENSE) for details.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fcadence-workflow%2Fcadence-go-client.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcadence-workflow%2Fcadence-go-client?ref=badge_large)
