@@ -1,8 +1,8 @@
 module go.uber.org/cadence/internal/tools
 
-go 1.23.0
+go 1.26.0
 
-toolchain go1.24.5
+toolchain go1.26.9
 
 require (
 	github.com/kisielk/errcheck v1.7.0
@@ -12,12 +12,12 @@ require (
 	github.com/vektra/mockery/v2 v2.53.3
 	go.uber.org/thriftrw v1.32.0
 	go.uber.org/yarpc v1.88.0
-	golang.org/x/tools v0.32.0
-	honnef.co/go/tools v0.4.3
+	golang.org/x/tools v0.51.0
+	honnef.co/go/tools v0.8.2
 )
 
 require (
-	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/chavacava/garif v0.0.0-20221024190013-b3ef35877348 // indirect
 	github.com/chigopher/pathlib v0.19.1 // indirect
@@ -53,10 +53,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/exp/typeparams v0.0.0-20230203172020-98cc5a0785f9 // indirect
-	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
