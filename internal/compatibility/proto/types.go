@@ -844,3 +844,14 @@ func ListFailoverHistoryRequestFilters(t *shared.ListFailoverHistoryRequestFilte
 		DomainId: t.GetDomainID(),
 	}
 }
+
+func DescribeTaskListResponseMap(t map[string]*shared.DescribeTaskListResponse) map[string]*apiv1.DescribeTaskListResponse {
+	if t == nil {
+		return nil
+	}
+	v := make(map[string]*apiv1.DescribeTaskListResponse, len(t))
+	for key := range t {
+		v[key] = DescribeTaskListResponse(t[key])
+	}
+	return v
+}
