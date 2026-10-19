@@ -282,7 +282,7 @@ build: $(BUILD)/lint ## ensure all packages build
 	go test -exec true ./... >/dev/null
 	$Q # compare the current go version with what is in go.mod, and get `{gomod_version}.1` or similar and ensure it builds.
 	$Q GOVERSION="$(shell go env GOVERSION | cut -d. -f1-2)" \
-		MODVERSION="go$(shell grep '^go 1' go.mod | cut -d' ' -f2)"; \
+		MODVERSION="go$(shell grep '^go 1' go.mod | cut -d' ' -f2 | cut -d. -f1-2)"; \
 		if [ "$$GOVERSION" != "$$MODVERSION" ]; then \
 		echo "go.mod version \"$$MODVERSION\" is not the same as current go version \"$$GOVERSION\", making sure it builds..."; \
 		echo GOTOOLCHAIN="$$MODVERSION".1 go build ./...; \
