@@ -53,6 +53,7 @@ services:
       - cadence
     volumes:
       - ../../:/go/src/go.uber.org/cadence
+      - go-mod-cache:/go/pkg/mod
     networks:
       services-network:
         aliases:
@@ -70,6 +71,7 @@ services:
       - cadence
     volumes:
       - ../../:/go/src/go.uber.org/cadence
+      - go-mod-cache:/go/pkg/mod
     networks:
       services-network:
         aliases:
@@ -83,6 +85,7 @@ services:
       - "GO111MODULE=on"
     volumes:
       - ../../:/go/src/go.uber.org/cadence
+      - go-mod-cache:/go/pkg/mod
     networks:
       services-network:
         aliases:
@@ -97,6 +100,10 @@ services:
       - "GO111MODULE=on"
     volumes:
       - ../../:/go/src/go.uber.org/cadence
+      - go-mod-cache:/go/pkg/mod
+
+volumes:
+  go-mod-cache:
 
 networks:
   services-network:

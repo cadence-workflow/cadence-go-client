@@ -2,7 +2,7 @@ module go.uber.org/cadence
 
 go 1.23
 
-toolchain go1.24.5
+toolchain go1.26.9
 
 require (
 	github.com/apache/thrift v0.16.0
