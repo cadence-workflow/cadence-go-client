@@ -30,6 +30,7 @@
 package evictiontest
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -39,7 +40,6 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap/zaptest"
-	"golang.org/x/net/context"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	m "go.uber.org/cadence/.gen/go/shared"
