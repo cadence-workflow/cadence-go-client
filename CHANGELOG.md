@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Skip seeding the workflow span context when the tracer is a `NoopTracer`, preventing panics for workflow tests that mix the testsuite (which defaults to `NoopTracer`) with a real tracer such as `mocktracer`. Follow-up to the span activation added in #1506 and the `NoopTracer` guard in #1516.
-- The workflow test environment now honors the `WaitForCancellation` activity option: a canceled activity is waited for until it completes, fails or accepts the cancellation, which it sees on a later heartbeat, as with a real worker.
+- The workflow test environment now honors the `WaitForCancellation` activity option: a canceled activity is waited for until it completes, fails or accepts the cancellation, which it sees on a later heartbeat, as with a real worker. Tests that set `WaitForCancellation` and mock an activity that blocks without heartbeating now wait for it and fail with a test timeout if it never returns, so such a mock has to return once canceled, for example by unblocking from `SetOnActivityCanceledListener`. Heartbeats are throttled to 80% of `HeartbeatTimeout`, so an activity that heartbeats and waits on `ctx.Done()` needs a short `HeartbeatTimeout` to see the cancellation in time.
 
 ## [v1.4.0] - 2026-06-22
 ### Added
