@@ -36,6 +36,7 @@ func convertRetryPolicy(retryPolicy *RetryPolicy) *s.RetryPolicy {
 		InitialIntervalInSeconds:    common.Int32Ptr(common.Int32Ceil(retryPolicy.InitialInterval.Seconds())),
 		MaximumIntervalInSeconds:    common.Int32Ptr(common.Int32Ceil(retryPolicy.MaximumInterval.Seconds())),
 		BackoffCoefficient:          &retryPolicy.BackoffCoefficient,
+		JitterCoefficient:           &retryPolicy.JitterCoefficient,
 		MaximumAttempts:             &retryPolicy.MaximumAttempts,
 		NonRetriableErrorReasons:    retryPolicy.NonRetriableErrorReasons,
 		ExpirationIntervalInSeconds: common.Int32Ptr(common.Int32Ceil(retryPolicy.ExpirationInterval.Seconds())),
@@ -53,6 +54,7 @@ func convertFromThriftRetryPolicy(p *s.RetryPolicy) *RetryPolicy {
 	return &RetryPolicy{
 		InitialInterval:          time.Second * time.Duration(p.GetInitialIntervalInSeconds()),
 		BackoffCoefficient:       p.GetBackoffCoefficient(),
+		JitterCoefficient:        p.GetJitterCoefficient(),
 		MaximumInterval:          time.Second * time.Duration(p.GetMaximumIntervalInSeconds()),
 		ExpirationInterval:       time.Second * time.Duration(p.GetExpirationIntervalInSeconds()),
 		MaximumAttempts:          p.GetMaximumAttempts(),

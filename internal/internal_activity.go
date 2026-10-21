@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"time"
 
@@ -245,6 +246,9 @@ func validateRetryPolicy(p *shared.RetryPolicy) error {
 	}
 	if p.GetBackoffCoefficient() < 1 {
 		return errors.New("BackoffCoefficient on retry policy cannot be less than 1.0")
+	}
+	if jitter := p.GetJitterCoefficient(); math.IsNaN(jitter) || jitter < 0 || jitter > 1 {
+		return errors.New("JitterCoefficient on retry policy must be between 0 and 1")
 	}
 	if p.GetMaximumAttempts() == 0 && p.GetExpirationIntervalInSeconds() == 0 {
 		return errors.New("both MaximumAttempts and ExpirationIntervalInSeconds on retry policy are not set, at least one of them must be set")
