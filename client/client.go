@@ -57,6 +57,13 @@ type (
 	// Options are optional parameters for Client creation.
 	Options = internal.ClientOptions
 
+	// ConnectionOptions are optional parameters for NewConnection.
+	ConnectionOptions = internal.ConnectionOptions
+
+	// Connection is a gRPC connection to the Cadence frontend. It can be passed to worker.NewV2,
+	// NewClient, and NewDomainClient. Call Close when the connection is no longer needed.
+	Connection = internal.Connection
+
 	// FeatureFlags define which breaking changes can be enabled for client
 	FeatureFlags = internal.FeatureFlags
 
@@ -619,6 +626,23 @@ const (
 	// ScheduleCatchUpPolicyAll executes every missed run on resume.
 	ScheduleCatchUpPolicyAll = internal.ScheduleCatchUpPolicyAll
 )
+
+// NewConnection creates a gRPC connection to the Cadence frontend, using default settings for any
+// unset options. For a local Cadence server, ConnectionOptions{} is enough:
+//
+//	conn, err := client.NewConnection(client.ConnectionOptions{})
+//	if err != nil {
+//		return err
+//	}
+//	defer conn.Close()
+//
+//	w, err := worker.NewV2(conn, "my-domain", "my-task-list", worker.Options{})
+//
+// The connection is established lazily, so an unreachable frontend is reported
+// by the first request, not by NewConnection.
+func NewConnection(options ConnectionOptions) (Connection, error) {
+	return internal.NewConnection(options)
+}
 
 // NewClient creates an instance of a workflow client
 func NewClient(service workflowserviceclient.Interface, domain string, options *Options) Client {
