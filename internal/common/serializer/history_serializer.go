@@ -214,30 +214,3 @@ func NewDataBlob(data []byte, encodingType shared.EncodingType) *shared.DataBlob
 		EncodingType: &encodingType,
 	}
 }
-
-// DeserializeBlobDataToHistoryEvents deserialize the blob data to history event data
-func DeserializeBlobDataToHistoryEvents(
-	dataBlobs []*shared.DataBlob, filterType shared.HistoryEventFilterType,
-) (*shared.History, error) {
-
-	var historyEvents []*shared.HistoryEvent
-
-	for _, batch := range dataBlobs {
-		events, err := DeserializeBatchEvents(batch)
-		if err != nil {
-			return nil, err
-		}
-		if len(events) == 0 {
-			return nil, &shared.InternalServiceError{
-				Message: fmt.Sprintf("corrupted history event batch, empty events"),
-			}
-		}
-
-		historyEvents = append(historyEvents, events...)
-	}
-
-	if filterType == shared.HistoryEventFilterTypeCloseEvent {
-		historyEvents = []*shared.HistoryEvent{historyEvents[len(historyEvents)-1]}
-	}
-	return &shared.History{Events: historyEvents}, nil
-}

@@ -58,61 +58,6 @@ func TestSerializationRoundup(t *testing.T) {
 	}
 }
 
-func TestDeserializeBlobDataToHistoryEvents(t *testing.T) {
-	events := []*shared.HistoryEvent{
-		{
-			EventId:   common.Int64Ptr(1),
-			Timestamp: common.Int64Ptr(1),
-			EventType: common.EventTypePtr(shared.EventTypeDecisionTaskStarted),
-			Version:   common.Int64Ptr(1),
-			DecisionTaskStartedEventAttributes: &shared.DecisionTaskStartedEventAttributes{
-				ScheduledEventId: common.Int64Ptr(1),
-			},
-		},
-		{
-			EventId:   common.Int64Ptr(1),
-			Timestamp: common.Int64Ptr(1),
-			EventType: common.EventTypePtr(shared.EventTypeActivityTaskCompleted),
-			Version:   common.Int64Ptr(1),
-			ActivityTaskCompletedEventAttributes: &shared.ActivityTaskCompletedEventAttributes{
-				Result: []byte("result"),
-			},
-		},
-	}
-
-	serialized, err := SerializeBatchEvents(events, shared.EncodingTypeThriftRW)
-	require.NoError(t, err)
-
-	deserialized, err := DeserializeBlobDataToHistoryEvents([]*shared.DataBlob{serialized}, shared.HistoryEventFilterTypeCloseEvent)
-	require.NoError(t, err)
-
-	assert.Equal(t, events[1], deserialized.Events[0])
-}
-
-func TestDeserializeBlobDataToHistoryEvents_failure(t *testing.T) {
-	for _, tc := range []struct {
-		name              string
-		serialized        *shared.DataBlob
-		expectedErrString string
-	}{
-		{
-			name:              "empty blob",
-			serialized:        &shared.DataBlob{},
-			expectedErrString: "corrupted history event batch, empty events",
-		},
-		{
-			name:              "corrupted blob",
-			serialized:        &shared.DataBlob{Data: []byte("corrupted"), EncodingType: shared.EncodingTypeThriftRW.Ptr()},
-			expectedErrString: "BadRequestError{Message: Invalid binary encoding version.}",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := DeserializeBlobDataToHistoryEvents([]*shared.DataBlob{tc.serialized}, shared.HistoryEventFilterTypeCloseEvent)
-			assert.ErrorContains(t, err, tc.expectedErrString)
-		})
-	}
-}
-
 func TestThriftEncodingRoundtrip(t *testing.T) {
 	for _, tc := range []struct {
 		input interface{}
