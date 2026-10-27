@@ -42,6 +42,12 @@ type (
 	// Cadence support using different DataConverters for different activity/childWorkflow in same workflow.
 	//   2. Activity/Workflow worker that run these activity/childWorkflow, through worker.Options.
 	DataConverter = internal.DataConverter
+
+	// DataComparer can be implemented by a DataConverter whose ToData can return different bytes
+	// for the same values, e.g. because it compresses or encrypts them. The workflow replayer, and
+	// so the shadow worker, then uses it instead of comparing bytes to check that a replayed
+	// workflow returns the result recorded in its history.
+	DataComparer = internal.DataComparer
 )
 
 // GetDefaultDataConverter return default data converter used by Cadence worker

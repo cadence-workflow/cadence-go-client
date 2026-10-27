@@ -362,7 +362,7 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 					last.GetEventType() == shared.EventTypeWorkflowExecutionCompleted {
 					resultA := last.WorkflowExecutionCompletedEventAttributes.Result
 					resultB := d.CompleteWorkflowExecutionDecisionAttributes.Result
-					if bytes.Compare(resultA, resultB) == 0 {
+					if r.resultsEqual(resultA, resultB) {
 						return nil
 					}
 				}
@@ -370,6 +370,17 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 		}
 	}
 	return fmt.Errorf("replay workflow doesn't return the same result as the last event, resp: %v, last: %v", resp, last)
+}
+
+func (r *WorkflowReplayer) resultsEqual(a, b []byte) bool {
+	// Comparing bytes first as it's usually cheaper than calling DataEqual, which may, for example,
+	// decompress or decrypt them.
+	if bytes.Equal(a, b) {
+		return true
+	}
+	// A workflow that returns only an error, or nil, has an empty result that ToData never produced.
+	comparer, ok := r.options.DataConverter.(DataComparer)
+	return ok && len(a) > 0 && len(b) > 0 && comparer.DataEqual(a, b)
 }
 
 func extractHistoryFromReader(r io.Reader, lastEventID int64) (*shared.History, error) {
