@@ -373,6 +373,8 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 }
 
 func (r *WorkflowReplayer) resultsEqual(a, b []byte) bool {
+	// Comparing bytes first as it's usually cheaper than calling DataEqual, which may, for example,
+	// decompress or decrypt them.
 	if bytes.Equal(a, b) {
 		return true
 	}
