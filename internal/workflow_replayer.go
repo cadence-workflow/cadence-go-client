@@ -373,10 +373,12 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 }
 
 func (r *WorkflowReplayer) resultsEqual(a, b []byte) bool {
-	if comparer, ok := r.options.DataConverter.(DataComparer); ok {
-		return comparer.DataEqual(a, b)
+	if bytes.Equal(a, b) {
+		return true
 	}
-	return bytes.Equal(a, b)
+	// A workflow that returns only an error, or nil, has an empty result that ToData never produced.
+	comparer, ok := r.options.DataConverter.(DataComparer)
+	return ok && len(a) > 0 && len(b) > 0 && comparer.DataEqual(a, b)
 }
 
 func extractHistoryFromReader(r io.Reader, lastEventID int64) (*shared.History, error) {

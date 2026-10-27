@@ -89,21 +89,29 @@ func (s *workflowReplayerSuite) TestReplayWorkflowHistory_Full_ResultMisMatch() 
 
 func (s *workflowReplayerSuite) TestReplayWorkflowHistory_DataComparer() {
 	for _, tc := range []struct {
-		recorded string
+		name     string
+		workflow interface{}
+		recorded interface{}
 		wantErr  bool
 	}{
-		{recorded: "done", wantErr: false},
-		{recorded: "other", wantErr: true},
+		{name: "same result", workflow: testReplayWorkflowWithResult, recorded: "done"},
+		{name: "different result", workflow: testReplayWorkflowWithResult, recorded: "other", wantErr: true},
+		{name: "no result", workflow: testReplayWorkflowWithoutResult},
 	} {
-		s.Run(tc.recorded, func() {
+		s.Run(tc.name, func() {
 			r := s.Require()
 			dc := &counterDataConverter{}
-			result, err := dc.ToData(tc.recorded)
-			r.NoError(err)
+			var result []byte
+			if tc.recorded != nil {
+				var err error
+				result, err = dc.ToData(tc.recorded)
+				r.NoError(err)
+			}
 			replayer := NewWorkflowReplayerWithOptions(ReplayOptions{DataConverter: dc})
-			replayer.RegisterWorkflow(testReplayWorkflowWithResult)
+			replayer.RegisterWorkflow(tc.workflow)
 
-			err = replayer.ReplayWorkflowHistory(s.logger, getTestReplayWorkflowWithResultHistory(s.T(), dc, result))
+			history := getTestReplayWorkflowCompletedHistory(s.T(), getFunctionName(tc.workflow), dc, result)
+			err := replayer.ReplayWorkflowHistory(s.logger, history)
 			if tc.wantErr {
 				r.Error(err)
 			} else {
@@ -195,6 +203,10 @@ func testReplayWorkflow(ctx Context) error {
 
 func testReplayWorkflowWithResult(ctx Context) (string, error) {
 	return "done", nil
+}
+
+func testReplayWorkflowWithoutResult(ctx Context) error {
+	return nil
 }
 
 func testReplayWorkflowLocalActivity(ctx Context) error {
@@ -360,11 +372,11 @@ func (dc *counterDataConverter) DataEqual(a, b []byte) bool {
 	return bytes.Equal(a[1:], b[1:])
 }
 
-func getTestReplayWorkflowWithResultHistory(t *testing.T, dc DataConverter, result []byte) *shared.History {
+func getTestReplayWorkflowCompletedHistory(t *testing.T, workflowName string, dc DataConverter, result []byte) *shared.History {
 	return &shared.History{
 		Events: []*shared.HistoryEvent{
 			createTestEventWorkflowExecutionStarted(1, &shared.WorkflowExecutionStartedEventAttributes{
-				WorkflowType: &shared.WorkflowType{Name: common.StringPtr("go.uber.org/cadence/internal.testReplayWorkflowWithResult")},
+				WorkflowType: &shared.WorkflowType{Name: common.StringPtr(workflowName)},
 				TaskList:     testTaskList,
 				Input:        testEncodeFunctionArgs(t, dc),
 			}),

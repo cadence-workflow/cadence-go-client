@@ -69,7 +69,7 @@ type (
 	// so the shadow worker, then uses it instead of comparing bytes to check that a replayed
 	// workflow returns the result recorded in its history.
 	DataComparer interface {
-		// DataEqual reports whether a and b, both returned by ToData, encode the same values.
+		// DataEqual reports whether a and b, both non-empty and returned by ToData, encode the same values.
 		DataEqual(a, b []byte) bool
 	}
 
