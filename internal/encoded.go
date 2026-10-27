@@ -64,6 +64,15 @@ type (
 		FromData(input []byte, valuePtr ...interface{}) error
 	}
 
+	// DataComparer can be implemented by a DataConverter whose ToData can return different bytes
+	// for the same values, e.g. because it compresses or encrypts them. The workflow replayer, and
+	// so the shadow worker, then uses it instead of comparing bytes to check that a replayed
+	// workflow returns the result recorded in its history.
+	DataComparer interface {
+		// DataEqual reports whether a and b, both non-empty and returned by ToData, encode the same values.
+		DataEqual(a, b []byte) bool
+	}
+
 	// defaultDataConverter uses thrift encoder/decoder when possible, for everything else use json.
 	defaultDataConverter struct{}
 )
