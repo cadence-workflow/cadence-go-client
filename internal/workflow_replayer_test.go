@@ -21,6 +21,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -84,6 +85,32 @@ func (s *workflowReplayerSuite) TestReplayWorkflowHistory_Full_ResultMisMatch() 
 
 	err := s.replayer.ReplayWorkflowHistory(s.logger, fullHistory)
 	s.Error(err)
+}
+
+func (s *workflowReplayerSuite) TestReplayWorkflowHistory_DataComparer() {
+	for _, tc := range []struct {
+		recorded string
+		wantErr  bool
+	}{
+		{recorded: "done", wantErr: false},
+		{recorded: "other", wantErr: true},
+	} {
+		s.Run(tc.recorded, func() {
+			r := s.Require()
+			dc := &counterDataConverter{}
+			result, err := dc.ToData(tc.recorded)
+			r.NoError(err)
+			replayer := NewWorkflowReplayerWithOptions(ReplayOptions{DataConverter: dc})
+			replayer.RegisterWorkflow(testReplayWorkflowWithResult)
+
+			err = replayer.ReplayWorkflowHistory(s.logger, getTestReplayWorkflowWithResultHistory(s.T(), dc, result))
+			if tc.wantErr {
+				r.Error(err)
+			} else {
+				r.NoError(err)
+			}
+		})
+	}
 }
 
 func (s *workflowReplayerSuite) TestReplayWorkflowHistory_Full_ContinueAsNew() {
@@ -164,6 +191,10 @@ func testReplayWorkflow(ctx Context) error {
 		panic("Failed workflow")
 	}
 	return err
+}
+
+func testReplayWorkflowWithResult(ctx Context) (string, error) {
+	return "done", nil
 }
 
 func testReplayWorkflowLocalActivity(ctx Context) error {
@@ -304,6 +335,51 @@ func (w localActivitiesCallingOptionsWorkflow) Execute(ctx Context, input []byte
 	require.True(w.t, **rStruct2Ptr == testActivityResult{Index: 10})
 
 	return []byte("Done"), nil
+}
+
+// counterDataConverter prefixes each encoding with an incrementing counter, so the same values
+// never encode to the same bytes twice, as with an encrypting converter.
+type counterDataConverter struct {
+	counter byte
+}
+
+func (dc *counterDataConverter) ToData(values ...interface{}) ([]byte, error) {
+	data, err := getDefaultDataConverter().ToData(values...)
+	if err != nil {
+		return nil, err
+	}
+	dc.counter++
+	return append([]byte{dc.counter}, data...), nil
+}
+
+func (dc *counterDataConverter) FromData(data []byte, valuePtr ...interface{}) error {
+	return getDefaultDataConverter().FromData(data[1:], valuePtr...)
+}
+
+func (dc *counterDataConverter) DataEqual(a, b []byte) bool {
+	return bytes.Equal(a[1:], b[1:])
+}
+
+func getTestReplayWorkflowWithResultHistory(t *testing.T, dc DataConverter, result []byte) *shared.History {
+	return &shared.History{
+		Events: []*shared.HistoryEvent{
+			createTestEventWorkflowExecutionStarted(1, &shared.WorkflowExecutionStartedEventAttributes{
+				WorkflowType: &shared.WorkflowType{Name: common.StringPtr("go.uber.org/cadence/internal.testReplayWorkflowWithResult")},
+				TaskList:     testTaskList,
+				Input:        testEncodeFunctionArgs(t, dc),
+			}),
+			createTestEventDecisionTaskScheduled(2, &shared.DecisionTaskScheduledEventAttributes{}),
+			createTestEventDecisionTaskStarted(3),
+			createTestEventDecisionTaskCompleted(4, &shared.DecisionTaskCompletedEventAttributes{
+				ScheduledEventId: common.Int64Ptr(2),
+				StartedEventId:   common.Int64Ptr(3),
+			}),
+			createTestEventWorkflowExecutionCompleted(5, &shared.WorkflowExecutionCompletedEventAttributes{
+				DecisionTaskCompletedEventId: common.Int64Ptr(4),
+				Result:                       result,
+			}),
+		},
+	}
 }
 
 func getTestReplayWorkflowFullHistory(t *testing.T) *shared.History {

@@ -362,7 +362,7 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 					last.GetEventType() == shared.EventTypeWorkflowExecutionCompleted {
 					resultA := last.WorkflowExecutionCompletedEventAttributes.Result
 					resultB := d.CompleteWorkflowExecutionDecisionAttributes.Result
-					if bytes.Compare(resultA, resultB) == 0 {
+					if r.resultsEqual(resultA, resultB) {
 						return nil
 					}
 				}
@@ -370,6 +370,13 @@ func (r *WorkflowReplayer) replayWorkflowHistory(
 		}
 	}
 	return fmt.Errorf("replay workflow doesn't return the same result as the last event, resp: %v, last: %v", resp, last)
+}
+
+func (r *WorkflowReplayer) resultsEqual(a, b []byte) bool {
+	if comparer, ok := r.options.DataConverter.(DataComparer); ok {
+		return comparer.DataEqual(a, b)
+	}
+	return bytes.Equal(a, b)
 }
 
 func extractHistoryFromReader(r io.Reader, lastEventID int64) (*shared.History, error) {
