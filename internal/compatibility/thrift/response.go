@@ -67,6 +67,16 @@ func DescribeDomainResponse(t *apiv1.DescribeDomainResponse) *shared.DescribeDom
 	}
 }
 
+func GetTaskListsByDomainResponse(t *apiv1.GetTaskListsByDomainResponse) *shared.GetTaskListsByDomainResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.GetTaskListsByDomainResponse{
+		DecisionTaskListMap: DescribeTaskListResponseMap(t.DecisionTaskListMap),
+		ActivityTaskListMap: DescribeTaskListResponseMap(t.ActivityTaskListMap),
+	}
+}
+
 func DescribeTaskListResponse(t *apiv1.DescribeTaskListResponse) *shared.DescribeTaskListResponse {
 	if t == nil {
 		return nil

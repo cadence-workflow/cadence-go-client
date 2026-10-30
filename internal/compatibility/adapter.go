@@ -257,7 +257,8 @@ func (a thrift2protoAdapter) UpdateDomain(ctx context.Context, request *shared.U
 }
 
 func (a thrift2protoAdapter) GetTaskListsByDomain(ctx context.Context, Request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
-	panic("implement me")
+	response, err := a.workflow.GetTaskListsByDomain(ctx, proto.GetTaskListsByDomainRequest(Request), opts...)
+	return thrift.GetTaskListsByDomainResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) RefreshWorkflowTasks(ctx context.Context, request *shared.RefreshWorkflowTasksRequest, opts ...yarpc.CallOption) error {
