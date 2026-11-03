@@ -41,7 +41,6 @@ import (
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
 	"go.uber.org/cadence/internal/common/backoff"
-	"go.uber.org/cadence/internal/common/serializer"
 )
 
 const (
@@ -251,13 +250,9 @@ func (r *WorkflowReplayer) ReplayWorkflowExecution(
 		return err
 	}
 
-	if hResponse.RawHistory != nil {
-		history, err := serializer.DeserializeBlobDataToHistoryEvents(hResponse.RawHistory, shared.HistoryEventFilterTypeAllEvent)
-		if err != nil {
-			return err
-		}
-
-		hResponse.History = history
+	// TODO support raw history feature once server removes default Thrift encoding
+	if len(hResponse.RawHistory) > 0 {
+		return errRawHistoryNotSupported
 	}
 
 	return r.replayWorkflowHistory(logger, service, domain, &execution, hResponse.History, hResponse.NextPageToken)
