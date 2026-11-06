@@ -720,6 +720,16 @@ func TestDescribeDomainResponse(t *testing.T) {
 		},
 	)
 }
+func TestGetTaskListsByDomainRequest(t *testing.T) {
+	for _, item := range []*apiv1.GetTaskListsByDomainRequest{nil, {}, &testdata.GetTaskListsByDomainRequest} {
+		assert.Equal(t, item, proto.GetTaskListsByDomainRequest(thrift.GetTaskListsByDomainRequest(item)))
+	}
+}
+func TestGetTaskListsByDomainResponse(t *testing.T) {
+	for _, item := range []*apiv1.GetTaskListsByDomainResponse{nil, {}, &testdata.GetTaskListsByDomainResponse} {
+		assert.Equal(t, item, proto.GetTaskListsByDomainResponse(thrift.GetTaskListsByDomainResponse(item)))
+	}
+}
 func TestDescribeTaskListRequest(t *testing.T) {
 	for _, item := range []*apiv1.DescribeTaskListRequest{nil, {}, &testdata.DescribeTaskListRequest} {
 		assert.Equal(t, item, proto.DescribeTaskListRequest(thrift.DescribeTaskListRequest(item)))

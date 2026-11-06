@@ -60,6 +60,15 @@ func DescribeDomainRequest(t *apiv1.DescribeDomainRequest) *shared.DescribeDomai
 	panic("unknown oneof field is set for DescribeDomainRequest")
 }
 
+func GetTaskListsByDomainRequest(t *apiv1.GetTaskListsByDomainRequest) *shared.GetTaskListsByDomainRequest {
+	if t == nil {
+		return nil
+	}
+	return &shared.GetTaskListsByDomainRequest{
+		DomainName: &t.Domain,
+	}
+}
+
 func DescribeTaskListRequest(t *apiv1.DescribeTaskListRequest) *shared.DescribeTaskListRequest {
 	if t == nil {
 		return nil

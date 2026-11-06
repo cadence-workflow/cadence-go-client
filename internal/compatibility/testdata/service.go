@@ -497,6 +497,17 @@ var (
 		Pollers:        PollerInfoArray,
 		TaskListStatus: &TaskListStatus,
 	}
+	GetTaskListsByDomainRequest = apiv1.GetTaskListsByDomainRequest{
+		Domain: DomainName,
+	}
+	GetTaskListsByDomainResponse = apiv1.GetTaskListsByDomainResponse{
+		DecisionTaskListMap: map[string]*apiv1.DescribeTaskListResponse{
+			"decision-tl": &DescribeTaskListResponse,
+		},
+		ActivityTaskListMap: map[string]*apiv1.DescribeTaskListResponse{
+			"activity-tl": &DescribeTaskListResponse,
+		},
+	}
 	ListTaskListPartitionsRequest = apiv1.ListTaskListPartitionsRequest{
 		Domain:   DomainName,
 		TaskList: &TaskList,
