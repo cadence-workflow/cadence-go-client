@@ -1,4 +1,4 @@
-FROM golang:1.26.9-alpine3.23
+FROM golang:1.26.10-alpine3.23
 
 # install the tools missing the in the alpine base image
 RUN apk upgrade --no-cache && apk add --no-cache bash build-base git grep
