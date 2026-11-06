@@ -52,7 +52,7 @@ type IntegrationTestSuite struct {
 	*require.Assertions
 	suite.Suite
 	config       Config
-	rpcClient    *rpcClient
+	rpcClient    client.Connection
 	libClient    client.Client
 	domainClient client.DomainClient
 	activities   *Activities
@@ -104,17 +104,20 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 	ts.Nil(waitForTCP(time.Minute, ts.config.ServiceAddr))
 	var err error
 	if ts.config.EnableGrpcAdapter {
-		ts.rpcClient, err = newGRPCAdapterClient(ts.config.ServiceName, ts.config.ServiceAddr)
+		ts.rpcClient, err = client.NewConnection(client.ConnectionOptions{
+			HostPort:    ts.config.ServiceAddr,
+			ServiceName: ts.config.ServiceName,
+		})
 	} else {
 		ts.rpcClient, err = newRPCClient(ts.config.ServiceName, ts.config.ServiceAddr)
 	}
 	ts.NoError(err)
-	ts.libClient = client.NewClient(ts.rpcClient.Interface, domainName,
+	ts.libClient = client.NewClient(ts.rpcClient, domainName,
 		&client.Options{
 			Tracer:             ts.workflows.tracer,
 			ContextPropagators: []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
 		})
-	ts.domainClient = client.NewDomainClient(ts.rpcClient.Interface, &client.Options{})
+	ts.domainClient = client.NewDomainClient(ts.rpcClient, &client.Options{})
 	ts.registerDomain(domainName, false /* isGlobalDomain */)
 	ts.registerDomain(domainToFailover, true /* isGlobalDomain */)
 	internal.StartVersionMetrics(tally.NoopScope)
@@ -122,7 +125,8 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 
 func (ts *IntegrationTestSuite) TearDownSuite() {
 	ts.Assertions = require.New(ts.T())
-	ts.rpcClient.Close()
+	err := ts.rpcClient.Close()
+	ts.NoError(err)
 	close(internal.StopMetrics)
 	// allow the pollers to shut down, and ensure there are no goroutine leaks.
 	// this will wait for up to 1 minute for leaks to subside, but exit relatively quickly if possible.
@@ -178,7 +182,7 @@ func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 		}
 	}
 
-	ts.worker = worker.New(ts.rpcClient.Interface, domainName, ts.taskListName, options)
+	ts.worker = worker.New(ts.rpcClient, domainName, ts.taskListName, options)
 	ts.registerWorkflowsAndActivities(ts.worker)
 	ts.Nil(ts.worker.Start())
 }
