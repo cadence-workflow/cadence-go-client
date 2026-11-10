@@ -516,6 +516,8 @@ func (t *TestWorkflowEnvironment) SetOnActivityCompletedListener(
 }
 
 // SetOnActivityCanceledListener sets a listener that will be called after an activity is canceled.
+// For an activity that is waited for because WaitForCancellation is set, it is called when the cancellation is
+// requested, and the activity's eventual result is reported to the listener set by SetOnActivityCompletedListener.
 // Note: ActivityInfo is defined in internal package, use public type activity.Info instead.
 func (t *TestWorkflowEnvironment) SetOnActivityCanceledListener(
 	listener func(activityInfo *ActivityInfo)) *TestWorkflowEnvironment {

@@ -73,9 +73,13 @@ type (
 	}
 
 	testActivityHandle struct {
-		callback         resultHandler
-		activityType     string
-		heartbeatDetails []byte
+		callback                resultHandler
+		activityType            string
+		heartbeatDetails        []byte
+		waitForCancellation     bool
+		scheduledInDecisionTask int  // value of decisionTaskCount when the activity was scheduled
+		retryPending            bool // waiting for the next attempt, so the server would treat it as not started
+		cancelRequested         bool
 	}
 
 	testWorkflowHandle struct {
@@ -123,7 +127,6 @@ type (
 		taskListSpecificActivities map[string]*taskListSpecificActivity
 
 		mock         *mock.Mock
-		service      workflowserviceclient.Interface
 		logger       *zap.Logger
 		metricsScope *metrics.TaggedScope
 		ctxProps     []ContextPropagator
@@ -169,6 +172,10 @@ type (
 		registry             *registry
 		workflowInterceptors []WorkflowInterceptorFactory
 
+		// not shared with child workflows, so that heartbeats from a child workflow's activities are matched
+		// against that child workflow's activities
+		service workflowserviceclient.Interface
+
 		workflowInfo   *WorkflowInfo
 		workflowDef    workflowDefinition
 		changeVersions map[string]Version
@@ -185,6 +192,10 @@ type (
 		doneChannel      chan struct{}
 		workerOptions    WorkerOptions
 		executionTimeout time.Duration
+
+		// number of decision tasks this workflow has completed, used to tell whether a scheduled activity
+		// would already have been sent to the server
+		decisionTaskCount int
 
 		heartbeatDetails []byte
 
@@ -288,15 +299,16 @@ func newTestWorkflowEnvironmentImpl(s *WorkflowTestSuite, parentRegistry *regist
 	mockCtrl := gomock.NewController(&testReporter{logger: env.logger})
 	mockService := workflowservicetest.NewMockClient(mockCtrl)
 
-	mockHeartbeatFn := func(c context.Context, r *shared.RecordActivityTaskHeartbeatRequest, opts ...yarpc.CallOption) error {
+	mockHeartbeatFn := func(c context.Context, r *shared.RecordActivityTaskHeartbeatRequest, opts ...yarpc.CallOption) bool {
 		activityID := string(r.TaskToken)
 		env.locker.Lock() // need lock as this is running in activity worker's goroutinue
 		activityHandle, ok := env.getActivityHandle(activityID)
+		cancelRequested := ok && activityHandle.cancelRequested
 		env.locker.Unlock()
 		if !ok {
 			env.logger.Debug("RecordActivityTaskHeartbeat: ActivityID not found, could be already completed or cancelled.",
 				zap.String(tagActivityID, activityID))
-			return &shared.EntityNotExistsError{}
+			return false
 		}
 		activityHandle.heartbeatDetails = r.Details
 		activityInfo := env.getActivityInfo(activityID, activityHandle.activityType)
@@ -307,7 +319,7 @@ func newTestWorkflowEnvironmentImpl(s *WorkflowTestSuite, parentRegistry *regist
 		}, false)
 
 		env.logger.Debug("RecordActivityTaskHeartbeat", zap.String(tagActivityID, activityID))
-		return nil
+		return cancelRequested
 	}
 
 	var callOptions []interface{}
@@ -315,15 +327,11 @@ func newTestWorkflowEnvironmentImpl(s *WorkflowTestSuite, parentRegistry *regist
 	for range yarpcCallOptions {
 		callOptions = append(callOptions, gomock.Any())
 	}
-	em := mockService.EXPECT().RecordActivityTaskHeartbeat(gomock.Any(), gomock.Any(), callOptions...).
-		Return(&shared.RecordActivityTaskHeartbeatResponse{CancelRequested: common.BoolPtr(false)}, nil)
-	em.Do(func(ctx context.Context, r *shared.RecordActivityTaskHeartbeatRequest, opts ...yarpc.CallOption) {
-		// TODO: The following will hit a data race in the gomock code where the Do() action is executed outside
-		// the lock and setting return value from inside the action is going to run into races.
-		// err := mockHeartbeatFn(ctx, r, opts)
-		// em.Return(&shared.RecordActivityTaskHeartbeatResponse{CancelRequested: common.BoolPtr(false)}, err)
-		mockHeartbeatFn(ctx, r, opts...)
-	}).AnyTimes()
+	mockService.EXPECT().RecordActivityTaskHeartbeat(gomock.Any(), gomock.Any(), callOptions...).
+		DoAndReturn(func(ctx context.Context, r *shared.RecordActivityTaskHeartbeatRequest, opts ...yarpc.CallOption) (*shared.RecordActivityTaskHeartbeatResponse, error) {
+			cancelRequested := mockHeartbeatFn(ctx, r, opts...)
+			return &shared.RecordActivityTaskHeartbeatResponse{CancelRequested: common.BoolPtr(cancelRequested)}, nil
+		}).AnyTimes()
 
 	env.service = mockService
 
@@ -650,6 +658,7 @@ func (env *testWorkflowEnvironmentImpl) executeLocalActivity(
 func (env *testWorkflowEnvironmentImpl) startDecisionTask() {
 	if !env.isTestCompleted {
 		env.workflowDef.OnDecisionTaskStarted()
+		env.decisionTaskCount++
 	}
 }
 
@@ -795,6 +804,19 @@ func (env *testWorkflowEnvironmentImpl) RequestCancelActivity(activityID string)
 	}
 	activityInfo := env.getActivityInfo(activityID, handle.activityType)
 	env.logger.Debug("RequestCancelActivity", zap.String(tagActivityID, activityID))
+	// Like the real environment, wait for a running activity to complete, fail or accept the cancellation when
+	// WaitForCancellation is set. It sees the request on a later heartbeat. An activity scheduled in the current
+	// decision task has not been sent to the server yet, and one waiting for a retry has not started, so both are
+	// canceled right away.
+	if handle.waitForCancellation && handle.scheduledInDecisionTask != env.decisionTaskCount && !handle.retryPending {
+		handle.cancelRequested = true
+		env.postCallback(func() {
+			if env.onActivityCanceledListener != nil {
+				env.onActivityCanceledListener(activityInfo)
+			}
+		}, false)
+		return
+	}
 	env.deleteHandle(activityID)
 	env.postCallback(func() {
 		handle.callback(nil, NewCanceledError())
@@ -1060,7 +1082,12 @@ func (env *testWorkflowEnvironmentImpl) ExecuteActivity(parameters executeActivi
 	)
 
 	taskHandler := env.newTestActivityTaskHandler(parameters.TaskListName, parameters.DataConverter)
-	activityHandle := &testActivityHandle{callback: callback, activityType: parameters.ActivityType.Name}
+	activityHandle := &testActivityHandle{
+		callback:                callback,
+		activityType:            parameters.ActivityType.Name,
+		waitForCancellation:     parameters.WaitForCancellation,
+		scheduledInDecisionTask: env.decisionTaskCount,
+	}
 
 	env.setActivityHandle(activityInfo.activityID, activityHandle)
 	env.runningCount++
@@ -1139,6 +1166,19 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 			p := convertFromThriftRetryPolicy(parameters.RetryPolicy)
 			backoff := getRetryBackoffWithNowTime(p, task.GetAttempt(), *request.Reason, env.Now(), expireTime)
 			if backoff > 0 {
+				activityID := string(task.TaskToken)
+				env.locker.Lock()
+				handle, found := env.getActivityHandle(activityID)
+				if found && handle.cancelRequested {
+					// the server does not retry an activity once its cancellation was requested
+					env.locker.Unlock()
+					break
+				}
+				if found {
+					handle.retryPending = true
+				}
+				env.locker.Unlock()
+
 				// need a retry
 				waitCh := make(chan struct{})
 
@@ -1147,9 +1187,9 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 				env.registerDelayedCallback(func() {
 					env.runningCount++
 					task.Attempt = common.Int32Ptr(task.GetAttempt() + 1)
-					activityID := string(task.TaskToken)
 					if ah, ok := env.getActivityHandle(activityID); ok {
 						task.HeartbeatDetails = ah.heartbeatDetails
+						ah.retryPending = false
 					}
 					close(waitCh)
 				}, backoff)
