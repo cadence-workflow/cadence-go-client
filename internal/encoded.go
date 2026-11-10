@@ -70,7 +70,8 @@ type (
 	// workflow returns the result recorded in its history.
 	DataComparer interface {
 		// DataEqual reports whether a and b, both non-empty and returned by ToData, encode the same values.
-		DataEqual(a, b []byte) bool
+		// It returns an error if it can't tell, e.g. because a or b can't be decrypted.
+		DataEqual(a, b []byte) (bool, error)
 	}
 
 	// defaultDataConverter uses thrift encoder/decoder when possible, for everything else use json.

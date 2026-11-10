@@ -92,15 +92,28 @@ func (s *workflowReplayerSuite) TestReplayWorkflowHistory_DataComparer() {
 		name     string
 		workflow interface{}
 		recorded interface{}
-		wantErr  bool
+		equalErr error
+		wantErr  string
 	}{
 		{name: "same result", workflow: testReplayWorkflowWithResult, recorded: "done"},
-		{name: "different result", workflow: testReplayWorkflowWithResult, recorded: "other", wantErr: true},
+		{
+			name:     "different result",
+			workflow: testReplayWorkflowWithResult,
+			recorded: "other",
+			wantErr:  "doesn't return the same result",
+		},
+		{
+			name:     "comparer error",
+			workflow: testReplayWorkflowWithResult,
+			recorded: "done",
+			equalErr: errors.New("unknown key"),
+			wantErr:  "unknown key",
+		},
 		{name: "no result", workflow: testReplayWorkflowWithoutResult},
 	} {
 		s.Run(tc.name, func() {
 			r := s.Require()
-			dc := &counterDataConverter{}
+			dc := &counterDataConverter{equalErr: tc.equalErr}
 			var result []byte
 			if tc.recorded != nil {
 				var err error
@@ -112,8 +125,8 @@ func (s *workflowReplayerSuite) TestReplayWorkflowHistory_DataComparer() {
 
 			history := getTestReplayWorkflowCompletedHistory(s.T(), getFunctionName(tc.workflow), dc, result)
 			err := replayer.ReplayWorkflowHistory(s.logger, history)
-			if tc.wantErr {
-				r.Error(err)
+			if tc.wantErr != "" {
+				r.ErrorContains(err, tc.wantErr)
 			} else {
 				r.NoError(err)
 			}
@@ -352,7 +365,8 @@ func (w localActivitiesCallingOptionsWorkflow) Execute(ctx Context, input []byte
 // counterDataConverter prefixes each encoding with an incrementing counter, so the same values
 // never encode to the same bytes twice, as with an encrypting converter.
 type counterDataConverter struct {
-	counter byte
+	counter  byte
+	equalErr error
 }
 
 func (dc *counterDataConverter) ToData(values ...interface{}) ([]byte, error) {
@@ -368,8 +382,11 @@ func (dc *counterDataConverter) FromData(data []byte, valuePtr ...interface{}) e
 	return getDefaultDataConverter().FromData(data[1:], valuePtr...)
 }
 
-func (dc *counterDataConverter) DataEqual(a, b []byte) bool {
-	return bytes.Equal(a[1:], b[1:])
+func (dc *counterDataConverter) DataEqual(a, b []byte) (bool, error) {
+	if dc.equalErr != nil {
+		return false, dc.equalErr
+	}
+	return bytes.Equal(a[1:], b[1:]), nil
 }
 
 func getTestReplayWorkflowCompletedHistory(t *testing.T, workflowName string, dc DataConverter, result []byte) *shared.History {
