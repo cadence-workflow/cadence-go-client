@@ -548,6 +548,11 @@ type (
 		// Must be 1 or larger. Default is 2.0.
 		BackoffCoefficient float64
 
+		// Coefficient for proportional jitter, used to spread retries out. Must be between 0 and 1.
+		// Each retry interval is multiplied by a random factor in (1 - JitterCoefficient, 1], applied after
+		// MaximumInterval is enforced. Default is 0 (no jitter). Values within [0, 0.2] are recommended.
+		JitterCoefficient float64
+
 		// Maximum backoff interval between retries. Exponential backoff leads to interval increase.
 		// This value is the cap of the interval. Default is 100x of initial interval.
 		MaximumInterval time.Duration

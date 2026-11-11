@@ -1748,7 +1748,7 @@ func (t *TaskHandlersTestSuite) TestRegression_QueriesDoNotLeakGoroutines() {
 
 func Test_NonDeterministicCheck(t *testing.T) {
 	decisionTypes := s.DecisionType_Values()
-	require.Equal(t, 13, len(decisionTypes), "If you see this error, you are adding new decision type. "+
+	require.Equal(t, 15, len(decisionTypes), "If you see this error, you are adding new decision type. "+
 		"Before updating the number to make this test pass, please make sure you update isDecisionMatchEvent() method "+
 		"to check the new decision type. Otherwise the replay will fail on the new decision event.")
 
@@ -2098,6 +2098,79 @@ func Test__getRetryBackoffWithNowTime(t *testing.T) {
 				InitialInterval:          tt.initialInterval,
 			}
 			require.Equal(t, tt.result, getRetryBackoffWithNowTime(policy, tt.attempt, tt.errReason, now, tt.expireTime))
+		})
+	}
+}
+
+func Test__getRetryBackoffWithNowTime_Jitter(t *testing.T) {
+	now := time.Now()
+	testCases := []struct {
+		name        string
+		jitter      float64
+		attempt     int32
+		maxInterval time.Duration
+		// expected range of the backoff
+		min time.Duration
+		max time.Duration
+	}{
+		{
+			name:    "zero jitter keeps the exact backoff",
+			jitter:  0,
+			attempt: 2,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
+		},
+		{
+			name:    "jitter scales the exponential backoff",
+			jitter:  0.2,
+			attempt: 2,
+			min:     3200 * time.Millisecond,
+			max:     4 * time.Second,
+		},
+		{
+			name:        "jitter is applied after the max interval cap",
+			jitter:      0.5,
+			attempt:     10,
+			maxInterval: 10 * time.Second,
+			min:         5 * time.Second,
+			max:         10 * time.Second,
+		},
+		{
+			name:    "full jitter",
+			jitter:  1,
+			attempt: 1,
+			min:     0,
+			max:     2 * time.Second,
+		},
+		{
+			name:    "negative jitter is ignored",
+			jitter:  -0.5,
+			attempt: 2,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
+		},
+		{
+			name:    "jitter above 1 is ignored",
+			jitter:  1.5,
+			attempt: 2,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := &RetryPolicy{
+				MaximumAttempts:    20,
+				InitialInterval:    time.Second,
+				BackoffCoefficient: 2,
+				MaximumInterval:    tt.maxInterval,
+				JitterCoefficient:  tt.jitter,
+			}
+			for i := 0; i < 100; i++ {
+				backoff := getRetryBackoffWithNowTime(policy, tt.attempt, "", now, time.Time{})
+				require.LessOrEqual(t, backoff, tt.max)
+				require.GreaterOrEqual(t, backoff, tt.min)
+			}
 		})
 	}
 }

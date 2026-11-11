@@ -147,6 +147,7 @@ var (
 	RetryPolicy = apiv1.RetryPolicy{
 		InitialInterval:          Duration1,
 		BackoffCoefficient:       1.1,
+		JitterCoefficient:        0.1,
 		MaximumInterval:          Duration2,
 		MaximumAttempts:          3,
 		NonRetryableErrorReasons: []string{"a", "b"},
