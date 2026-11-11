@@ -2109,32 +2109,52 @@ func Test__getRetryBackoffWithNowTime_Jitter(t *testing.T) {
 		jitter      float64
 		attempt     int32
 		maxInterval time.Duration
-		base        time.Duration
+		// expected range of the backoff
+		min time.Duration
+		max time.Duration
 	}{
 		{
 			name:    "zero jitter keeps the exact backoff",
 			jitter:  0,
 			attempt: 2,
-			base:    4 * time.Second,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
 		},
 		{
 			name:    "jitter scales the exponential backoff",
 			jitter:  0.2,
 			attempt: 2,
-			base:    4 * time.Second,
+			min:     3200 * time.Millisecond,
+			max:     4 * time.Second,
 		},
 		{
 			name:        "jitter is applied after the max interval cap",
 			jitter:      0.5,
 			attempt:     10,
 			maxInterval: 10 * time.Second,
-			base:        10 * time.Second,
+			min:         5 * time.Second,
+			max:         10 * time.Second,
 		},
 		{
 			name:    "full jitter",
 			jitter:  1,
 			attempt: 1,
-			base:    2 * time.Second,
+			min:     0,
+			max:     2 * time.Second,
+		},
+		{
+			name:    "negative jitter is ignored",
+			jitter:  -0.5,
+			attempt: 2,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
+		},
+		{
+			name:    "jitter above 1 is ignored",
+			jitter:  1.5,
+			attempt: 2,
+			min:     4 * time.Second,
+			max:     4 * time.Second,
 		},
 	}
 	for _, tt := range testCases {
@@ -2146,12 +2166,10 @@ func Test__getRetryBackoffWithNowTime_Jitter(t *testing.T) {
 				MaximumInterval:    tt.maxInterval,
 				JitterCoefficient:  tt.jitter,
 			}
-			// with zero jitter the bounds collapse to base, so this asserts the exact backoff
-			lower := time.Duration(float64(tt.base) * (1 - tt.jitter))
 			for i := 0; i < 100; i++ {
 				backoff := getRetryBackoffWithNowTime(policy, tt.attempt, "", now, time.Time{})
-				require.LessOrEqual(t, backoff, tt.base)
-				require.GreaterOrEqual(t, backoff, lower)
+				require.LessOrEqual(t, backoff, tt.max)
+				require.GreaterOrEqual(t, backoff, tt.min)
 			}
 		})
 	}
