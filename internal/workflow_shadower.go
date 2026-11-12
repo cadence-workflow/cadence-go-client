@@ -338,11 +338,13 @@ func (o *ShadowOptions) validateAndPopulateFields() error {
 			}
 			statuses = append(statuses, status)
 		}
-		//All the open statuses are taken by default. This list seems to not work as expected.
-		//TODO: verify that the status list works as expected. currently all wfs of all types get picked up.
+		// TODO: handle ContinueAsNew as a special case.
+		// This filter doesn't seem to be working as expected.
+		// This filter should have only taken open and closed wfs but it returns continue as new wfs as well.
 		if len(statuses) == 0 {
-			statuses = []WorkflowStatus{WorkflowStatusOpen}
+			statuses = []WorkflowStatus{WorkflowStatusOpen, WorkflowStatusClosed}
 		}
+
 		queryBuilder.WorkflowStatus(statuses)
 
 		if !o.WorkflowStartTimeFilter.isEmpty() {
