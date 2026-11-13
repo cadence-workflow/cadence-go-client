@@ -634,6 +634,7 @@ func FailoverDomainRequest(t *apiv1.FailoverDomainRequest) *shared.FailoverDomai
 	if t.FailoverTimeout != nil {
 		request.FailoverTimeoutInSeconds = durationToSeconds(t.FailoverTimeout)
 	}
+	request.SkipDestinationClusterCheck = &t.SkipDestinationClusterCheck
 	return request
 }
 
