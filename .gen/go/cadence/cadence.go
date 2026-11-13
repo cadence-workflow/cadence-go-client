@@ -6,15 +6,13 @@ package cadence
 import (
 	errors "errors"
 	fmt "fmt"
-	strings "strings"
-
+	shared "go.uber.org/cadence/.gen/go/shared"
 	multierr "go.uber.org/multierr"
 	stream "go.uber.org/thriftrw/protocol/stream"
 	thriftreflect "go.uber.org/thriftrw/thriftreflect"
 	wire "go.uber.org/thriftrw/wire"
 	zapcore "go.uber.org/zap/zapcore"
-
-	shared "go.uber.org/cadence/.gen/go/shared"
+	strings "strings"
 )
 
 // ThriftModule represents the IDL file used to generate this package.
