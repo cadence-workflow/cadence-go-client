@@ -35,6 +35,7 @@ import (
 	"go.uber.org/cadence/internal/common/debug"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
@@ -83,7 +84,7 @@ type (
 		metricsScope *metrics.TaggedScope
 		logger       *zap.Logger
 
-		stickyTaskList               string
+		stickyUUID                   string
 		disableStickyExecution       bool
 		StickyScheduleToStartTimeout time.Duration
 
@@ -306,7 +307,7 @@ func newWorkflowTaskPoller(
 		ldaTunnel:                    ldaTunnelInterface,
 		metricsScope:                 metrics.NewTaggedScope(params.MetricsScope),
 		logger:                       params.Logger,
-		stickyTaskList:               params.UniqueIdentity,
+		stickyUUID:                   uuid.New(),
 		disableStickyExecution:       params.DisableStickyExecution,
 		StickyScheduleToStartTimeout: params.StickyScheduleToStartTimeout,
 		featureFlags:                 params.FeatureFlags,
@@ -505,7 +506,7 @@ func (wtp *workflowTaskPoller) handleDecisionFailedRequest(ctx context.Context, 
 func (wtp *workflowTaskPoller) handleDecisionTaskCompletedRequest(ctx context.Context, task *s.PollForDecisionTaskResponse, request *s.RespondDecisionTaskCompletedRequest, opts ...yarpc.CallOption) (response *s.RespondDecisionTaskCompletedResponse, err error) {
 	if request.StickyAttributes == nil && !wtp.disableStickyExecution {
 		request.StickyAttributes = &s.StickyExecutionAttributes{
-			WorkerTaskList:                &s.TaskList{Name: common.StringPtr(wtp.stickyTaskList)},
+			WorkerTaskList:                &s.TaskList{Name: common.StringPtr(getWorkerTaskList(wtp.stickyUUID))},
 			ScheduleToStartTimeoutSeconds: common.Int32Ptr(common.Int32Ceil(wtp.StickyScheduleToStartTimeout.Seconds())),
 		}
 	} else {
@@ -811,7 +812,7 @@ func (wtp *workflowTaskPoller) getNextPollRequest() (request *s.PollForDecisionT
 		if wtp.stickyBacklog > 0 || wtp.pendingStickyPollCount <= wtp.pendingRegularPollCount {
 			wtp.pendingStickyPollCount++
 			taskList = s.TaskList{
-				Name:     common.StringPtr(wtp.stickyTaskList),
+				Name:     common.StringPtr(getWorkerTaskList(wtp.stickyUUID)),
 				Kind:     common.TaskListKindPtr(s.TaskListKindSticky),
 				BaseName: common.StringPtr(wtp.taskListName),
 			}
