@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -271,7 +272,9 @@ func isDecisionEvent(eventType s.EventType) bool {
 		s.EventTypeStartChildWorkflowExecutionInitiated,
 		s.EventTypeRequestCancelExternalWorkflowExecutionInitiated,
 		s.EventTypeSignalExternalWorkflowExecutionInitiated,
-		s.EventTypeUpsertWorkflowSearchAttributes:
+		s.EventTypeUpsertWorkflowSearchAttributes,
+		s.EventTypeSemaphoreAcquireInitiated,
+		s.EventTypeSemaphoreReleased:
 		return true
 	default:
 		return false
@@ -1129,6 +1132,10 @@ func getRetryBackoffWithNowTime(p *RetryPolicy, attempt int32, errReason string,
 	if p.MaximumInterval > 0 && backoffInterval > p.MaximumInterval {
 		// cap next interval to MaxInterval
 		backoffInterval = p.MaximumInterval
+	}
+
+	if p.JitterCoefficient > 0 && p.JitterCoefficient <= 1 {
+		backoffInterval = time.Duration(float64(backoffInterval) * (1 - p.JitterCoefficient*rand.Float64()))
 	}
 
 	nextScheduleTime := now.Add(backoffInterval)
