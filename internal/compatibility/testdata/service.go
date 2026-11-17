@@ -108,10 +108,11 @@ var (
 		SecurityToken: SecurityToken,
 	}
 	FailoverDomainRequest = apiv1.FailoverDomainRequest{
-		DomainName:              DomainName,
-		DomainActiveClusterName: ClusterName1,
-		ActiveClusters:          ActiveClusters,
-		FailoverTimeout:         Duration1,
+		DomainName:                  DomainName,
+		DomainActiveClusterName:     ClusterName1,
+		ActiveClusters:              ActiveClusters,
+		FailoverTimeout:             Duration1,
+		SkipDestinationClusterCheck: true,
 	}
 	FailoverDomainResponse = apiv1.FailoverDomainResponse{
 		Domain: &Domain,
