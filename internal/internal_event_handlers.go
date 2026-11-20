@@ -599,16 +599,60 @@ func (wc *workflowEnvironmentImpl) RequestCancelTimer(timerID string) {
 	wc.logger.Debug("RequestCancelTimer", zap.String(tagTimerID, timerID))
 }
 
+// versionMismatchType describes why GetVersion rejected a version.
+type versionMismatchType string
+
+const (
+	// versionMismatchTypeTooNew means the version is newer than this worker's code supports.
+	// This is expected during a rolling deployment, when an old worker replays a workflow
+	// that a newer worker has already moved to a higher version. It resolves itself once
+	// an upgraded worker picks up the decision task.
+	versionMismatchTypeTooNew versionMismatchType = "toonew"
+	// versionMismatchTypeTooOld means the workflow code dropped support for a version that
+	// is still recorded in a running workflow. This is a bug in the workflow code.
+	versionMismatchTypeTooOld versionMismatchType = "tooold"
+)
+
+// versionMismatchPanic is the value GetVersion panics with when a version is out of the
+// supported range. It is typed so that panic handlers can tell it apart from other
+// workflow panics without matching on the message text.
+type versionMismatchPanic struct {
+	mismatchType versionMismatchType
+	changeID     string
+	version      Version
+	minSupported Version
+	maxSupported Version
+}
+
+func (p versionMismatchPanic) String() string {
+	if p.mismatchType == versionMismatchTypeTooOld {
+		return fmt.Sprintf("Workflow code removed support of version %v. "+
+			"for \"%v\" changeID. The oldest supported version is %v",
+			p.version, p.changeID, p.minSupported)
+	}
+	return fmt.Sprintf("Workflow code is too old to support version %v "+
+		"for \"%v\" changeID. The maximum supported version is %v",
+		p.version, p.changeID, p.maxSupported)
+}
+
 func validateVersion(changeID string, version, minSupported, maxSupported Version) {
 	if version < minSupported {
-		panic(fmt.Sprintf("Workflow code removed support of version %v. "+
-			"for \"%v\" changeID. The oldest supported version is %v",
-			version, changeID, minSupported))
+		panic(versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooOld,
+			changeID:     changeID,
+			version:      version,
+			minSupported: minSupported,
+			maxSupported: maxSupported,
+		})
 	}
 	if version > maxSupported {
-		panic(fmt.Sprintf("Workflow code is too old to support version %v "+
-			"for \"%v\" changeID. The maximum supported version is %v",
-			version, changeID, maxSupported))
+		panic(versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooNew,
+			changeID:     changeID,
+			version:      version,
+			minSupported: minSupported,
+			maxSupported: maxSupported,
+		})
 	}
 }
 

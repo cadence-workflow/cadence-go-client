@@ -731,14 +731,32 @@ func TestSideEffect(t *testing.T) {
 
 func TestGetVersion_validation(t *testing.T) {
 	t.Run("version < minSupported", func(t *testing.T) {
-		assert.PanicsWithValue(t, `Workflow code removed support of version 1. for "test" changeID. The oldest supported version is 2`, func() {
+		expected := versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooOld,
+			changeID:     "test",
+			version:      1,
+			minSupported: 2,
+			maxSupported: 3,
+		}
+		assert.PanicsWithValue(t, expected, func() {
 			validateVersion("test", 1, 2, 3)
 		})
+		assert.Equal(t, `Workflow code removed support of version 1. for "test" changeID. The oldest supported version is 2`, expected.String())
+		assert.Equal(t, expected.String(), newWorkflowPanicError(expected, "").Error())
 	})
 	t.Run("version > maxSupported", func(t *testing.T) {
-		assert.PanicsWithValue(t, `Workflow code is too old to support version 3 for "test" changeID. The maximum supported version is 2`, func() {
+		expected := versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooNew,
+			changeID:     "test",
+			version:      3,
+			minSupported: 1,
+			maxSupported: 2,
+		}
+		assert.PanicsWithValue(t, expected, func() {
 			validateVersion("test", 3, 1, 2)
 		})
+		assert.Equal(t, `Workflow code is too old to support version 3 for "test" changeID. The maximum supported version is 2`, expected.String())
+		assert.Equal(t, expected.String(), newWorkflowPanicError(expected, "").Error())
 	})
 	t.Run("success", func(t *testing.T) {
 		validateVersion("test", 2, 1, 3)
@@ -821,7 +839,13 @@ func TestGetVersion(t *testing.T) {
 
 	t.Run("version doesn't exist, ExecuteWithVersion is used, version > maximum version", func(t *testing.T) {
 		weh := testWorkflowExecutionEventHandler(t, newRegistry())
-		assert.PanicsWithValue(t, `Workflow code is too old to support version 10 for "test" changeID. The maximum supported version is 3`, func() {
+		assert.PanicsWithValue(t, versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooNew,
+			changeID:     "test",
+			version:      10,
+			minSupported: DefaultVersion,
+			maxSupported: 3,
+		}, func() {
 			weh.GetVersion("test", DefaultVersion, 3, ExecuteWithVersion(10))
 		})
 
@@ -829,7 +853,13 @@ func TestGetVersion(t *testing.T) {
 	})
 	t.Run("version doesn't exist, ExecuteWithVersion is used, version < minimum version", func(t *testing.T) {
 		weh := testWorkflowExecutionEventHandler(t, newRegistry())
-		assert.PanicsWithValue(t, `Workflow code removed support of version 0. for "test" changeID. The oldest supported version is 1`, func() {
+		assert.PanicsWithValue(t, versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooOld,
+			changeID:     "test",
+			version:      0,
+			minSupported: 1,
+			maxSupported: 3,
+		}, func() {
 			weh.GetVersion("test", 1, 3, ExecuteWithVersion(0))
 		})
 
