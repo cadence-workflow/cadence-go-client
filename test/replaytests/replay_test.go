@@ -250,3 +250,23 @@ func TestVersionMarkerMissing(t *testing.T) {
 		})
 	}
 }
+
+// TestVersionMarkerTooNew is the too-new sibling of TestVersionMarkerMissing: a history with a version
+// marker of 2, replayed by code that only supports up to 1, as an old worker sees it during a rolling deploy.
+func TestVersionMarkerTooNew(t *testing.T) {
+	replayer := worker.NewWorkflowReplayer()
+	replayer.RegisterWorkflowWithOptions(versionMarkerTooNewWorkflow, workflow.RegisterOptions{Name: "VersionMarkerTooNewWorkflow"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityA"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityB"})
+
+	core, logs := observer.New(zap.WarnLevel)
+	err := replayer.ReplayWorkflowHistoryFromJSONFile(zap.New(core), "version_marker_too_new.json")
+
+	assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
+	assert.Empty(t, logs.FilterMessage("Workflow panic.").All())
+	mismatches := logs.FilterMessage("Workflow version mismatch.").All()
+	require.Len(t, mismatches, 1)
+	assert.Equal(t, zap.WarnLevel, mismatches[0].Level)
+	assert.Equal(t, "toonew", mismatches[0].ContextMap()["VersionMismatchType"])
+	assert.Equal(t, `Workflow code is too old to support version 2 for "foo" changeID. The maximum supported version is 1`, mismatches[0].ContextMap()["PanicError"])
+}
