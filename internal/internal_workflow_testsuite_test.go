@@ -693,6 +693,198 @@ func (s *WorkflowTestSuiteUnitTest) Test_ChildWorkflowCancel() {
 	s.Nil(env.GetWorkflowError())
 }
 
+func (s *WorkflowTestSuiteUnitTest) Test_ActivityWaitForCancellation() {
+	heartbeatUntilCanceled := func(ctx context.Context) error {
+		for {
+			RecordActivityHeartbeat(ctx)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	activityWorkflow := func(ctx Context) error {
+		ao := s.activityOptions
+		// heartbeats are throttled to 80% of the heartbeat timeout, so keep it short for the cancellation to be seen
+		ao.HeartbeatTimeout = time.Second
+		ao.StartToCloseTimeout = 10 * time.Second
+		ao.WaitForCancellation = true
+		ctx = WithActivityOptions(ctx, ao)
+		return ExecuteActivity(ctx, heartbeatUntilCanceled).Get(ctx, nil)
+	}
+	childWorkflow := func(ctx Context) error {
+		cwo := ChildWorkflowOptions{
+			ExecutionStartToCloseTimeout: time.Minute,
+			WaitForCancellation:          true,
+		}
+		ctx = WithChildWorkflowOptions(ctx, cwo)
+		return ExecuteChildWorkflow(ctx, activityWorkflow).Get(ctx, nil)
+	}
+
+	tests := []struct {
+		name       string
+		workflowFn func(ctx Context) error
+	}{
+		{name: "activity in the workflow", workflowFn: activityWorkflow},
+		{name: "activity in a child workflow", workflowFn: childWorkflow},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			env := s.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(activityWorkflow)
+			env.RegisterWorkflow(childWorkflow)
+			env.RegisterActivity(heartbeatUntilCanceled)
+			env.SetOnActivityStartedListener(func(*ActivityInfo, context.Context, Values) {
+				env.CancelWorkflow()
+			})
+			var activityErr error
+			env.SetOnActivityCompletedListener(func(_ *ActivityInfo, _ Value, err error) {
+				activityErr = err
+			})
+
+			env.ExecuteWorkflow(tt.workflowFn)
+
+			s.True(env.IsWorkflowCompleted())
+			var canceledErr *CanceledError
+			s.ErrorAs(env.GetWorkflowError(), &canceledErr)
+			// the activity saw the cancellation on a heartbeat and the workflow waited for it to return
+			s.ErrorAs(activityErr, &canceledErr)
+		})
+	}
+}
+
+func (s *WorkflowTestSuiteUnitTest) Test_ActivityWaitForCancellation_ActivityIgnoresCancellation() {
+	workflowFn := func(ctx Context) (string, error) {
+		ao := s.activityOptions
+		ao.WaitForCancellation = true
+		ctx = WithActivityOptions(ctx, ao)
+		var result string
+		err := ExecuteActivity(ctx, testActivityHello, "world").Get(ctx, &result)
+		return result, err
+	}
+
+	env := s.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowFn)
+	env.RegisterActivity(testActivityHello)
+	cancelRequested := make(chan struct{})
+	env.SetOnActivityCanceledListener(func(*ActivityInfo) {
+		close(cancelRequested)
+	})
+	env.OnActivity(testActivityHello, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) {
+			env.CancelWorkflow()
+			<-cancelRequested
+		}).
+		Return("mock_value", nil).Once()
+
+	env.ExecuteWorkflow(workflowFn)
+
+	s.True(env.IsWorkflowCompleted())
+	s.NoError(env.GetWorkflowError())
+	var result string
+	s.NoError(env.GetWorkflowResult(&result))
+	s.Equal("mock_value", result)
+	env.AssertExpectations(s.T())
+}
+
+func (s *WorkflowTestSuiteUnitTest) Test_ActivityCancelWithoutWaiting() {
+	tests := []struct {
+		name                 string
+		waitForCancellation  bool
+		cancelInSameDecision bool
+	}{
+		{name: "WaitForCancellation not set"},
+		{name: "canceled in the decision task that scheduled it", waitForCancellation: true, cancelInSameDecision: true},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			workflowFn := func(ctx Context) error {
+				ao := s.activityOptions
+				ao.WaitForCancellation = tt.waitForCancellation
+				ctx, cancel := WithCancel(WithActivityOptions(ctx, ao))
+				f := ExecuteActivity(ctx, testActivityHello, "world")
+				if tt.cancelInSameDecision {
+					cancel()
+				}
+				return f.Get(ctx, nil)
+			}
+
+			env := s.NewTestWorkflowEnvironment()
+			env.RegisterWorkflow(workflowFn)
+			env.RegisterActivity(testActivityHello)
+			release := make(chan struct{})
+			defer close(release)
+			env.OnActivity(testActivityHello, mock.Anything, mock.Anything).
+				Run(func(mock.Arguments) {
+					if !tt.cancelInSameDecision {
+						env.CancelWorkflow()
+					}
+					<-release // still running when the workflow gets the cancellation
+				}).
+				Return("mock_value", nil)
+
+			env.ExecuteWorkflow(workflowFn)
+
+			s.True(env.IsWorkflowCompleted())
+			var canceledErr *CanceledError
+			s.ErrorAs(env.GetWorkflowError(), &canceledErr)
+		})
+	}
+}
+
+func (s *WorkflowTestSuiteUnitTest) Test_ActivityWaitForCancellation_RetryPolicy() {
+	workflowFn := func(ctx Context) error {
+		ao := s.activityOptions
+		ao.WaitForCancellation = true
+		ao.RetryPolicy = &RetryPolicy{
+			InitialInterval:    time.Minute,
+			BackoffCoefficient: 1,
+			MaximumAttempts:    3,
+		}
+		ctx = WithActivityOptions(ctx, ao)
+		return ExecuteActivity(ctx, testActivityHello, "world").Get(ctx, nil)
+	}
+
+	s.Run("canceled while waiting for a retry", func() {
+		env := s.NewTestWorkflowEnvironment()
+		env.RegisterWorkflow(workflowFn)
+		env.RegisterActivity(testActivityHello)
+		env.OnActivity(testActivityHello, mock.Anything, mock.Anything).
+			Return("", errors.New("first attempt failed")).Once()
+		env.RegisterDelayedCallback(env.CancelWorkflow, time.Second)
+
+		env.ExecuteWorkflow(workflowFn)
+
+		s.True(env.IsWorkflowCompleted())
+		var canceledErr *CanceledError
+		s.ErrorAs(env.GetWorkflowError(), &canceledErr)
+		env.AssertExpectations(s.T())
+	})
+
+	s.Run("not retried after the cancellation was requested", func() {
+		env := s.NewTestWorkflowEnvironment()
+		env.RegisterWorkflow(workflowFn)
+		env.RegisterActivity(testActivityHello)
+		cancelRequested := make(chan struct{})
+		env.SetOnActivityCanceledListener(func(*ActivityInfo) {
+			close(cancelRequested)
+		})
+		env.OnActivity(testActivityHello, mock.Anything, mock.Anything).
+			Run(func(mock.Arguments) {
+				env.CancelWorkflow()
+				<-cancelRequested
+			}).
+			Return("", errors.New("failed after cancellation")).Once()
+
+		env.ExecuteWorkflow(workflowFn)
+
+		s.True(env.IsWorkflowCompleted())
+		s.EqualError(env.GetWorkflowError(), "failed after cancellation")
+		env.AssertExpectations(s.T())
+	})
+}
+
 func (s *WorkflowTestSuiteUnitTest) Test_ChildWorkflow_Mock() {
 	workflowFn := func(ctx Context) (string, error) {
 		ctx = WithActivityOptions(ctx, s.activityOptions)
