@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `encoded.DataComparer`, which a `DataConverter` can implement so the workflow replayer and shadow worker compare workflow results with it instead of byte equality. An error from `DataEqual`, e.g. a payload it can't decrypt, fails the replay with that error.
 - Added `JitterCoefficient` to `RetryPolicy` to randomize activity and workflow retry intervals: each interval is multiplied by a random factor in (1 - JitterCoefficient, 1]. Values within [0, 0.2] are recommended. Requires a server version that supports it; older servers ignore the field. Local activity retries apply the jitter client-side.
 
+### Changed
+- `GetVersion` mismatches are no longer reported as workflow panics. They are counted on the new `cadence-decision-task-version-mismatch` metric, tagged with `VersionMismatchType` (`toonew` or `tooold`), instead of `cadence-decision-task-panic`, and logged as `Workflow version mismatch.` instead of `Workflow panic.`. A version that is too new, which is expected while a rolling deployment is in progress, is logged at Warn. A version that is too old, which means the workflow code dropped support for a version still in use, is logged at Error. The decision task still fails and is retried as before. If you alert on `cadence-decision-task-panic` or search logs for `Workflow panic.` to catch version mismatches, update those to use the new metric or log message.
+
 ### Fixed
 - Skip seeding the workflow span context when the tracer is a `NoopTracer`, preventing panics for workflow tests that mix the testsuite (which defaults to `NoopTracer`) with a real tracer such as `mocktracer`. Follow-up to the span activation added in #1506 and the `NoopTracer` guard in #1516.
 

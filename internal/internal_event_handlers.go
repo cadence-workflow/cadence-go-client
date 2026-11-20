@@ -599,16 +599,63 @@ func (wc *workflowEnvironmentImpl) RequestCancelTimer(timerID string) {
 	wc.logger.Debug("RequestCancelTimer", zap.String(tagTimerID, timerID))
 }
 
+// versionMismatchType describes why GetVersion rejected a version.
+type versionMismatchType string
+
+const (
+	// versionMismatchTypeTooNew means the version is newer than this worker's code supports.
+	// This is expected during a rolling deployment, when an old worker replays a workflow
+	// that a newer worker has already moved to a higher version. It resolves itself once
+	// an upgraded worker picks up the decision task.
+	versionMismatchTypeTooNew versionMismatchType = "toonew"
+	// versionMismatchTypeTooOld means the workflow code dropped support for a version that
+	// is still recorded in a running workflow. This is a bug in the workflow code.
+	versionMismatchTypeTooOld versionMismatchType = "tooold"
+)
+
+// versionMismatchPanic is the value GetVersion panics with when a version is out of the
+// supported range. It is typed so that panic handlers can tell it apart from other
+// workflow panics without matching on the message text.
+type versionMismatchPanic struct {
+	mismatchType versionMismatchType
+	changeID     string
+	version      Version
+	minSupported Version
+	maxSupported Version
+}
+
+// String returns the same messages GetVersion has always panicked with, so existing log searches
+// keep working. The too-new message reads "Workflow code is too old" because it describes the
+// worker's code, not the recorded version.
+func (p versionMismatchPanic) String() string {
+	if p.mismatchType == versionMismatchTypeTooOld {
+		return fmt.Sprintf("Workflow code removed support of version %v. "+
+			"for \"%v\" changeID. The oldest supported version is %v",
+			p.version, p.changeID, p.minSupported)
+	}
+	return fmt.Sprintf("Workflow code is too old to support version %v "+
+		"for \"%v\" changeID. The maximum supported version is %v",
+		p.version, p.changeID, p.maxSupported)
+}
+
 func validateVersion(changeID string, version, minSupported, maxSupported Version) {
 	if version < minSupported {
-		panic(fmt.Sprintf("Workflow code removed support of version %v. "+
-			"for \"%v\" changeID. The oldest supported version is %v",
-			version, changeID, minSupported))
+		panic(versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooOld,
+			changeID:     changeID,
+			version:      version,
+			minSupported: minSupported,
+			maxSupported: maxSupported,
+		})
 	}
 	if version > maxSupported {
-		panic(fmt.Sprintf("Workflow code is too old to support version %v "+
-			"for \"%v\" changeID. The maximum supported version is %v",
-			version, changeID, maxSupported))
+		panic(versionMismatchPanic{
+			mismatchType: versionMismatchTypeTooNew,
+			changeID:     changeID,
+			version:      version,
+			minSupported: minSupported,
+			maxSupported: maxSupported,
+		})
 	}
 }
 
@@ -828,12 +875,17 @@ func (weh *workflowExecutionEventHandlerImpl) ProcessEvent(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			weh.metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
 			topLine := fmt.Sprintf("process event for %s [panic]:", weh.workflowInfo.TaskListName)
 			st := getStackTraceRaw(topLine, 7, 0)
-			weh.logger.Error("ProcessEvent panic.",
-				zap.String(tagPanicError, fmt.Sprintf("%v", p)),
-				zap.String(tagPanicStack, st))
+			// Defensive: GetVersion panics are normally recovered in the workflow coroutine,
+			// not here. If a versionMismatchPanic somehow reaches this recover, do not count
+			// it as a decision-task panic; the decision task handler reports it separately.
+			if _, isVersionMismatch := p.(versionMismatchPanic); !isVersionMismatch {
+				weh.metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
+				weh.logger.Error("ProcessEvent panic.",
+					zap.String(tagPanicError, fmt.Sprintf("%v", p)),
+					zap.String(tagPanicStack, st))
+			}
 
 			weh.Complete(nil, newWorkflowPanicError(p, st))
 		}

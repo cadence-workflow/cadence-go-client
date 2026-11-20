@@ -234,15 +234,39 @@ func TestVersionMarkerMissing(t *testing.T) {
 			core, logs := observer.New(zap.ErrorLevel)
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zap.New(core), "version_marker_missing.json")
 			panics := logs.FilterMessage("Workflow panic.").All()
+			mismatches := logs.FilterMessage("Workflow version mismatch.").All()
 
+			// A version mismatch is reported on its own, never as a workflow panic.
+			assert.Empty(t, panics)
 			if tt.wantPanic == "" {
 				require.NoError(t, err)
-				assert.Empty(t, panics)
+				assert.Empty(t, mismatches)
 				return
 			}
 			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
-			require.Len(t, panics, 1)
-			assert.Equal(t, tt.wantPanic, panics[0].ContextMap()["PanicError"])
+			require.Len(t, mismatches, 1)
+			assert.Equal(t, tt.wantPanic, mismatches[0].ContextMap()["PanicError"])
+			assert.Equal(t, "tooold", mismatches[0].ContextMap()["VersionMismatchType"])
 		})
 	}
+}
+
+// TestVersionMarkerTooNew is the too-new sibling of TestVersionMarkerMissing: a history with a version
+// marker of 2, replayed by code that only supports up to 1, as an old worker sees it during a rolling deploy.
+func TestVersionMarkerTooNew(t *testing.T) {
+	replayer := worker.NewWorkflowReplayer()
+	replayer.RegisterWorkflowWithOptions(versionMarkerTooNewWorkflow, workflow.RegisterOptions{Name: "VersionMarkerTooNewWorkflow"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityA"})
+	replayer.RegisterActivityWithOptions(noopActivity, activity.RegisterOptions{Name: "activityB"})
+
+	core, logs := observer.New(zap.WarnLevel)
+	err := replayer.ReplayWorkflowHistoryFromJSONFile(zap.New(core), "version_marker_too_new.json")
+
+	assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
+	assert.Empty(t, logs.FilterMessage("Workflow panic.").All())
+	mismatches := logs.FilterMessage("Workflow version mismatch.").All()
+	require.Len(t, mismatches, 1)
+	assert.Equal(t, zap.WarnLevel, mismatches[0].Level)
+	assert.Equal(t, "toonew", mismatches[0].ContextMap()["VersionMismatchType"])
+	assert.Equal(t, `Workflow code is too old to support version 2 for "foo" changeID. The maximum supported version is 1`, mismatches[0].ContextMap()["PanicError"])
 }

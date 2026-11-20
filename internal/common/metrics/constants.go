@@ -51,6 +51,9 @@ const (
 	DecisionResponseFailedCounter      = CadenceMetricsPrefix + "decision-response-failed"
 	DecisionResponseLatency            = CadenceMetricsPrefix + "decision-response-latency"
 	DecisionTaskPanicCounter           = CadenceMetricsPrefix + "decision-task-panic"
+	// DecisionTaskVersionMismatchCounter counts decision tasks that failed because GetVersion found a
+	// version outside the range the workflow code supports. Tagged with VersionMismatchType.
+	DecisionTaskVersionMismatchCounter = CadenceMetricsPrefix + "decision-task-version-mismatch"
 	DecisionTaskCompletedCounter       = CadenceMetricsPrefix + "decision-task-completed"
 	DecisionTaskForceCompleted         = CadenceMetricsPrefix + "decision-task-force-completed"
 

@@ -165,6 +165,22 @@ func newVersionMarkerMissingWorkflow(minSupported workflow.Version) func(ctx wor
 	}
 }
 
+// versionMarkerTooNewWorkflow is the code of an old worker during a rolling deploy:
+// activityA, GetVersion(ctx, "foo", DefaultVersion, 1), activityB.
+// version_marker_too_new.json was recorded by a newer worker that supported up to version 2 and
+// wrote a marker with version 2, so replaying it here hits a version that is too new.
+func versionMarkerTooNewWorkflow(ctx workflow.Context) error {
+	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		ScheduleToStartTimeout: time.Minute,
+		StartToCloseTimeout:    time.Minute,
+	})
+	if err := workflow.ExecuteActivity(ctx, "activityA").Get(ctx, nil); err != nil {
+		return err
+	}
+	workflow.GetVersion(ctx, "foo", workflow.DefaultVersion, 1)
+	return workflow.ExecuteActivity(ctx, "activityB").Get(ctx, nil)
+}
+
 func noopActivity(ctx context.Context) error {
 	return nil
 }
