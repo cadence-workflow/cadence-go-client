@@ -877,8 +877,9 @@ func (weh *workflowExecutionEventHandlerImpl) ProcessEvent(
 		if p := recover(); p != nil {
 			topLine := fmt.Sprintf("process event for %s [panic]:", weh.workflowInfo.TaskListName)
 			st := getStackTraceRaw(topLine, 7, 0)
-			// Version mismatches are reported once by the decision task handler, with their own
-			// metric and log level, so they are not counted as panics here.
+			// Defensive: GetVersion panics are normally recovered in the workflow coroutine,
+			// not here. If a versionMismatchPanic somehow reaches this recover, do not count
+			// it as a decision-task panic; the decision task handler reports it separately.
 			if _, isVersionMismatch := p.(versionMismatchPanic); !isVersionMismatch {
 				weh.metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
 				weh.logger.Error("ProcessEvent panic.",
