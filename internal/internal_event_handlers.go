@@ -624,6 +624,9 @@ type versionMismatchPanic struct {
 	maxSupported Version
 }
 
+// String returns the same messages GetVersion has always panicked with, so existing log searches
+// keep working. The too-new message reads "Workflow code is too old" because it describes the
+// worker's code, not the recorded version.
 func (p versionMismatchPanic) String() string {
 	if p.mismatchType == versionMismatchTypeTooOld {
 		return fmt.Sprintf("Workflow code removed support of version %v. "+
