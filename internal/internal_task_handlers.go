@@ -1314,6 +1314,14 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 
 	// fail decision task on decider panic
 	if panicErr, ok := workflowContext.err.(*workflowPanicError); ok {
+		if mismatch, ok := panicErr.value.(versionMismatchPanic); ok {
+			// GetVersion found a version this code does not support. Report it apart from
+			// other panics so that rolling deployments do not look like workflow crashes.
+			// The decision task still fails and is retried, same as any other panic.
+			wth.reportVersionMismatch(metricsScope, task, panicErr, mismatch)
+			return errorToFailDecisionTask(task.TaskToken, panicErr, wth.identity)
+		}
+
 		// Workflow panic
 		metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
 		wth.logger.Error("Workflow panic.",
@@ -1412,6 +1420,32 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 		BinaryChecksum:             common.StringPtr(getBinaryChecksum()),
 		QueryResults:               queryResults,
 	}
+}
+
+// reportVersionMismatch records a GetVersion mismatch. A version that is too new is expected while
+// a rolling deployment is in progress and clears up once an upgraded worker takes the task, so it is
+// logged as a warning. A version that is too old means the workflow code dropped support for a
+// version that is still in use, which needs a code fix, so it is logged as an error.
+func (wth *workflowTaskHandlerImpl) reportVersionMismatch(
+	metricsScope tally.Scope,
+	task *s.PollForDecisionTaskResponse,
+	panicErr *workflowPanicError,
+	mismatch versionMismatchPanic,
+) {
+	metricsScope.Tagged(map[string]string{tagVersionMismatchType: string(mismatch.mismatchType)}).
+		Counter(metrics.DecisionTaskVersionMismatchCounter).Inc(1)
+
+	log := wth.logger.Error
+	if mismatch.mismatchType == versionMismatchTypeTooNew {
+		log = wth.logger.Warn
+	}
+	log("Workflow version mismatch.",
+		zap.String(tagWorkflowType, task.WorkflowType.GetName()),
+		zap.String(tagWorkflowID, task.WorkflowExecution.GetWorkflowId()),
+		zap.String(tagRunID, task.WorkflowExecution.GetRunId()),
+		zap.String(tagVersionMismatchType, string(mismatch.mismatchType)),
+		zap.String(tagPanicError, panicErr.Error()),
+		zap.String(tagPanicStack, panicErr.StackTrace()))
 }
 
 func errorToFailDecisionTask(taskToken []byte, err error, identity string) *s.RespondDecisionTaskFailedRequest {

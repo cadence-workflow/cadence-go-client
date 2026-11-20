@@ -872,12 +872,16 @@ func (weh *workflowExecutionEventHandlerImpl) ProcessEvent(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			weh.metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
 			topLine := fmt.Sprintf("process event for %s [panic]:", weh.workflowInfo.TaskListName)
 			st := getStackTraceRaw(topLine, 7, 0)
-			weh.logger.Error("ProcessEvent panic.",
-				zap.String(tagPanicError, fmt.Sprintf("%v", p)),
-				zap.String(tagPanicStack, st))
+			// Version mismatches are reported once by the decision task handler, with their own
+			// metric and log level, so they are not counted as panics here.
+			if _, isVersionMismatch := p.(versionMismatchPanic); !isVersionMismatch {
+				weh.metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
+				weh.logger.Error("ProcessEvent panic.",
+					zap.String(tagPanicError, fmt.Sprintf("%v", p)),
+					zap.String(tagPanicStack, st))
+			}
 
 			weh.Complete(nil, newWorkflowPanicError(p, st))
 		}

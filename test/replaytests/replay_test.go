@@ -234,15 +234,19 @@ func TestVersionMarkerMissing(t *testing.T) {
 			core, logs := observer.New(zap.ErrorLevel)
 			err := replayer.ReplayWorkflowHistoryFromJSONFile(zap.New(core), "version_marker_missing.json")
 			panics := logs.FilterMessage("Workflow panic.").All()
+			mismatches := logs.FilterMessage("Workflow version mismatch.").All()
 
+			// A version mismatch is reported on its own, never as a workflow panic.
+			assert.Empty(t, panics)
 			if tt.wantPanic == "" {
 				require.NoError(t, err)
-				assert.Empty(t, panics)
+				assert.Empty(t, mismatches)
 				return
 			}
 			assert.ErrorContains(t, err, "WORKFLOW_WORKER_UNHANDLED_FAILURE")
-			require.Len(t, panics, 1)
-			assert.Equal(t, tt.wantPanic, panics[0].ContextMap()["PanicError"])
+			require.Len(t, mismatches, 1)
+			assert.Equal(t, tt.wantPanic, mismatches[0].ContextMap()["PanicError"])
+			assert.Equal(t, "tooold", mismatches[0].ContextMap()["VersionMismatchType"])
 		})
 	}
 }
