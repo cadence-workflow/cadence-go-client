@@ -38,6 +38,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,6 +47,7 @@ import (
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/metrics"
 )
 
 const (
@@ -79,6 +81,14 @@ func registerWorkflows(r *registry) {
 		RegisterWorkflowOptions{Name: "PanicWorkflow"},
 	)
 	r.RegisterWorkflowWithOptions(
+		versionTooNewWorkflowFunc,
+		RegisterWorkflowOptions{Name: "VersionTooNewWorkflow"},
+	)
+	r.RegisterWorkflowWithOptions(
+		versionTooOldWorkflowFunc,
+		RegisterWorkflowOptions{Name: "VersionTooOldWorkflow"},
+	)
+	r.RegisterWorkflowWithOptions(
 		getWorkflowInfoWorkflowFunc,
 		RegisterWorkflowOptions{Name: "GetWorkflowInfoWorkflow"},
 	)
@@ -102,6 +112,20 @@ func returnPanicWorkflowFunc(ctx Context, input []byte) error {
 
 func panicWorkflowFunc(ctx Context, input []byte) error {
 	panic("panicError")
+}
+
+// versionTooNewWorkflowFunc asks for a version above what the code supports, as happens when an
+// old worker picks up a workflow that a newer worker has already moved to a higher version.
+func versionTooNewWorkflowFunc(ctx Context, input []byte) error {
+	GetVersion(ctx, "test-change", DefaultVersion, 1, ExecuteWithVersion(2))
+	return nil
+}
+
+// versionTooOldWorkflowFunc asks for a version below what the code supports, as happens when the
+// code drops support for a version that is still in use.
+func versionTooOldWorkflowFunc(ctx Context, input []byte) error {
+	GetVersion(ctx, "test-change", 1, 2, ExecuteWithVersion(DefaultVersion))
+	return nil
 }
 
 func getWorkflowInfoWorkflowFunc(ctx Context, expectedLastCompletionResult string) (info *WorkflowInfo, err error) {
@@ -952,6 +976,129 @@ func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowPanics() {
 	wfTypeField := findLogField(panicLogs.All()[0], tagWorkflowType)
 	require.NotNil(t.T(), wfTypeField)
 	require.Equal(t.T(), "PanicWorkflow", wfTypeField.String)
+}
+
+func (t *TaskHandlersTestSuite) TestWorkflowTask_VersionMismatch() {
+	tests := []struct {
+		name         string
+		workflowType string
+		policy       NonDeterministicWorkflowPolicy
+		wantType     versionMismatchType
+		wantLevel    zapcore.Level
+	}{
+		{
+			name:         "too new is a warning",
+			workflowType: "VersionTooNewWorkflow",
+			policy:       NonDeterministicWorkflowPolicyBlockWorkflow,
+			wantType:     versionMismatchTypeTooNew,
+			wantLevel:    zapcore.WarnLevel,
+		},
+		{
+			name:         "too old is an error",
+			workflowType: "VersionTooOldWorkflow",
+			policy:       NonDeterministicWorkflowPolicyBlockWorkflow,
+			wantType:     versionMismatchTypeTooOld,
+			wantLevel:    zapcore.ErrorLevel,
+		},
+		{
+			// A version mismatch is not non-determinism, so FailWorkflow must not fail the workflow.
+			name:         "too new does not fail the workflow under FailWorkflow policy",
+			workflowType: "VersionTooNewWorkflow",
+			policy:       NonDeterministicWorkflowPolicyFailWorkflow,
+			wantType:     versionMismatchTypeTooNew,
+			wantLevel:    zapcore.WarnLevel,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func() {
+			taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+			testEvents := []*s.HistoryEvent{
+				createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{TaskList: taskList}),
+				createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+				createTestEventDecisionTaskStarted(3),
+			}
+
+			obs, logs := observer.New(zap.DebugLevel)
+			scope := tally.NewTestScope("", nil)
+			params := workerExecutionParameters{
+				TaskList: taskList,
+				WorkerOptions: WorkerOptions{
+					Identity:                       "test-id-1",
+					Logger:                         zap.New(obs),
+					MetricsScope:                   scope,
+					NonDeterministicWorkflowPolicy: tt.policy,
+				},
+			}
+
+			// PreviousStartedEventId 0 makes this the workflow's first decision task, not a replay.
+			task := createWorkflowTask(testEvents, 0, tt.workflowType)
+			taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+			request, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+			t.NoError(err)
+
+			// The decision task fails and will be retried, the same as for any other panic.
+			r, ok := request.(*s.RespondDecisionTaskFailedRequest)
+			t.Require().True(ok, "expected a failed decision task, got %T", request)
+			t.EqualValues("WORKFLOW_WORKER_UNHANDLED_FAILURE", r.Cause.String())
+
+			// It is logged once, at the expected level, and never as a workflow panic.
+			t.Empty(logs.FilterMessage("Workflow panic.").All())
+			t.Empty(logs.FilterMessage("ProcessEvent panic.").All())
+			mismatchLogs := logs.FilterMessage("Workflow version mismatch.").All()
+			t.Require().Len(mismatchLogs, 1)
+			t.Equal(tt.wantLevel, mismatchLogs[0].Level)
+			typeField := findLogField(mismatchLogs[0], tagVersionMismatchType)
+			t.Require().NotNil(typeField)
+			t.Equal(string(tt.wantType), typeField.String)
+
+			// It is counted on the version mismatch metric, tagged with its type, and not as a panic.
+			var mismatchCount int64
+			for _, counter := range scope.Snapshot().Counters() {
+				t.NotEqual(metrics.DecisionTaskPanicCounter, counter.Name())
+				if counter.Name() == metrics.DecisionTaskVersionMismatchCounter {
+					t.Equal(string(tt.wantType), counter.Tags()[tagVersionMismatchType])
+					t.Equal(tt.workflowType, counter.Tags()[tagWorkflowType])
+					mismatchCount += counter.Value()
+				}
+			}
+			t.EqualValues(1, mismatchCount)
+		})
+	}
+}
+
+func (t *TaskHandlersTestSuite) TestWorkflowTask_WorkflowPanicStillCountsAsPanic() {
+	taskList := &s.TaskList{Name: common.StringPtr("taskList"), Kind: s.TaskListKindNormal.Ptr()}
+	testEvents := []*s.HistoryEvent{
+		createTestEventWorkflowExecutionStarted(1, &s.WorkflowExecutionStartedEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskScheduled(2, &s.DecisionTaskScheduledEventAttributes{TaskList: taskList}),
+		createTestEventDecisionTaskStarted(3),
+	}
+
+	scope := tally.NewTestScope("", nil)
+	params := workerExecutionParameters{
+		TaskList: taskList,
+		WorkerOptions: WorkerOptions{
+			Identity:                       "test-id-1",
+			Logger:                         zap.NewNop(),
+			MetricsScope:                   scope,
+			NonDeterministicWorkflowPolicy: NonDeterministicWorkflowPolicyBlockWorkflow,
+		},
+	}
+
+	task := createWorkflowTask(testEvents, 3, "PanicWorkflow")
+	taskHandler := newWorkflowTaskHandler(testDomain, params, nil, t.registry)
+	_, err := taskHandler.ProcessWorkflowTask(&workflowTask{task: task}, nil)
+	t.NoError(err)
+
+	var panicCount int64
+	for _, counter := range scope.Snapshot().Counters() {
+		t.NotEqual(metrics.DecisionTaskVersionMismatchCounter, counter.Name())
+		if counter.Name() == metrics.DecisionTaskPanicCounter {
+			panicCount += counter.Value()
+		}
+	}
+	t.EqualValues(1, panicCount)
 }
 
 func (t *TaskHandlersTestSuite) TestGetWorkflowInfo() {
