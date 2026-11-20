@@ -50,8 +50,6 @@ var (
 	WorkflowStatusFailed = WorkflowStatus(shared.WorkflowExecutionCloseStatusFailed.String())
 	// WorkflowStatusCanceled is the WorkflowStatus for canceled workflows
 	WorkflowStatusCanceled = WorkflowStatus(shared.WorkflowExecutionCloseStatusCanceled.String())
-	// WorkflowStatusTerminated is the WorkflowStatus for terminated workflows
-	WorkflowStatusTerminated = WorkflowStatus(shared.WorkflowExecutionCloseStatusTerminated.String())
 	// WorkflowStatusContinuedAsNew is the WorkflowStatus for continuedAsNew workflows
 	WorkflowStatusContinuedAsNew = WorkflowStatus(shared.WorkflowExecutionCloseStatusContinuedAsNew.String())
 	// WorkflowStatusTimedOut is the WorkflowStatus for timedout workflows
@@ -183,7 +181,7 @@ func ToWorkflowStatus(statusString string) (WorkflowStatus, error) {
 	status := WorkflowStatus(strings.ToUpper(statusString))
 	switch status {
 	case WorkflowStatusOpen, WorkflowStatusClosed, WorkflowStatusCompleted,
-		WorkflowStatusFailed, WorkflowStatusCanceled, WorkflowStatusTerminated,
+		WorkflowStatusFailed, WorkflowStatusCanceled,
 		WorkflowStatusContinuedAsNew, WorkflowStatusTimedOut, WorkflowStatusALL:
 		return status, nil
 	default:
