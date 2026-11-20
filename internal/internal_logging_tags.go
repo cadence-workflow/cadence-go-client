@@ -46,6 +46,7 @@ const (
 	causeTag                       = "pollerrorcause"
 	tagWorkflowRuntimeLength       = "workflowruntimelength"
 	tagNonDeterminismDetectionType = "NonDeterminismDetectionType"
+	tagVersionMismatchType         = "VersionMismatchType"
 )
 
 type nonDeterminismDetectionType string
