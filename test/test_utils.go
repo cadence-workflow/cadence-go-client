@@ -28,14 +28,11 @@ import (
 	"strings"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport/grpc"
 	"go.uber.org/yarpc/transport/tchannel"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowserviceclient"
-	"go.uber.org/cadence/compatibility"
+	"go.uber.org/cadence/client"
 	"go.uber.org/cadence/workflow"
-
-	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 )
 
 type (
@@ -102,14 +99,14 @@ type rpcClient struct {
 	dispatcher *yarpc.Dispatcher
 }
 
-func (c *rpcClient) Close() {
-	c.dispatcher.Stop()
+func (c *rpcClient) Close() error {
+	return c.dispatcher.Stop()
 }
 
 // newRPCClient builds and returns a new rpc client that is able to
 // make calls to the localhost cadence-server container
 func newRPCClient(
-	serviceName string, serviceAddr string) (*rpcClient, error) {
+	serviceName string, serviceAddr string) (client.Connection, error) {
 	transport, err := tchannel.NewTransport(tchannel.ServiceName("integration-test"))
 	if err != nil {
 		return nil, err
@@ -126,36 +123,8 @@ func newRPCClient(
 	if err := dispatcher.Start(); err != nil {
 		return nil, err
 	}
-	client := workflowserviceclient.New(dispatcher.ClientConfig(serviceName))
-	return &rpcClient{Interface: client, dispatcher: dispatcher}, nil
-}
-
-// newRPCClient builds and returns a new rpc client that is able to
-// make calls to the localhost cadence-server container via grpc adapter
-func newGRPCAdapterClient(
-	serviceName string, serviceAddr string) (*rpcClient, error) {
-	transport := grpc.NewTransport()
-	outbound := transport.NewSingleOutbound(serviceAddr)
-	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "integration-test",
-		Outbounds: yarpc.Outbounds{
-			serviceName: {
-				Unary: outbound,
-			},
-		},
-	})
-	if err := dispatcher.Start(); err != nil {
-		return nil, err
-	}
-	clientConfig := dispatcher.ClientConfig(serviceName)
-	adapter := compatibility.NewThrift2ProtoAdapter(compatibility.AdapterClients{
-		Domain:     apiv1.NewDomainAPIYARPCClient(clientConfig),
-		Workflow:   apiv1.NewWorkflowAPIYARPCClient(clientConfig),
-		Worker:     apiv1.NewWorkerAPIYARPCClient(clientConfig),
-		Visibility: apiv1.NewVisibilityAPIYARPCClient(clientConfig),
-		Schedule:   apiv1.NewScheduleAPIYARPCClient(clientConfig),
-	})
-	return &rpcClient{Interface: adapter, dispatcher: dispatcher}, nil
+	service := workflowserviceclient.New(dispatcher.ClientConfig(serviceName))
+	return &rpcClient{Interface: service, dispatcher: dispatcher}, nil
 }
 
 // stringMapPropagator propagates the list of keys across a workflow,
