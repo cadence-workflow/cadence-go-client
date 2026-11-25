@@ -184,6 +184,21 @@ func HistoryEvent(e *apiv1.HistoryEvent) *shared.HistoryEvent {
 	case *apiv1.HistoryEvent_UpsertWorkflowSearchAttributesEventAttributes:
 		event.EventType = shared.EventTypeUpsertWorkflowSearchAttributes.Ptr()
 		event.UpsertWorkflowSearchAttributesEventAttributes = UpsertWorkflowSearchAttributesEventAttributes(attr.UpsertWorkflowSearchAttributesEventAttributes)
+	case *apiv1.HistoryEvent_SemaphoreAcquireInitiatedEventAttributes:
+		event.EventType = shared.EventTypeSemaphoreAcquireInitiated.Ptr()
+		event.SemaphoreAcquireInitiatedEventAttributes = SemaphoreAcquireInitiatedEventAttributes(attr.SemaphoreAcquireInitiatedEventAttributes)
+	case *apiv1.HistoryEvent_SemaphoreAcquiredEventAttributes:
+		event.EventType = shared.EventTypeSemaphoreAcquired.Ptr()
+		event.SemaphoreAcquiredEventAttributes = SemaphoreAcquiredEventAttributes(attr.SemaphoreAcquiredEventAttributes)
+	case *apiv1.HistoryEvent_SemaphoreReleasedEventAttributes:
+		event.EventType = shared.EventTypeSemaphoreReleased.Ptr()
+		event.SemaphoreReleasedEventAttributes = SemaphoreReleasedEventAttributes(attr.SemaphoreReleasedEventAttributes)
+	case *apiv1.HistoryEvent_SemaphoreAcquireFailedEventAttributes:
+		event.EventType = shared.EventTypeSemaphoreAcquireFailed.Ptr()
+		event.SemaphoreAcquireFailedEventAttributes = SemaphoreAcquireFailedEventAttributes(attr.SemaphoreAcquireFailedEventAttributes)
+	case *apiv1.HistoryEvent_SemaphoreTokenLostEventAttributes:
+		event.EventType = shared.EventTypeSemaphoreTokenLost.Ptr()
+		event.SemaphoreTokenLostEventAttributes = SemaphoreTokenLostEventAttributes(attr.SemaphoreTokenLostEventAttributes)
 	default:
 		panic("unknown event type")
 	}
@@ -768,5 +783,58 @@ func WorkflowExecutionTimedOutEventAttributes(t *apiv1.WorkflowExecutionTimedOut
 	}
 	return &shared.WorkflowExecutionTimedOutEventAttributes{
 		TimeoutType: TimeoutType(t.TimeoutType),
+	}
+}
+
+func SemaphoreAcquireInitiatedEventAttributes(t *apiv1.SemaphoreAcquireInitiatedEventAttributes) *shared.SemaphoreAcquireInitiatedEventAttributes {
+	if t == nil {
+		return nil
+	}
+	return &shared.SemaphoreAcquireInitiatedEventAttributes{
+		SemaphoreName:                &t.SemaphoreName,
+		WaitTimeoutSeconds:           durationToSeconds(t.WaitTimeout),
+		DecisionTaskCompletedEventId: &t.DecisionTaskCompletedEventId,
+	}
+}
+
+func SemaphoreAcquiredEventAttributes(t *apiv1.SemaphoreAcquiredEventAttributes) *shared.SemaphoreAcquiredEventAttributes {
+	if t == nil {
+		return nil
+	}
+	return &shared.SemaphoreAcquiredEventAttributes{
+		TokenId:          &t.TokenId,
+		InitiatedEventId: &t.InitiatedEventId,
+	}
+}
+
+func SemaphoreReleasedEventAttributes(t *apiv1.SemaphoreReleasedEventAttributes) *shared.SemaphoreReleasedEventAttributes {
+	if t == nil {
+		return nil
+	}
+	return &shared.SemaphoreReleasedEventAttributes{
+		TokenId:                      &t.TokenId,
+		InitiatedEventId:             &t.InitiatedEventId,
+		DecisionTaskCompletedEventId: &t.DecisionTaskCompletedEventId,
+	}
+}
+
+func SemaphoreAcquireFailedEventAttributes(t *apiv1.SemaphoreAcquireFailedEventAttributes) *shared.SemaphoreAcquireFailedEventAttributes {
+	if t == nil {
+		return nil
+	}
+	return &shared.SemaphoreAcquireFailedEventAttributes{
+		Cause:            SemaphoreAcquireFailedCause(t.Cause),
+		InitiatedEventId: &t.InitiatedEventId,
+	}
+}
+
+func SemaphoreTokenLostEventAttributes(t *apiv1.SemaphoreTokenLostEventAttributes) *shared.SemaphoreTokenLostEventAttributes {
+	if t == nil {
+		return nil
+	}
+	return &shared.SemaphoreTokenLostEventAttributes{
+		TokenId:          &t.TokenId,
+		InitiatedEventId: &t.InitiatedEventId,
+		Cause:            SemaphoreTokenLostCause(t.Cause),
 	}
 }

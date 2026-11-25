@@ -545,4 +545,17 @@ var (
 	GetClusterInfoResponse = apiv1.GetClusterInfoResponse{
 		SupportedClientVersions: &SupportedClientVersions,
 	}
+	CreateSemaphoreRequest = apiv1.CreateSemaphoreRequest{
+		Domain:         DomainName,
+		SemaphoreName:  SemaphoreName,
+		Capacity:       2,
+		BucketCapacity: 1,
+	}
+	CreateSemaphoreResponse = apiv1.CreateSemaphoreResponse{
+		Semaphore: &apiv1.Semaphore{
+			SemaphoreName:  SemaphoreName,
+			Capacity:       2,
+			BucketCapacity: 1,
+		},
+	}
 )

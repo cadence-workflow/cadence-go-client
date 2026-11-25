@@ -36,6 +36,12 @@ type Interface interface {
 		opts ...yarpc.CallOption,
 	) (*shared.CreateScheduleResponse, error)
 
+	CreateSemaphore(
+		ctx context.Context,
+		Request *shared.CreateSemaphoreRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.CreateSemaphoreResponse, error)
+
 	DeleteDomain(
 		ctx context.Context,
 		DeleteRequest *shared.DeleteDomainRequest,
@@ -83,6 +89,12 @@ type Interface interface {
 		DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
 		opts ...yarpc.CallOption,
 	) (*shared.DiagnoseWorkflowExecutionResponse, error)
+
+	ExportWorkflowExecution(
+		ctx context.Context,
+		Request *shared.ExportWorkflowExecutionRequest,
+		opts ...yarpc.CallOption,
+	) (*shared.ExportWorkflowExecutionResponse, error)
 
 	FailoverDomain(
 		ctx context.Context,
@@ -460,6 +472,34 @@ func (c client) CreateSchedule(
 	return
 }
 
+func (c client) CreateSemaphore(
+	ctx context.Context,
+	_Request *shared.CreateSemaphoreRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.CreateSemaphoreResponse, err error) {
+
+	var result cadence.WorkflowService_CreateSemaphore_Result
+	args := cadence.WorkflowService_CreateSemaphore_Helper.Args(_Request)
+
+	if c.nwc != nil && c.nwc.Enabled() {
+		if err = c.nwc.Call(ctx, args, &result, opts...); err != nil {
+			return
+		}
+	} else {
+		var body wire.Value
+		if body, err = c.c.Call(ctx, args, opts...); err != nil {
+			return
+		}
+
+		if err = result.FromWire(body); err != nil {
+			return
+		}
+	}
+
+	success, err = cadence.WorkflowService_CreateSemaphore_Helper.UnwrapResponse(&result)
+	return
+}
+
 func (c client) DeleteDomain(
 	ctx context.Context,
 	_DeleteRequest *shared.DeleteDomainRequest,
@@ -681,6 +721,34 @@ func (c client) DiagnoseWorkflowExecution(
 	}
 
 	success, err = cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.UnwrapResponse(&result)
+	return
+}
+
+func (c client) ExportWorkflowExecution(
+	ctx context.Context,
+	_Request *shared.ExportWorkflowExecutionRequest,
+	opts ...yarpc.CallOption,
+) (success *shared.ExportWorkflowExecutionResponse, err error) {
+
+	var result cadence.WorkflowService_ExportWorkflowExecution_Result
+	args := cadence.WorkflowService_ExportWorkflowExecution_Helper.Args(_Request)
+
+	if c.nwc != nil && c.nwc.Enabled() {
+		if err = c.nwc.Call(ctx, args, &result, opts...); err != nil {
+			return
+		}
+	} else {
+		var body wire.Value
+		if body, err = c.c.Call(ctx, args, opts...); err != nil {
+			return
+		}
+
+		if err = result.FromWire(body); err != nil {
+			return
+		}
+	}
+
+	success, err = cadence.WorkflowService_ExportWorkflowExecution_Helper.UnwrapResponse(&result)
 	return
 }
 

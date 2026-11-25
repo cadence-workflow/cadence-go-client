@@ -496,6 +496,24 @@ func TestAPICalls(t *testing.T) {
 			},
 			expectedResponse: &shared.UpdateScheduleResponse{},
 		},
+		"ExportWorkflowExecution": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.ExportWorkflowExecution(ctx, &shared.ExportWorkflowExecutionRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().ExportWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.ExportWorkflowExecutionResponse{}, nil)
+			},
+			expectedResponse: &shared.ExportWorkflowExecutionResponse{},
+		},
+		"CreateSemaphore": {
+			action: func(ctx context.Context, sw workflowserviceclient.Interface) (interface{}, error) {
+				return sw.CreateSemaphore(ctx, &shared.CreateSemaphoreRequest{})
+			},
+			affordance: func(m *workflowservicetest.MockClient) {
+				m.EXPECT().CreateSemaphore(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(&shared.CreateSemaphoreResponse{}, nil)
+			},
+			expectedResponse: &shared.CreateSemaphoreResponse{},
+		},
 	}
 
 	for name, td := range tests {

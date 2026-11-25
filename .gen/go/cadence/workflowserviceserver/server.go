@@ -33,6 +33,11 @@ type Interface interface {
 		Request *shared.CreateScheduleRequest,
 	) (*shared.CreateScheduleResponse, error)
 
+	CreateSemaphore(
+		ctx context.Context,
+		Request *shared.CreateSemaphoreRequest,
+	) (*shared.CreateSemaphoreResponse, error)
+
 	DeleteDomain(
 		ctx context.Context,
 		DeleteRequest *shared.DeleteDomainRequest,
@@ -72,6 +77,11 @@ type Interface interface {
 		ctx context.Context,
 		DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest,
 	) (*shared.DiagnoseWorkflowExecutionResponse, error)
+
+	ExportWorkflowExecution(
+		ctx context.Context,
+		Request *shared.ExportWorkflowExecutionRequest,
+	) (*shared.ExportWorkflowExecutionResponse, error)
 
 	FailoverDomain(
 		ctx context.Context,
@@ -340,6 +350,18 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 			},
 
 			thrift.Method{
+				Name: "CreateSemaphore",
+				HandlerSpec: thrift.HandlerSpec{
+
+					Type:   transport.Unary,
+					Unary:  thrift.UnaryHandler(h.CreateSemaphore),
+					NoWire: createsemaphore_NoWireHandler{impl},
+				},
+				Signature:    "CreateSemaphore(Request *shared.CreateSemaphoreRequest) (*shared.CreateSemaphoreResponse)",
+				ThriftModule: cadence.ThriftModule,
+			},
+
+			thrift.Method{
 				Name: "DeleteDomain",
 				HandlerSpec: thrift.HandlerSpec{
 
@@ -432,6 +454,18 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 					NoWire: diagnoseworkflowexecution_NoWireHandler{impl},
 				},
 				Signature:    "DiagnoseWorkflowExecution(DiagnoseRequest *shared.DiagnoseWorkflowExecutionRequest) (*shared.DiagnoseWorkflowExecutionResponse)",
+				ThriftModule: cadence.ThriftModule,
+			},
+
+			thrift.Method{
+				Name: "ExportWorkflowExecution",
+				HandlerSpec: thrift.HandlerSpec{
+
+					Type:   transport.Unary,
+					Unary:  thrift.UnaryHandler(h.ExportWorkflowExecution),
+					NoWire: exportworkflowexecution_NoWireHandler{impl},
+				},
+				Signature:    "ExportWorkflowExecution(Request *shared.ExportWorkflowExecutionRequest) (*shared.ExportWorkflowExecutionResponse)",
 				ThriftModule: cadence.ThriftModule,
 			},
 
@@ -965,7 +999,7 @@ func New(impl Interface, opts ...thrift.RegisterOption) []transport.Procedure {
 		},
 	}
 
-	procedures := make([]transport.Procedure, 0, 55)
+	procedures := make([]transport.Procedure, 0, 57)
 	procedures = append(procedures, thrift.BuildProcedures(service, opts...)...)
 	return procedures
 }
@@ -1047,6 +1081,36 @@ func (h handler) CreateSchedule(ctx context.Context, body wire.Value) (thrift.Re
 
 	hadError := appErr != nil
 	result, err := cadence.WorkflowService_CreateSchedule_Helper.WrapResponse(success, appErr)
+
+	var response thrift.Response
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+
+	return response, err
+}
+
+func (h handler) CreateSemaphore(ctx context.Context, body wire.Value) (thrift.Response, error) {
+	var args cadence.WorkflowService_CreateSemaphore_Args
+	if err := args.FromWire(body); err != nil {
+		return thrift.Response{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode Thrift request for service 'WorkflowService' procedure 'CreateSemaphore': %w", err)
+	}
+
+	success, appErr := h.impl.CreateSemaphore(ctx, args.Request)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_CreateSemaphore_Helper.WrapResponse(success, appErr)
 
 	var response thrift.Response
 	if err == nil {
@@ -1287,6 +1351,36 @@ func (h handler) DiagnoseWorkflowExecution(ctx context.Context, body wire.Value)
 
 	hadError := appErr != nil
 	result, err := cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.WrapResponse(success, appErr)
+
+	var response thrift.Response
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+
+	return response, err
+}
+
+func (h handler) ExportWorkflowExecution(ctx context.Context, body wire.Value) (thrift.Response, error) {
+	var args cadence.WorkflowService_ExportWorkflowExecution_Args
+	if err := args.FromWire(body); err != nil {
+		return thrift.Response{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode Thrift request for service 'WorkflowService' procedure 'ExportWorkflowExecution': %w", err)
+	}
+
+	success, appErr := h.impl.ExportWorkflowExecution(ctx, args.Request)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_ExportWorkflowExecution_Helper.WrapResponse(success, appErr)
 
 	var response thrift.Response
 	if err == nil {
@@ -2737,6 +2831,43 @@ func (h createschedule_NoWireHandler) HandleNoWire(ctx context.Context, nwc *thr
 
 }
 
+type createsemaphore_NoWireHandler struct{ impl Interface }
+
+func (h createsemaphore_NoWireHandler) HandleNoWire(ctx context.Context, nwc *thrift.NoWireCall) (thrift.NoWireResponse, error) {
+	var (
+		args cadence.WorkflowService_CreateSemaphore_Args
+		rw   stream.ResponseWriter
+		err  error
+	)
+
+	rw, err = nwc.RequestReader.ReadRequest(ctx, nwc.EnvelopeType, nwc.Reader, &args)
+	if err != nil {
+		return thrift.NoWireResponse{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode (via no wire) Thrift request for service 'WorkflowService' procedure 'CreateSemaphore': %w", err)
+	}
+
+	success, appErr := h.impl.CreateSemaphore(ctx, args.Request)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_CreateSemaphore_Helper.WrapResponse(success, appErr)
+	response := thrift.NoWireResponse{ResponseWriter: rw}
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+	return response, err
+
+}
+
 type deletedomain_NoWireHandler struct{ impl Interface }
 
 func (h deletedomain_NoWireHandler) HandleNoWire(ctx context.Context, nwc *thrift.NoWireCall) (thrift.NoWireResponse, error) {
@@ -3015,6 +3146,43 @@ func (h diagnoseworkflowexecution_NoWireHandler) HandleNoWire(ctx context.Contex
 
 	hadError := appErr != nil
 	result, err := cadence.WorkflowService_DiagnoseWorkflowExecution_Helper.WrapResponse(success, appErr)
+	response := thrift.NoWireResponse{ResponseWriter: rw}
+	if err == nil {
+		response.IsApplicationError = hadError
+		response.Body = result
+		if namer, ok := appErr.(yarpcErrorNamer); ok {
+			response.ApplicationErrorName = namer.YARPCErrorName()
+		}
+		if extractor, ok := appErr.(yarpcErrorCoder); ok {
+			response.ApplicationErrorCode = extractor.YARPCErrorCode()
+		}
+		if appErr != nil {
+			response.ApplicationErrorDetails = appErr.Error()
+		}
+	}
+	return response, err
+
+}
+
+type exportworkflowexecution_NoWireHandler struct{ impl Interface }
+
+func (h exportworkflowexecution_NoWireHandler) HandleNoWire(ctx context.Context, nwc *thrift.NoWireCall) (thrift.NoWireResponse, error) {
+	var (
+		args cadence.WorkflowService_ExportWorkflowExecution_Args
+		rw   stream.ResponseWriter
+		err  error
+	)
+
+	rw, err = nwc.RequestReader.ReadRequest(ctx, nwc.EnvelopeType, nwc.Reader, &args)
+	if err != nil {
+		return thrift.NoWireResponse{}, yarpcerrors.InvalidArgumentErrorf(
+			"could not decode (via no wire) Thrift request for service 'WorkflowService' procedure 'ExportWorkflowExecution': %w", err)
+	}
+
+	success, appErr := h.impl.ExportWorkflowExecution(ctx, args.Request)
+
+	hadError := appErr != nil
+	result, err := cadence.WorkflowService_ExportWorkflowExecution_Helper.WrapResponse(success, appErr)
 	response := thrift.NoWireResponse{ResponseWriter: rw}
 	if err == nil {
 		response.IsApplicationError = hadError

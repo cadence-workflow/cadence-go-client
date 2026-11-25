@@ -368,3 +368,13 @@ func (w *workflowServiceIsolationGroupWrapper) UpdateSchedule(ctx context.Contex
 	opts = append(opts, w.getIsolationGroupIdentifier())
 	return w.service.UpdateSchedule(ctx, Request, opts...)
 }
+
+func (w *workflowServiceIsolationGroupWrapper) ExportWorkflowExecution(ctx context.Context, request *shared.ExportWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.ExportWorkflowExecutionResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.ExportWorkflowExecution(ctx, request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) CreateSemaphore(ctx context.Context, request *shared.CreateSemaphoreRequest, opts ...yarpc.CallOption) (*shared.CreateSemaphoreResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.CreateSemaphore(ctx, request, opts...)
+}

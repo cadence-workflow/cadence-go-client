@@ -423,3 +423,12 @@ func ListFailoverHistoryResponse(t *apiv1.ListFailoverHistoryResponse) *shared.L
 		NextPageToken:  t.NextPageToken,
 	}
 }
+
+func CreateSemaphoreResponse(t *apiv1.CreateSemaphoreResponse) *shared.CreateSemaphoreResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.CreateSemaphoreResponse{
+		Semaphore: Semaphore(t.Semaphore),
+	}
+}

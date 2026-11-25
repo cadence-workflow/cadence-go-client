@@ -404,6 +404,9 @@ type (
 
 		// ScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
 		ScheduleClient() ScheduleClient
+
+		// SemaphoreClient returns a SemaphoreClient scoped to this client's domain and connection.
+		SemaphoreClient() SemaphoreClient
 	}
 
 	// ClientOptions are optional parameters for Client creation.

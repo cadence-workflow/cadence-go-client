@@ -111,6 +111,8 @@ func TestDecisionTaskFailedCause(t *testing.T) {
 		apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_BINARY,
 		apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_SCHEDULE_ACTIVITY_DUPLICATE_ID,
 		apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_SEARCH_ATTRIBUTES,
+		apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_ACQUIRE_SEMAPHORE_ATTRIBUTES,
+		apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_RELEASE_SEMAPHORE_ATTRIBUTES,
 	} {
 		assert.Equal(t, item, proto.DecisionTaskFailedCause(thrift.DecisionTaskFailedCause(item)))
 	}
@@ -245,6 +247,36 @@ func TestQueryTaskCompletedType(t *testing.T) {
 	}
 	assert.Panics(t, func() { thrift.QueryTaskCompletedType(apiv1.QueryResultType(UnknownValue)) })
 	assert.Panics(t, func() { proto.QueryTaskCompletedType(shared.QueryTaskCompletedType(UnknownValue).Ptr()) })
+}
+func TestSemaphoreAcquireFailedCause(t *testing.T) {
+	for _, item := range []apiv1.SemaphoreAcquireFailedCause{
+		apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_INVALID,
+		apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_NOT_FOUND,
+		apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_TIMED_OUT,
+	} {
+		assert.Equal(t, item, proto.SemaphoreAcquireFailedCause(thrift.SemaphoreAcquireFailedCause(item)))
+	}
+	assert.Panics(t, func() {
+		proto.SemaphoreAcquireFailedCause(shared.SemaphoreAcquireFailedCause(UnknownValue).Ptr())
+	})
+	assert.Panics(t, func() {
+		thrift.SemaphoreAcquireFailedCause(apiv1.SemaphoreAcquireFailedCause(UnknownValue))
+	})
+}
+func TestSemaphoreTokenLostCause(t *testing.T) {
+	for _, item := range []apiv1.SemaphoreTokenLostCause{
+		apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_INVALID,
+		apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_NOT_HELD,
+		apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_RESET,
+	} {
+		assert.Equal(t, item, proto.SemaphoreTokenLostCause(thrift.SemaphoreTokenLostCause(item)))
+	}
+	assert.Panics(t, func() {
+		proto.SemaphoreTokenLostCause(shared.SemaphoreTokenLostCause(UnknownValue).Ptr())
+	})
+	assert.Panics(t, func() {
+		thrift.SemaphoreTokenLostCause(apiv1.SemaphoreTokenLostCause(UnknownValue))
+	})
 }
 func TestSignalExternalWorkflowExecutionFailedCause(t *testing.T) {
 	for _, item := range []apiv1.SignalExternalWorkflowExecutionFailedCause{

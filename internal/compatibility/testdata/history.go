@@ -72,6 +72,11 @@ var (
 		&HistoryEvent_SignalExternalWorkflowExecutionFailed,
 		&HistoryEvent_ExternalWorkflowExecutionSignaled,
 		&HistoryEvent_UpsertWorkflowSearchAttributes,
+		&HistoryEvent_SemaphoreAcquireInitiated,
+		&HistoryEvent_SemaphoreAcquired,
+		&HistoryEvent_SemaphoreReleased,
+		&HistoryEvent_SemaphoreAcquireFailed,
+		&HistoryEvent_SemaphoreTokenLost,
 	}
 
 	HistoryEvent_WorkflowExecutionStarted = generateEvent(func(e *apiv1.HistoryEvent) {
@@ -199,6 +204,21 @@ var (
 	})
 	HistoryEvent_UpsertWorkflowSearchAttributes = generateEvent(func(e *apiv1.HistoryEvent) {
 		e.Attributes = &apiv1.HistoryEvent_UpsertWorkflowSearchAttributesEventAttributes{UpsertWorkflowSearchAttributesEventAttributes: &UpsertWorkflowSearchAttributesEventAttributes}
+	})
+	HistoryEvent_SemaphoreAcquireInitiated = generateEvent(func(e *apiv1.HistoryEvent) {
+		e.Attributes = &apiv1.HistoryEvent_SemaphoreAcquireInitiatedEventAttributes{SemaphoreAcquireInitiatedEventAttributes: &SemaphoreAcquireInitiatedEventAttributes}
+	})
+	HistoryEvent_SemaphoreAcquired = generateEvent(func(e *apiv1.HistoryEvent) {
+		e.Attributes = &apiv1.HistoryEvent_SemaphoreAcquiredEventAttributes{SemaphoreAcquiredEventAttributes: &SemaphoreAcquiredEventAttributes}
+	})
+	HistoryEvent_SemaphoreReleased = generateEvent(func(e *apiv1.HistoryEvent) {
+		e.Attributes = &apiv1.HistoryEvent_SemaphoreReleasedEventAttributes{SemaphoreReleasedEventAttributes: &SemaphoreReleasedEventAttributes}
+	})
+	HistoryEvent_SemaphoreAcquireFailed = generateEvent(func(e *apiv1.HistoryEvent) {
+		e.Attributes = &apiv1.HistoryEvent_SemaphoreAcquireFailedEventAttributes{SemaphoreAcquireFailedEventAttributes: &SemaphoreAcquireFailedEventAttributes}
+	})
+	HistoryEvent_SemaphoreTokenLost = generateEvent(func(e *apiv1.HistoryEvent) {
+		e.Attributes = &apiv1.HistoryEvent_SemaphoreTokenLostEventAttributes{SemaphoreTokenLostEventAttributes: &SemaphoreTokenLostEventAttributes}
 	})
 
 	WorkflowExecutionStartedEventAttributes = apiv1.WorkflowExecutionStartedEventAttributes{
@@ -518,6 +538,29 @@ var (
 	UpsertWorkflowSearchAttributesEventAttributes = apiv1.UpsertWorkflowSearchAttributesEventAttributes{
 		DecisionTaskCompletedEventId: EventID1,
 		SearchAttributes:             &SearchAttributes,
+	}
+	SemaphoreAcquireInitiatedEventAttributes = apiv1.SemaphoreAcquireInitiatedEventAttributes{
+		SemaphoreName:                SemaphoreName,
+		WaitTimeout:                  Duration1,
+		DecisionTaskCompletedEventId: EventID1,
+	}
+	SemaphoreAcquiredEventAttributes = apiv1.SemaphoreAcquiredEventAttributes{
+		TokenId:          1,
+		InitiatedEventId: EventID1,
+	}
+	SemaphoreReleasedEventAttributes = apiv1.SemaphoreReleasedEventAttributes{
+		TokenId:                      1,
+		InitiatedEventId:             EventID1,
+		DecisionTaskCompletedEventId: EventID2,
+	}
+	SemaphoreAcquireFailedEventAttributes = apiv1.SemaphoreAcquireFailedEventAttributes{
+		Cause:            apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_TIMED_OUT,
+		InitiatedEventId: EventID1,
+	}
+	SemaphoreTokenLostEventAttributes = apiv1.SemaphoreTokenLostEventAttributes{
+		TokenId:          1,
+		InitiatedEventId: EventID1,
+		Cause:            apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_RESET,
 	}
 )
 

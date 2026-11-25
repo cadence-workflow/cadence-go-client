@@ -1,6 +1,6 @@
 module go.uber.org/cadence
 
-go 1.26.0
+go 1.26.2
 
 toolchain go1.26.10
 
@@ -18,7 +18,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/stretchr/testify v1.9.0
 	github.com/uber-go/tally v3.5.8+incompatible
-	github.com/uber/cadence-idl v0.0.0-20260924213108-c75d1064dedd
+	github.com/uber/cadence-idl v0.0.0-20261123224259-0b80653eb1f9
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/uber/tchannel-go v1.34.4
 	go.uber.org/atomic v1.11.0
@@ -61,7 +61,6 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
-	golang.org/x/tools/go/expect v0.1.1-deprecated // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

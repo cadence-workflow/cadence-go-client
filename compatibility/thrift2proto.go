@@ -36,6 +36,7 @@ type AdapterClients struct {
 	Worker     apiv1.WorkerAPIYARPCClient
 	Visibility apiv1.VisibilityAPIYARPCClient
 	Schedule   apiv1.ScheduleAPIYARPCClient
+	Semaphore  apiv1.SemaphoreAPIYARPCClient
 }
 
 // NewThrift2ProtoAdapter creates an adapter for mapping calls from Thrift to Protobuf types.
@@ -48,5 +49,6 @@ func NewThrift2ProtoAdapter(clients AdapterClients) workflowserviceclient.Interf
 		clients.Worker,
 		clients.Visibility,
 		clients.Schedule,
+		clients.Semaphore,
 	)
 }

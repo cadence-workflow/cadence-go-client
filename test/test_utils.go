@@ -154,6 +154,7 @@ func newGRPCAdapterClient(
 		Worker:     apiv1.NewWorkerAPIYARPCClient(clientConfig),
 		Visibility: apiv1.NewVisibilityAPIYARPCClient(clientConfig),
 		Schedule:   apiv1.NewScheduleAPIYARPCClient(clientConfig),
+		Semaphore:  apiv1.NewSemaphoreAPIYARPCClient(clientConfig),
 	})
 	return &rpcClient{Interface: adapter, dispatcher: dispatcher}, nil
 }
