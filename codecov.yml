@@ -41,3 +41,6 @@ ignore:
   - "mocks/**"
   - "test/**"
   - "testsuite/**"
+  # exclude wrappers around internal functions
+  - "activity/**"
+  - "workflow/**"

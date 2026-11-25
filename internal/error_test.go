@@ -23,10 +23,13 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
+	"time"
+
+	"go.uber.org/cadence/internal/common/testlogger"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
@@ -62,7 +65,7 @@ var (
 // Creates a new workflow environment with the correct logger configured.
 func newTestActivityEnv(t *testing.T) *TestActivityEnvironment {
 	s := &WorkflowTestSuite{}
-	s.SetLogger(zaptest.NewLogger(t))
+	s.SetLogger(testlogger.NewZap(t))
 	// same tally note
 	env := s.NewTestActivityEnvironment()
 	return env
@@ -301,6 +304,92 @@ func Test_CustomError_Pointer(t *testing.T) {
 	require.Equal(t, &testErrorDetails4, b2)
 }
 
+func Test_NewCustomError_Options(t *testing.T) {
+	tests := []struct {
+		name                    string
+		args                    []interface{}
+		expectedDetails         []interface{}
+		expectedFailureCategory shared.FailureCategory
+		expectedNextRetryDelay  time.Duration
+	}{
+		{
+			name: "with failure category option",
+			args: []interface{}{
+				WithFailureCategory(shared.FailureCategoryFatal),
+			},
+			expectedFailureCategory: shared.FailureCategoryFatal,
+			expectedNextRetryDelay:  0,
+		},
+		{
+			name: "with next retry delay option",
+			args: []interface{}{
+				WithNextRetryDelay(37 * time.Second),
+			},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  37 * time.Second,
+		},
+		{
+			name: "with both options interleaved with details",
+			args: []interface{}{
+				testErrorDetails1,
+				WithFailureCategory(shared.FailureCategoryStandard),
+				testErrorDetails2,
+				WithNextRetryDelay(19 * time.Second),
+				testErrorDetails3,
+			},
+			expectedDetails:         []interface{}{testErrorDetails1, testErrorDetails2, testErrorDetails3},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  19 * time.Second,
+		},
+		{
+			name: "no options",
+			args: []interface{}{
+				testErrorDetails1,
+				testErrorDetails2,
+				testErrorDetails3,
+			},
+			expectedDetails:         []interface{}{testErrorDetails1, testErrorDetails2, testErrorDetails3},
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  0,
+		},
+		{
+			name:                    "no options and no details",
+			args:                    nil,
+			expectedDetails:         nil,
+			expectedFailureCategory: shared.FailureCategoryStandard,
+			expectedNextRetryDelay:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewCustomError(customErrReasonA, tt.args...)
+
+			require.Equal(t, customErrReasonA, err.Reason())
+			require.Equal(t, tt.expectedFailureCategory, err.GetFailureCategory())
+			require.Equal(t, tt.expectedNextRetryDelay, err.GetNextRetryDelay())
+
+			if len(tt.expectedDetails) == 0 {
+				require.False(t, err.HasDetails())
+				require.Equal(t, ErrNoData, err.Details())
+				return
+			}
+
+			require.True(t, err.HasDetails())
+
+			decodedPtrs := make([]interface{}, 0, len(tt.expectedDetails))
+			for _, expectedDetail := range tt.expectedDetails {
+				decodedPtrs = append(decodedPtrs, reflect.New(reflect.TypeOf(expectedDetail)).Interface())
+			}
+
+			require.NoError(t, err.Details(decodedPtrs...))
+			for i, expectedDetail := range tt.expectedDetails {
+				require.Equal(t, expectedDetail, reflect.ValueOf(decodedPtrs[i]).Elem().Interface())
+			}
+		})
+	}
+}
+
 func Test_CustomError_WrongDecodedType(t *testing.T) {
 	err := NewCustomError("reason", testErrorDetails1, testErrorDetails2)
 	var d1 string
@@ -460,7 +549,7 @@ func Test_SignalExternalWorkflowExecutionFailedError(t *testing.T) {
 		InitiatedEventId: common.Int64Ptr(initiatedEventID),
 		Cause:            shared.SignalExternalWorkflowExecutionFailedCauseUnknownExternalWorkflowExecution.Ptr(),
 	})
-	require.NoError(t, weh.handleSignalExternalWorkflowExecutionFailed(event))
+	weh.handleSignalExternalWorkflowExecutionFailed(event)
 	_, ok := actualErr.(*UnknownExternalWorkflowExecutionError)
 	require.True(t, ok)
 }
@@ -482,7 +571,7 @@ func Test_ContinueAsNewError(t *testing.T) {
 		header:   header,
 		ctxProps: []ContextPropagator{NewStringMapPropagator([]string{"test"})},
 	}
-	s.SetLogger(zaptest.NewLogger(t))
+	s.SetLogger(testlogger.NewZap(t))
 	wfEnv := s.NewTestWorkflowEnvironment()
 	wfEnv.Test(t)
 	wfEnv.RegisterWorkflowWithOptions(continueAsNewWorkflowFn, RegisterWorkflowOptions{

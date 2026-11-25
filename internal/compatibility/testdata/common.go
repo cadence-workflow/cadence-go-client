@@ -48,6 +48,7 @@ const (
 	HostName             = "HostName"
 	Identity             = "Identity"
 	CronSchedule         = "CronSchedule"
+	CronOverlapPolicy    = 0
 	Checksum             = "Checksum"
 	Reason               = "Reason"
 	Cause                = "Cause"
@@ -146,6 +147,7 @@ var (
 	RetryPolicy = apiv1.RetryPolicy{
 		InitialInterval:          Duration1,
 		BackoffCoefficient:       1.1,
+		JitterCoefficient:        0.1,
 		MaximumInterval:          Duration2,
 		MaximumAttempts:          3,
 		NonRetryableErrorReasons: []string{"a", "b"},
@@ -169,6 +171,21 @@ var (
 			"IndexedField2": &apiv1.Payload{Data: []byte{232, 0}},
 		},
 	}
+
+	ActiveClusterSelectionPolicy = &apiv1.ActiveClusterSelectionPolicy{
+		ClusterAttribute: &apiv1.ClusterAttribute{
+			Scope: "region",
+			Name:  "us-east-1",
+		},
+	}
+
+	ActiveClusterSelectionPolicy2 = &apiv1.ActiveClusterSelectionPolicy{
+		ClusterAttribute: &apiv1.ClusterAttribute{
+			Scope: "location",
+			Name:  "London",
+		},
+	}
+
 	PayloadMap = map[string]*apiv1.Payload{
 		"Payload1": &Payload1,
 		"Payload2": &Payload2,
@@ -207,6 +224,10 @@ var (
 	}
 	ActivityLocalDispatchInfoMap = map[string]*apiv1.ActivityLocalDispatchInfo{
 		ActivityID: &ActivityLocalDispatchInfo,
+	}
+	AutoConfigHint = apiv1.AutoConfigHint{
+		EnableAutoConfig:   true,
+		PollerWaitTimeInMs: 100,
 	}
 	TaskListMetadata = apiv1.TaskListMetadata{
 		MaxTasksPerSecond: &gogo.DoubleValue{Value: RatePerSecond},
@@ -342,5 +363,12 @@ var (
 		StartedTime:           Timestamp2,
 		Attempt:               Attempt,
 		OriginalScheduledTime: Timestamp3,
+	}
+	PaginationOptions = apiv1.PaginationOptions{
+		PageSize:      5,
+		NextPageToken: []byte(`token`),
+	}
+	ListFailoverHistoryRequestFilters = apiv1.ListFailoverHistoryRequestFilters{
+		DomainId: "id",
 	}
 )

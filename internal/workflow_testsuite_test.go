@@ -30,6 +30,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSetWorkflowTimeout(t *testing.T) {
+	t.Parallel()
+	env := newTestWorkflowEnv(t)
+
+	executionTimeout := 30 * time.Minute
+	require.Equal(t, int32(1), env.impl.workflowInfo.ExecutionStartToCloseTimeoutSeconds)
+
+	result := env.SetWorkflowTimeout(executionTimeout)
+
+	require.Equal(t, env, result)
+	require.Equal(t, int32(executionTimeout.Seconds()), result.impl.workflowInfo.ExecutionStartToCloseTimeoutSeconds)
+	require.Equal(t, executionTimeout, result.impl.executionTimeout)
+}
+
 func TestSetMemoOnStart(t *testing.T) {
 	t.Parallel()
 	env := newTestWorkflowEnv(t)

@@ -103,8 +103,8 @@ func Decision(d *apiv1.Decision) *shared.Decision {
 		a := attr.RequestCancelExternalWorkflowExecutionDecisionAttributes
 		decision.RequestCancelExternalWorkflowExecutionDecisionAttributes = &shared.RequestCancelExternalWorkflowExecutionDecisionAttributes{
 			Domain:            &a.Domain,
-			WorkflowId:        WorkflowId(a.WorkflowExecution),
-			RunId:             RunId(a.WorkflowExecution),
+			WorkflowId:        WorkflowID(a.WorkflowExecution),
+			RunId:             RunID(a.WorkflowExecution),
 			Control:           a.Control,
 			ChildWorkflowOnly: &a.ChildWorkflowOnly,
 		}
@@ -136,6 +136,8 @@ func Decision(d *apiv1.Decision) *shared.Decision {
 			Memo:                                Memo(a.Memo),
 			SearchAttributes:                    SearchAttributes(a.SearchAttributes),
 			JitterStartSeconds:                  durationToSeconds(a.JitterStart),
+			CronOverlapPolicy:                   CronOverlapPolicy(a.CronOverlapPolicy),
+			ActiveClusterSelectionPolicy:        ActiveClusterSelectionPolicy(a.ActiveClusterSelectionPolicy),
 		}
 	case *apiv1.Decision_StartChildWorkflowExecutionDecisionAttributes:
 		decision.DecisionType = shared.DecisionTypeStartChildWorkflowExecution.Ptr()
@@ -150,12 +152,14 @@ func Decision(d *apiv1.Decision) *shared.Decision {
 			TaskStartToCloseTimeoutSeconds:      durationToSeconds(a.TaskStartToCloseTimeout),
 			ParentClosePolicy:                   ParentClosePolicy(a.ParentClosePolicy),
 			Control:                             a.Control,
-			WorkflowIdReusePolicy:               WorkflowIdReusePolicy(a.WorkflowIdReusePolicy),
+			WorkflowIdReusePolicy:               WorkflowIDReusePolicy(a.WorkflowIdReusePolicy),
 			RetryPolicy:                         RetryPolicy(a.RetryPolicy),
 			CronSchedule:                        &a.CronSchedule,
 			Header:                              Header(a.Header),
 			Memo:                                Memo(a.Memo),
 			SearchAttributes:                    SearchAttributes(a.SearchAttributes),
+			CronOverlapPolicy:                   CronOverlapPolicy(a.CronOverlapPolicy),
+			ActiveClusterSelectionPolicy:        ActiveClusterSelectionPolicy(a.ActiveClusterSelectionPolicy),
 		}
 	case *apiv1.Decision_SignalExternalWorkflowExecutionDecisionAttributes:
 		decision.DecisionType = shared.DecisionTypeSignalExternalWorkflowExecution.Ptr()

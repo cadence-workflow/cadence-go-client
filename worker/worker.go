@@ -219,6 +219,9 @@ type (
 
 	// ShadowOptions is used to configure a WorkflowShadower.
 	ShadowOptions = internal.ShadowOptions
+	// AutoScalerOptions is used to configure the auto scaler.
+	AutoScalerOptions = internal.AutoScalerOptions
+
 	// ShadowMode is an enum for configuring if shadowing should continue after all workflows matches the WorkflowQuery have been replayed.
 	ShadowMode = internal.ShadowMode
 	// TimeFilter represents a time range through the min and max timestamp
@@ -269,7 +272,21 @@ const (
 	ShadowModeContinuous = internal.ShadowModeContinuous
 )
 
-// New creates an instance of worker for managing workflow and activity executions.
+// Deprecated: use NewV2 instead since this implementation will panic on error
+func New(
+	service workflowserviceclient.Interface,
+	domain string,
+	taskList string,
+	options Options,
+) Worker {
+	w, err := internal.NewWorker(service, domain, taskList, options)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
+
+// NewV2 returns an instance of worker for managing workflow and activity executions and an error.
 //
 //	service  - thrift connection to the cadence server
 //	domain   - the name of the cadence domain
@@ -277,12 +294,12 @@ const (
 //	           identifies group of workflow and activity implementations that are
 //	           hosted by a single worker process
 //	options  - configure any worker specific options like logger, metrics, identity
-func New(
+func NewV2(
 	service workflowserviceclient.Interface,
 	domain string,
 	taskList string,
 	options Options,
-) Worker {
+) (Worker, error) {
 	return internal.NewWorker(service, domain, taskList, options)
 }
 

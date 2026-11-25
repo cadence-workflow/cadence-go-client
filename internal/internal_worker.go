@@ -39,6 +39,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/debug"
+
 	"go.uber.org/cadence/internal/common/isolationgroup"
 
 	"github.com/opentracing/opentracing-go"
@@ -81,7 +84,6 @@ const (
 	testTagsContextKey = "cadence-testTags"
 	clientVersionTag   = "cadence_client_version"
 	clientGauge        = "client_version_metric"
-	clientHostTag      = "cadence_client_host"
 )
 
 type (
@@ -131,7 +133,7 @@ type (
 		WorkerOptions
 
 		// Task list name to poll.
-		TaskList string
+		TaskList *shared.TaskList
 
 		// Context to store user provided key/value pairs
 		UserContext context.Context
@@ -163,8 +165,11 @@ func newWorkflowWorker(
 }
 
 func ensureRequiredParams(params *workerExecutionParameters) {
+	if params.Tracer == nil {
+		params.Tracer = opentracing.NoopTracer{}
+	}
 	if params.Identity == "" {
-		params.Identity = getWorkerIdentity(params.TaskList)
+		params.Identity = getWorkerIdentity(params.TaskList.GetName())
 	}
 	if params.Logger == nil {
 		// create default logger if user does not supply one.
@@ -186,6 +191,14 @@ func ensureRequiredParams(params *workerExecutionParameters) {
 	}
 	if params.UserContext == nil {
 		params.UserContext = context.Background()
+	}
+	if params.WorkerStats.PollerTracker == nil {
+		params.WorkerStats.PollerTracker = debug.NewNoopPollerTracker()
+		params.Logger.Debug("No PollerTracker configured for WorkerStats option. Will use the default.")
+	}
+	if params.WorkerStats.ActivityTracker == nil {
+		params.WorkerStats.ActivityTracker = debug.NewNoopActivityTracker()
+		params.Logger.Debug("No ActivityTracker configured for WorkerStats option. Will use the default.")
 	}
 }
 
@@ -265,23 +278,17 @@ func newWorkflowTaskWorkerInternal(
 		params,
 	)
 	worker := newBaseWorker(baseWorkerOptions{
-		pollerAutoScaler: pollerAutoScalerOptions{
-			Enabled:           params.FeatureFlags.PollerAutoScalerEnabled,
-			InitCount:         params.MaxConcurrentDecisionTaskPollers,
-			MinCount:          params.MinConcurrentDecisionTaskPollers,
-			MaxCount:          params.MaxConcurrentDecisionTaskPollers,
-			Cooldown:          params.PollerAutoScalerCooldown,
-			DryRun:            params.PollerAutoScalerDryRun,
-			TargetUtilization: params.PollerAutoScalerTargetUtilization,
-		},
-		pollerCount:       params.MaxConcurrentDecisionTaskPollers,
-		pollerRate:        defaultPollerRate,
-		maxConcurrentTask: params.MaxConcurrentDecisionTaskExecutionSize,
-		maxTaskPerSecond:  params.WorkerDecisionTasksPerSecond,
-		taskWorker:        poller,
-		identity:          params.Identity,
-		workerType:        "DecisionWorker",
-		shutdownTimeout:   params.WorkerStopTimeout},
+		pollerAutoScaler:              params.AutoScalerOptions,
+		pollerCountWithoutAutoScaling: params.MaxConcurrentDecisionTaskPollers,
+		pollerRate:                    defaultPollerRate,
+		maxConcurrentTask:             params.MaxConcurrentDecisionTaskExecutionSize,
+		maxTaskPerSecond:              params.WorkerDecisionTasksPerSecond,
+		taskWorker:                    poller,
+		identity:                      params.Identity,
+		workerType:                    "DecisionWorker",
+		shutdownTimeout:               params.WorkerStopTimeout,
+		pollerTracker:                 params.WorkerStats.PollerTracker,
+	},
 		params.Logger,
 		params.MetricsScope,
 		nil,
@@ -298,13 +305,15 @@ func newWorkflowTaskWorkerInternal(
 	// 2) local activity task poller will poll from laTunnel, and result will be pushed to laTunnel
 	localActivityTaskPoller := newLocalActivityPoller(params, laTunnel)
 	localActivityWorker := newBaseWorker(baseWorkerOptions{
-		pollerCount:       1, // 1 poller (from local channel) is enough for local activity
-		maxConcurrentTask: params.MaxConcurrentLocalActivityExecutionSize,
-		maxTaskPerSecond:  params.WorkerLocalActivitiesPerSecond,
-		taskWorker:        localActivityTaskPoller,
-		identity:          params.Identity,
-		workerType:        "LocalActivityWorker",
-		shutdownTimeout:   params.WorkerStopTimeout},
+		pollerCountWithoutAutoScaling: 1, // 1 poller (from local channel) is enough for local activity
+		maxConcurrentTask:             params.MaxConcurrentLocalActivityExecutionSize,
+		maxTaskPerSecond:              params.WorkerLocalActivitiesPerSecond,
+		taskWorker:                    localActivityTaskPoller,
+		identity:                      params.Identity,
+		workerType:                    "LocalActivityWorker",
+		shutdownTimeout:               params.WorkerStopTimeout,
+		pollerTracker:                 params.WorkerStats.PollerTracker,
+	},
 		params.Logger,
 		params.MetricsScope,
 		nil,
@@ -312,9 +321,6 @@ func newWorkflowTaskWorkerInternal(
 
 	// 3) the result pushed to laTunnel will be send as task to workflow worker to process.
 	worker.taskQueueCh = laTunnel.resultCh
-
-	worker.options.host = params.Host
-	localActivityWorker.options.host = params.Host
 
 	return &workflowWorker{
 		executionParameters: params,
@@ -376,13 +382,27 @@ func newSessionWorker(service workflowserviceclient.Interface,
 	}
 	sessionEnvironment := newSessionEnvironment(params.SessionResourceID, maxConcurrentSessionExecutionSize)
 
-	creationTasklist := getCreationTasklist(params.TaskList)
+	creationTasklist := getCreationTasklist(params.TaskList.GetName())
 	params.UserContext = context.WithValue(params.UserContext, sessionEnvironmentContextKey, sessionEnvironment)
-	params.TaskList = sessionEnvironment.GetResourceSpecificTasklist()
+	resourceSpecificTasklist := sessionEnvironment.GetResourceSpecificTasklist()
+	if params.FeatureFlags.EphemeralTaskListsEnabled {
+		params.TaskList = &shared.TaskList{
+			Name: common.StringPtr(resourceSpecificTasklist),
+			Kind: shared.TaskListKindEphemeral.Ptr(),
+		}
+	} else {
+		params.TaskList = &shared.TaskList{
+			Name: common.StringPtr(resourceSpecificTasklist),
+			Kind: shared.TaskListKindNormal.Ptr(),
+		}
+	}
 	activityWorker := newActivityWorker(service, domain, params, overrides, env, nil)
 
 	params.MaxConcurrentActivityTaskPollers = 1
-	params.TaskList = creationTasklist
+	params.TaskList = &shared.TaskList{
+		Name: common.StringPtr(creationTasklist),
+		Kind: shared.TaskListKindNormal.Ptr(),
+	}
 	creationWorker := newActivityWorker(service, domain, params, overrides, env, sessionEnvironment.GetTokenBucket())
 
 	return &sessionWorker{
@@ -465,29 +485,23 @@ func newActivityTaskWorker(
 	ensureRequiredParams(&workerParams)
 	base := newBaseWorker(
 		baseWorkerOptions{
-			pollerAutoScaler: pollerAutoScalerOptions{
-				Enabled:           workerParams.FeatureFlags.PollerAutoScalerEnabled,
-				InitCount:         workerParams.MaxConcurrentActivityTaskPollers,
-				MinCount:          workerParams.MinConcurrentActivityTaskPollers,
-				MaxCount:          workerParams.MaxConcurrentActivityTaskPollers,
-				Cooldown:          workerParams.PollerAutoScalerCooldown,
-				DryRun:            workerParams.PollerAutoScalerDryRun,
-				TargetUtilization: workerParams.PollerAutoScalerTargetUtilization,
-			},
-			pollerCount:       workerParams.MaxConcurrentActivityTaskPollers,
-			pollerRate:        defaultPollerRate,
-			maxConcurrentTask: workerParams.MaxConcurrentActivityExecutionSize,
-			maxTaskPerSecond:  workerParams.WorkerActivitiesPerSecond,
-			taskWorker:        poller,
-			identity:          workerParams.Identity,
-			workerType:        workerType,
-			shutdownTimeout:   workerParams.WorkerStopTimeout,
-			userContextCancel: workerParams.UserContextCancel},
+			pollerAutoScaler:              workerParams.AutoScalerOptions,
+			pollerCountWithoutAutoScaling: workerParams.MaxConcurrentActivityTaskPollers,
+			pollerRate:                    defaultPollerRate,
+			maxConcurrentTask:             workerParams.MaxConcurrentActivityExecutionSize,
+			maxTaskPerSecond:              workerParams.WorkerActivitiesPerSecond,
+			taskWorker:                    poller,
+			identity:                      workerParams.Identity,
+			workerType:                    workerType,
+			shutdownTimeout:               workerParams.WorkerStopTimeout,
+			userContextCancel:             workerParams.UserContextCancel,
+			pollerTracker:                 workerParams.WorkerStats.PollerTracker,
+		},
+
 		workerParams.Logger,
 		workerParams.MetricsScope,
 		sessionTokenBucket,
 	)
-	base.options.host = workerParams.Host
 
 	return &activityWorker{
 		executionParameters: workerParams,
@@ -787,7 +801,10 @@ type aggregatedWorker struct {
 	shadowWorker                    *shadowWorker
 	logger                          *zap.Logger
 	registry                        *registry
+	workerstats                     debug.WorkerStats
 }
+
+var _ debug.Debugger = &aggregatedWorker{}
 
 func (aw *aggregatedWorker) GetRegisteredWorkflows() []RegistryWorkflowInfo {
 	workflows := aw.registry.GetRegisteredWorkflows()
@@ -993,6 +1010,10 @@ func (aw *aggregatedWorker) Stop() {
 	aw.logger.Info("Stopped Worker")
 }
 
+func (aw *aggregatedWorker) GetWorkerStats() debug.WorkerStats {
+	return aw.workerstats
+}
+
 // AggregatedWorker returns an instance to manage the workers. Use defaultConcurrentPollRoutineSize (which is 2) as
 // poller size. The typical RTT (round-trip time) is below 1ms within data center. And the poll API latency is about 5ms.
 // With 2 poller, we could achieve around 300~400 RPS.
@@ -1001,8 +1022,15 @@ func newAggregatedWorker(
 	domain string,
 	taskList string,
 	options WorkerOptions,
-) (worker *aggregatedWorker) {
+) (worker *aggregatedWorker, err error) {
 	wOptions := AugmentWorkerOptions(options)
+	if err := options.Validate(); err != nil {
+		return nil, fmt.Errorf("worker options validation error: %w", err)
+	}
+
+	// Wire up MetricEmitMode feature flag to control timer/histogram emission
+	metrics.SetEmitMode(wOptions.FeatureFlags.MetricEmitMode)
+
 	ctx := wOptions.BackgroundActivityContext
 	if ctx == nil {
 		ctx = context.Background()
@@ -1010,14 +1038,17 @@ func newAggregatedWorker(
 	backgroundActivityContext, backgroundActivityContextCancel := context.WithCancel(ctx)
 
 	workerParams := workerExecutionParameters{
-		WorkerOptions:     wOptions,
-		TaskList:          taskList,
+		WorkerOptions: wOptions,
+		TaskList: &shared.TaskList{
+			Name: common.StringPtr(taskList),
+			Kind: shared.TaskListKindNormal.Ptr(),
+		},
 		UserContext:       backgroundActivityContext,
 		UserContextCancel: backgroundActivityContextCancel,
 	}
 
 	ensureRequiredParams(&workerParams)
-	workerParams.MetricsScope = tagScope(workerParams.MetricsScope, tagDomain, domain, tagTaskList, taskList, clientImplHeaderName, clientImplHeaderValue)
+	workerParams.MetricsScope = tagScope(workerParams.MetricsScope, tagDomain, domain, tagTaskList, taskList, clientImplHeaderName, clientImplHeaderValue, callerTypeHeaderName, callerTypeHeaderValue)
 	workerParams.Logger = workerParams.Logger.With(
 		zapcore.Field{Key: tagDomain, Type: zapcore.StringType, String: domain},
 		zapcore.Field{Key: tagTaskList, Type: zapcore.StringType, String: taskList},
@@ -1131,7 +1162,8 @@ func newAggregatedWorker(
 		shadowWorker:                    shadowWorker,
 		logger:                          logger,
 		registry:                        registry,
-	}
+		workerstats:                     workerParams.WorkerStats,
+	}, nil
 }
 
 // tagScope with one or multiple tags, like
@@ -1260,18 +1292,7 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 	if options.MaxConcurrentSessionExecutionSize == 0 {
 		options.MaxConcurrentSessionExecutionSize = defaultMaxConcurrentSessionExecutionSize
 	}
-	if options.MinConcurrentActivityTaskPollers == 0 {
-		options.MinConcurrentActivityTaskPollers = defaultMinConcurrentPollerSize
-	}
-	if options.MinConcurrentDecisionTaskPollers == 0 {
-		options.MinConcurrentDecisionTaskPollers = defaultMinConcurrentPollerSize
-	}
-	if options.PollerAutoScalerCooldown == 0 {
-		options.PollerAutoScalerCooldown = defaultPollerAutoScalerCooldown
-	}
-	if options.PollerAutoScalerTargetUtilization == 0 {
-		options.PollerAutoScalerTargetUtilization = defaultPollerAutoScalerTargetUtilization
-	}
+	options.AutoScalerOptions = augmentAutoScalerOptions(options.AutoScalerOptions)
 
 	// if the user passes in a tracer then add a tracing context propagator
 	if options.Tracer != nil {
@@ -1286,6 +1307,34 @@ func AugmentWorkerOptions(options WorkerOptions) WorkerOptions {
 		options.EnableSessionWorker = false
 	}
 
+	// Set default MetricEmitMode to EmitHistogramsOnly if not explicitly configured
+	if options.FeatureFlags.MetricEmitMode == metrics.EmitModeUnset {
+		options.FeatureFlags.MetricEmitMode = metrics.EmitHistogramsOnly
+	}
+
+	return options
+}
+
+func augmentAutoScalerOptions(options AutoScalerOptions) AutoScalerOptions {
+	// need at least 2 for sticky task polling to work
+	if options.PollerMinCount <= 1 {
+		options.PollerMinCount = defaultMinPollerSize
+	}
+	if options.PollerMaxCount <= 1 {
+		options.PollerMaxCount = defaultMaxPollerSize
+	}
+	if options.PollerInitCount <= 1 {
+		options.PollerInitCount = defaultInitPollerSize
+	}
+	if options.Cooldown == 0 {
+		options.Cooldown = defaultPollerAutoScalerCooldown
+	}
+	if options.PollerWaitTimeUpperBound == 0 {
+		options.PollerWaitTimeUpperBound = defaultPollerAutoScalerWaitTimeUpperBound
+	}
+	if options.PollerWaitTimeLowerBound == 0 {
+		options.PollerWaitTimeLowerBound = defaultPollerAutoScalerWaitTimeLowerBound
+	}
 	return options
 }
 

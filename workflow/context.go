@@ -21,6 +21,8 @@
 package workflow
 
 import (
+	"github.com/opentracing/opentracing-go"
+
 	"go.uber.org/cadence/internal"
 )
 
@@ -75,4 +77,80 @@ func WithValue(parent Context, key interface{}, val interface{}) Context {
 //	}
 func NewDisconnectedContext(parent Context) (ctx Context, cancel CancelFunc) {
 	return internal.NewDisconnectedContext(parent)
+}
+
+// GetSpanContext returns the [opentracing.SpanContext] from [Context].
+// Returns nil if tracer is not set in [go.uber.org/cadence/worker.Options].
+//
+// When a tracer is configured, the worker sets span context during
+// non-replay workflow execution ("cadence-ExecuteWorkflow" span) and activities
+// receive propagated context from workflow headers.
+//
+// Example Usage:
+//
+//	span := GetSpanContext(ctx)
+//	if span != nil {
+//		span.SetTag("foo", "bar")
+//	}
+func GetSpanContext(ctx Context) opentracing.SpanContext {
+	return internal.GetSpanContext(ctx)
+}
+
+// WithSpanContext returns [Context] with override [opentracing.SpanContext].
+// This is useful to modify baggage items of current workflow and pass it to activities and child workflows.
+//
+// Example Usage:
+//
+//	func goodWorkflow(ctx Context) (string, error) {
+//		// start a short lived new workflow span within SideEffect to avoid duplicate span creation during replay
+//		type spanActivationResult struct {
+//			Carrier map[string]string // exported field so it's json encoded
+//			Err     error
+//		}
+//		resultValue := workflow.SideEffect(ctx, func(ctx workflow.Context) interface{} {
+//			wSpan := w.tracer.StartSpan("workflow-operation-with-new-span", opentracing.ChildOf(workflow.GetSpanContext(ctx)))
+//			defer wSpan.Finish()
+//			wSpan.SetBaggageItem("some-key", "some-value")
+//			carrier := make(map[string]string)
+//			err := w.tracer.Inject(wSpan.Context(), opentracing.TextMap, opentracing.TextMapCarrier(carrier))
+//			return spanActivationResult{Carrier: carrier, Err: err}
+//		})
+//		var activationResult spanActivationResult
+//		if err := resultValue.Get(&activationResult); err != nil {
+//			return nil, fmt.Errorf("failed to decode span activation result: %v", err)
+//		}
+//		if activationResult.Err != nil {
+//			return nil, fmt.Errorf("failed to activate new span: %v", activationResult.Err)
+//		}
+//		spanContext, err := w.tracer.Extract(opentracing.TextMap, opentracing.TextMapCarrier(activationResult.Carrier))
+//		if err != nil {
+//			return nil, fmt.Errorf("failed to extract span context: %v", err)
+//		}
+//		ctx = workflow.WithSpanContext(ctx, spanContext)
+//		var activityFooResult string
+//		aCtx := workflow.WithActivityOptions(ctx, opts)
+//		err = workflow.ExecuteActivity(aCtx, activityFoo).Get(aCtx, &activityFooResult)
+//		return activityFooResult, err
+//	}
+//
+// Bad Example:
+//
+//	func badWorkflow(ctx Context) (string, error) {
+//		// start a new workflow span for EVERY REPLAY
+//		wSpan := opentracing.StartSpan("workflow-operation", opentracing.ChildOf(GetSpanContext(ctx)))
+//		wSpan.SetBaggageItem("some-key", "some-value")
+//		// pass the new span context to activity
+//		ctx = WithSpanContext(ctx, wSpan.Context())
+//	    aCtx := workflow.WithActivityOptions(ctx, opts)
+//		var activityFooResult string
+//		err := ExecuteActivity(aCtx, activityFoo).Get(aCtx, &activityFooResult)
+//		wSpan.Finish()
+//		return activityFooResult, err
+//	}
+//
+//	func activityFoo(ctx Context) (string, error) {
+//		return "activity-foo-result", nil
+//	}
+func WithSpanContext(ctx Context, spanContext opentracing.SpanContext) Context {
+	return internal.WithSpanContext(ctx, spanContext)
 }

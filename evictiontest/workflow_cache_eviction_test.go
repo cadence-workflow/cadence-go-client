@@ -30,6 +30,7 @@
 package evictiontest
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -39,7 +40,6 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap/zaptest"
-	"golang.org/x/net/context"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	m "go.uber.org/cadence/.gen/go/shared"
@@ -56,6 +56,7 @@ func callOptions() []interface{} {
 		gomock.Any(), // library version
 		gomock.Any(), // feature version
 		gomock.Any(), // client name
+		gomock.Any(), // caller type
 		gomock.Any(), // feature flags
 		gomock.Any(), // isolation group
 	}
@@ -174,11 +175,13 @@ func (s *CacheEvictionSuite) TestResetStickyOnEviction() {
 	// so if our worker puts *cacheSize* entries in the cache, it should evict exactly one
 	s.service.EXPECT().ResetStickyTaskList(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(mockResetStickyTaskList).Times(1)
 
-	workflowWorker := internal.NewWorker(s.service, "test-domain", "tasklist", worker.Options{
+	workflowWorker, err := internal.NewWorker(s.service, "test-domain", "tasklist", worker.Options{
 		DisableActivityWorker: true,
 		Logger:                zaptest.NewLogger(s.T()),
 		IsolationGroup:        "zone-1",
 	})
+	s.Require().NoError(err)
+
 	// this is an arbitrary workflow we use for this test
 	// NOTE: a simple helloworld that doesn't execute an activity
 	// won't work because the workflow will simply just complete

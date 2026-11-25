@@ -27,10 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/golang/mock/gomock"
-	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap/zaptest"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	m "go.uber.org/cadence/.gen/go/shared"
@@ -179,12 +180,12 @@ func (s *InterfacesTestSuite) TestInterface() {
 	domain := "testDomain"
 	// Workflow execution parameters.
 	workflowExecutionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 4,
 			MaxConcurrentDecisionTaskPollers: 4,
-			Logger:                           zaptest.NewLogger(s.T()),
-			Tracer:                           opentracing.NoopTracer{}},
+			Logger:                           testlogger.NewZap(s.T()),
+		},
 	}
 
 	domainStatus := m.DomainStatusRegistered
@@ -211,12 +212,12 @@ func (s *InterfacesTestSuite) TestInterface() {
 
 	// Create activity execution parameters.
 	activityExecutionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 10,
 			MaxConcurrentDecisionTaskPollers: 10,
-			Logger:                           zaptest.NewLogger(s.T()),
-			Tracer:                           opentracing.NoopTracer{}},
+			Logger:                           testlogger.NewZap(s.T()),
+		},
 	}
 
 	// Register activity instances and launch the worker.

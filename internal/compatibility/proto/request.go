@@ -59,6 +59,15 @@ func DescribeDomainRequest(t *shared.DescribeDomainRequest) *apiv1.DescribeDomai
 	panic("neither oneof field is set for DescribeDomainRequest")
 }
 
+func GetTaskListsByDomainRequest(t *shared.GetTaskListsByDomainRequest) *apiv1.GetTaskListsByDomainRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.GetTaskListsByDomainRequest{
+		Domain: t.GetDomainName(),
+	}
+}
+
 func DescribeTaskListRequest(t *shared.DescribeTaskListRequest) *apiv1.DescribeTaskListRequest {
 	if t == nil {
 		return nil
@@ -76,8 +85,20 @@ func DescribeWorkflowExecutionRequest(t *shared.DescribeWorkflowExecutionRequest
 		return nil
 	}
 	return &apiv1.DescribeWorkflowExecutionRequest{
+		Domain:                t.GetDomain(),
+		WorkflowExecution:     WorkflowExecution(t.Execution),
+		QueryConsistencyLevel: QueryConsistencyLevel(t.QueryConsistencyLevel),
+	}
+}
+
+func DiagnoseWorkflowExecutionRequest(t *shared.DiagnoseWorkflowExecutionRequest) *apiv1.DiagnoseWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.DiagnoseWorkflowExecutionRequest{
 		Domain:            t.GetDomain(),
-		WorkflowExecution: WorkflowExecution(t.Execution),
+		WorkflowExecution: WorkflowExecution(t.GetWorkflowExecution()),
+		Identity:          t.GetIdentity(),
 	}
 }
 
@@ -93,6 +114,7 @@ func GetWorkflowExecutionHistoryRequest(t *shared.GetWorkflowExecutionHistoryReq
 		WaitForNewEvent:        t.GetWaitForNewEvent(),
 		HistoryEventFilterType: EventFilterType(t.HistoryEventFilterType),
 		SkipArchival:           t.GetSkipArchival(),
+		QueryConsistencyLevel:  QueryConsistencyLevel(t.QueryConsistencyLevel),
 	}
 }
 
@@ -177,7 +199,7 @@ func QueryWorkflowRequest(t *shared.QueryWorkflowRequest) *apiv1.QueryWorkflowRe
 	}
 }
 
-func RecordActivityTaskHeartbeatByIdRequest(t *shared.RecordActivityTaskHeartbeatByIDRequest) *apiv1.RecordActivityTaskHeartbeatByIDRequest {
+func RecordActivityTaskHeartbeatByIDRequest(t *shared.RecordActivityTaskHeartbeatByIDRequest) *apiv1.RecordActivityTaskHeartbeatByIDRequest {
 	if t == nil {
 		return nil
 	}
@@ -212,6 +234,7 @@ func RegisterDomainRequest(t *shared.RegisterDomainRequest) *apiv1.RegisterDomai
 		WorkflowExecutionRetentionPeriod: daysToDuration(t.WorkflowExecutionRetentionPeriodInDays),
 		Clusters:                         ClusterReplicationConfigurationArray(t.Clusters),
 		ActiveClusterName:                t.GetActiveClusterName(),
+		ActiveClusters:                   ActiveClusters(t.ActiveClusters),
 		Data:                             t.Data,
 		SecurityToken:                    t.GetSecurityToken(),
 		IsGlobalDomain:                   t.GetIsGlobalDomain(),
@@ -230,6 +253,7 @@ func RequestCancelWorkflowExecutionRequest(t *shared.RequestCancelWorkflowExecut
 		Domain:            t.GetDomain(),
 		WorkflowExecution: WorkflowExecution(t.WorkflowExecution),
 		Identity:          t.GetIdentity(),
+		Cause:             t.GetCause(),
 		RequestId:         t.GetRequestId(),
 	}
 }
@@ -258,7 +282,7 @@ func ResetWorkflowExecutionRequest(t *shared.ResetWorkflowExecutionRequest) *api
 	}
 }
 
-func RespondActivityTaskCanceledByIdRequest(t *shared.RespondActivityTaskCanceledByIDRequest) *apiv1.RespondActivityTaskCanceledByIDRequest {
+func RespondActivityTaskCanceledByIDRequest(t *shared.RespondActivityTaskCanceledByIDRequest) *apiv1.RespondActivityTaskCanceledByIDRequest {
 	if t == nil {
 		return nil
 	}
@@ -282,7 +306,7 @@ func RespondActivityTaskCanceledRequest(t *shared.RespondActivityTaskCanceledReq
 	}
 }
 
-func RespondActivityTaskCompletedByIdRequest(t *shared.RespondActivityTaskCompletedByIDRequest) *apiv1.RespondActivityTaskCompletedByIDRequest {
+func RespondActivityTaskCompletedByIDRequest(t *shared.RespondActivityTaskCompletedByIDRequest) *apiv1.RespondActivityTaskCompletedByIDRequest {
 	if t == nil {
 		return nil
 	}
@@ -306,7 +330,7 @@ func RespondActivityTaskCompletedRequest(t *shared.RespondActivityTaskCompletedR
 	}
 }
 
-func RespondActivityTaskFailedByIdRequest(t *shared.RespondActivityTaskFailedByIDRequest) *apiv1.RespondActivityTaskFailedByIDRequest {
+func RespondActivityTaskFailedByIDRequest(t *shared.RespondActivityTaskFailedByIDRequest) *apiv1.RespondActivityTaskFailedByIDRequest {
 	if t == nil {
 		return nil
 	}
@@ -314,8 +338,9 @@ func RespondActivityTaskFailedByIdRequest(t *shared.RespondActivityTaskFailedByI
 		Domain:            t.GetDomain(),
 		WorkflowExecution: WorkflowRunPair(t.GetWorkflowID(), t.GetRunID()),
 		ActivityId:        t.GetActivityID(),
-		Failure:           Failure(t.Reason, t.Details),
+		Failure:           FailureWithOptions(t.Reason, t.Details, t.FailureOptions),
 		Identity:          t.GetIdentity(),
+		HeartbeatDetails:  Payload(t.HeartbeatDetails),
 	}
 }
 
@@ -324,9 +349,10 @@ func RespondActivityTaskFailedRequest(t *shared.RespondActivityTaskFailedRequest
 		return nil
 	}
 	return &apiv1.RespondActivityTaskFailedRequest{
-		TaskToken: t.TaskToken,
-		Failure:   Failure(t.Reason, t.Details),
-		Identity:  t.GetIdentity(),
+		TaskToken:        t.TaskToken,
+		Failure:          FailureWithOptions(t.Reason, t.Details, t.FailureOptions),
+		Identity:         t.GetIdentity(),
+		HeartbeatDetails: Payload(t.HeartbeatDetails),
 	}
 }
 
@@ -402,7 +428,7 @@ func SignalWithStartWorkflowExecutionRequest(t *shared.SignalWithStartWorkflowEx
 			TaskStartToCloseTimeout:      secondsToDuration(t.TaskStartToCloseTimeoutSeconds),
 			Identity:                     t.GetIdentity(),
 			RequestId:                    t.GetRequestId(),
-			WorkflowIdReusePolicy:        WorkflowIdReusePolicy(t.WorkflowIdReusePolicy),
+			WorkflowIdReusePolicy:        WorkflowIDReusePolicy(t.WorkflowIdReusePolicy),
 			RetryPolicy:                  RetryPolicy(t.RetryPolicy),
 			CronSchedule:                 t.GetCronSchedule(),
 			Memo:                         Memo(t.Memo),
@@ -410,6 +436,9 @@ func SignalWithStartWorkflowExecutionRequest(t *shared.SignalWithStartWorkflowEx
 			Header:                       Header(t.Header),
 			DelayStart:                   secondsToDuration(t.DelayStartSeconds),
 			JitterStart:                  secondsToDuration(t.JitterStartSeconds),
+			FirstRunAt:                   unixNanoToTime(t.FirstRunAtTimestamp),
+			CronOverlapPolicy:            CronOverlapPolicy(t.CronOverlapPolicy),
+			ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(t.ActiveClusterSelectionPolicy),
 		},
 		SignalName:  t.GetSignalName(),
 		SignalInput: Payload(t.SignalInput),
@@ -456,7 +485,7 @@ func StartWorkflowExecutionRequest(t *shared.StartWorkflowExecutionRequest) *api
 		TaskStartToCloseTimeout:      secondsToDuration(t.TaskStartToCloseTimeoutSeconds),
 		Identity:                     t.GetIdentity(),
 		RequestId:                    t.GetRequestId(),
-		WorkflowIdReusePolicy:        WorkflowIdReusePolicy(t.WorkflowIdReusePolicy),
+		WorkflowIdReusePolicy:        WorkflowIDReusePolicy(t.WorkflowIdReusePolicy),
 		RetryPolicy:                  RetryPolicy(t.RetryPolicy),
 		CronSchedule:                 t.GetCronSchedule(),
 		Memo:                         Memo(t.Memo),
@@ -464,6 +493,9 @@ func StartWorkflowExecutionRequest(t *shared.StartWorkflowExecutionRequest) *api
 		Header:                       Header(t.Header),
 		DelayStart:                   secondsToDuration(t.DelayStartSeconds),
 		JitterStart:                  secondsToDuration(t.JitterStartSeconds),
+		FirstRunAt:                   unixNanoToTime(t.FirstRunAtTimestamp),
+		CronOverlapPolicy:            CronOverlapPolicy(t.CronOverlapPolicy),
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(t.ActiveClusterSelectionPolicy),
 	}
 }
 
@@ -501,6 +533,7 @@ const (
 	DomainUpdateVisibilityArchivalURIField    = "visibility_archival_uri"
 	DomainUpdateActiveClusterNameField        = "active_cluster_name"
 	DomainUpdateClustersField                 = "clusters"
+	DomainUpdateActiveClustersField           = "active_clusters"
 	DomainUpdateDeleteBadBinaryField          = "delete_bad_binary"
 	DomainUpdateFailoverTimeoutField          = "failover_timeout"
 )
@@ -534,7 +567,7 @@ func UpdateDomainRequest(t *shared.UpdateDomainRequest) *apiv1.UpdateDomainReque
 			request.WorkflowExecutionRetentionPeriod = daysToDuration(configuration.WorkflowExecutionRetentionPeriodInDays)
 			fields = append(fields, DomainUpdateRetentionPeriodField)
 		}
-		//if t.EmitMetric != nil {} - DEPRECATED
+		// if t.EmitMetric != nil {} - DEPRECATED
 		if configuration.BadBinaries != nil {
 			request.BadBinaries = BadBinaries(configuration.BadBinaries)
 			fields = append(fields, DomainUpdateBadBinariesField)
@@ -564,6 +597,10 @@ func UpdateDomainRequest(t *shared.UpdateDomainRequest) *apiv1.UpdateDomainReque
 		if replicationConfiguration.Clusters != nil {
 			request.Clusters = ClusterReplicationConfigurationArray(replicationConfiguration.Clusters)
 			fields = append(fields, DomainUpdateClustersField)
+		}
+		if replicationConfiguration.ActiveClusters != nil {
+			request.ActiveClusters = ActiveClusters(replicationConfiguration.ActiveClusters)
+			fields = append(fields, DomainUpdateActiveClustersField)
 		}
 	}
 	if t.DeleteBadBinary != nil {
@@ -656,4 +693,45 @@ func RestartWorkflowExecutionRequest(r *shared.RestartWorkflowExecutionRequest) 
 	}
 
 	return &request
+}
+
+func DeleteDomainRequest(r *shared.DeleteDomainRequest) *apiv1.DeleteDomainRequest {
+	if r == nil {
+		return nil
+	}
+	return &apiv1.DeleteDomainRequest{
+		Name:          r.GetName(),
+		SecurityToken: r.GetSecurityToken(),
+	}
+}
+
+func FailoverDomainRequest(t *shared.FailoverDomainRequest) *apiv1.FailoverDomainRequest {
+	if t == nil {
+		return nil
+	}
+	request := &apiv1.FailoverDomainRequest{
+		DomainName: t.GetDomainName(),
+		Reason:     t.GetReason(),
+	}
+	if t.DomainActiveClusterName != nil {
+		request.DomainActiveClusterName = *t.DomainActiveClusterName
+	}
+	if t.ActiveClusters != nil {
+		request.ActiveClusters = ActiveClusters(t.ActiveClusters)
+	}
+	if t.FailoverTimeoutInSeconds != nil {
+		request.FailoverTimeout = secondsToDuration(t.FailoverTimeoutInSeconds)
+	}
+	request.SkipDestinationClusterCheck = t.GetSkipDestinationClusterCheck()
+	return request
+}
+
+func ListFailoverHistoryRequest(t *shared.ListFailoverHistoryRequest) *apiv1.ListFailoverHistoryRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ListFailoverHistoryRequest{
+		Filters:    ListFailoverHistoryRequestFilters(t.Filters),
+		Pagination: PaginationOptions(t.Pagination),
+	}
 }

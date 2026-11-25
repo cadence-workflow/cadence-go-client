@@ -27,6 +27,8 @@ import (
 	"go.uber.org/cadence/internal/common/util"
 )
 
+//go:generate mockery --name Value --output ../mocks
+
 type (
 	// Value is used to encapsulate/extract encoded value from workflow/activity.
 	Value interface {
@@ -60,6 +62,16 @@ type (
 		// FromData implements conversion of an array of values of different types.
 		// Useful for deserializing arguments of function invocations.
 		FromData(input []byte, valuePtr ...interface{}) error
+	}
+
+	// DataComparer can be implemented by a DataConverter whose ToData can return different bytes
+	// for the same values, e.g. because it compresses or encrypts them. The workflow replayer, and
+	// so the shadow worker, then uses it instead of comparing bytes to check that a replayed
+	// workflow returns the result recorded in its history.
+	DataComparer interface {
+		// DataEqual reports whether a and b, both non-empty and returned by ToData, encode the same values.
+		// It returns an error if it can't tell, e.g. because a or b can't be decrypted.
+		DataEqual(a, b []byte) (bool, error)
 	}
 
 	// defaultDataConverter uses thrift encoder/decoder when possible, for everything else use json.

@@ -24,6 +24,7 @@ package internal
 // All code in this file is private to the package.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -34,6 +35,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/robfig/cron"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -183,6 +185,7 @@ type (
 		dataConverter                       DataConverter
 		retryPolicy                         *shared.RetryPolicy
 		cronSchedule                        string
+		cronOverlapPolicy                   shared.CronOverlapPolicy
 		contextPropagators                  []ContextPropagator
 		memo                                map[string]interface{}
 		searchAttributes                    map[string]interface{}
@@ -467,8 +470,37 @@ func (d *syncWorkflowDefinition) Execute(env workflowEnvironment, header *shared
 		state := getState(d.rootCtx)
 		state.yield("yield before executing to setup state")
 
-		// TODO: @shreyassrivatsan - add workflow trace span here
-		r.workflowResult, r.error = d.workflow.Execute(d.rootCtx, input)
+		wfEnv := getWorkflowEnvironment(d.rootCtx)
+		execCtx := d.rootCtx
+		if !wfEnv.IsReplaying() {
+			winfo := wfEnv.WorkflowInfo()
+			spanCtx := context.Background()
+			if parent := GetSpanContext(d.rootCtx); parent != nil {
+				spanCtx = context.WithValue(spanCtx, activeSpanContextKey, parent)
+			}
+			_, span := createOpenTracingSpanFromHeaders(
+				spanCtx,
+				wfEnv.GetTracer(),
+				time.Now(),
+				spanNameExecuteWorkflow,
+				opentracing.Tags{
+					tagCadenceWorkflowType: winfo.WorkflowType.Name,
+					tagCadenceWorkflowID:   winfo.WorkflowExecution.ID,
+					tagCadenceRunID:        winfo.WorkflowExecution.RunID,
+				},
+			)
+			defer span.Finish()
+			// Only seed the workflow span context when a real tracer produced it.
+			// A NoopTracer yields a noop span context that carries no tracing value,
+			// and seeding it forces workflows that use their own real tracer (e.g. a
+			// mocktracer in the testsuite) to build children from a foreign span
+			// context, which panics. Skipping it leaves GetSpanContext returning nil,
+			// matching the behavior established for NoopTracer in #1516.
+			if _, ok := wfEnv.GetTracer().(opentracing.NoopTracer); !ok {
+				execCtx = WithSpanContext(d.rootCtx, span.Context())
+			}
+		}
+		r.workflowResult, r.error = d.workflow.Execute(execCtx, input)
 		rpp := getWorkflowResultPointerPointer(ctx)
 		*rpp = r
 	})

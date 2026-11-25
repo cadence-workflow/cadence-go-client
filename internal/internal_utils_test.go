@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -135,6 +136,23 @@ func TestGetErrorDetails_TimeoutError(t *testing.T) {
 	require.Equal(t, val2, data)
 }
 
+func Test_getErrorDetails_nil(t *testing.T) {
+	// typed nils caused panics, prevent them from coming back
+	check := func(t *testing.T, err error) {
+		reason, data := getErrorDetails(err, getDefaultDataConverter())
+		dataStr := string(data)
+		assert.Equalf(t, errReasonGeneric, reason, "wrong reason for %T", err)
+		assert.Contains(t, dataStr, "typed nil", "wrong data for %T", err)
+	}
+	check(t, (*CanceledError)(nil))
+	check(t, (*CustomError)(nil))
+	check(t, (*PanicError)(nil))
+	check(t, (*TimeoutError)(nil))
+	// other types are probably also good to handle, but e.g. handling
+	// external error types will require panic recovery.
+	// this might be a good idea, but for now this just covers "we can do better with our types".
+}
+
 func TestConstructError_TimeoutError(t *testing.T) {
 	t.Parallel()
 	dc := getDefaultDataConverter()
@@ -160,4 +178,103 @@ func TestConstructError_TimeoutError(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, s.TimeoutTypeHeartbeat, timeoutErr.TimeoutType())
 	require.False(t, timeoutErr.HasDetails())
+}
+
+func TestFeatureFlagsHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		flags    FeatureFlags
+		expected string
+	}{
+		{
+			name:     "all flags disabled",
+			flags:    FeatureFlags{},
+			expected: `{}`,
+		},
+		{
+			name: "WorkflowExecutionAlreadyCompletedErrorEnabled only",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true}`,
+		},
+		{
+			name: "AutoforwardingEnabled only",
+			flags: FeatureFlags{
+				AutoforwardingEnabled: true,
+			},
+			expected: `{"autoforwardingEnabled":true}`,
+		},
+		{
+			name: "multiple flags enabled",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true,"autoforwardingEnabled":true}`,
+		},
+		{
+			name: "client-side-only flags are excluded",
+			flags: FeatureFlags{
+				PollerAutoScalerEnabled:   true,
+				EphemeralTaskListsEnabled: true,
+			},
+			expected: `{}`,
+		},
+		{
+			name: "mixed flags - only server-side flags included",
+			flags: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+				PollerAutoScalerEnabled:                       true,
+				EphemeralTaskListsEnabled:                     true,
+			},
+			expected: `{"WorkflowExecutionAlreadyCompletedErrorEnabled":true,"autoforwardingEnabled":true}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := featureFlagsHeader(tt.flags)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFromInternalFeatureFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input FeatureFlags
+	}{
+		{
+			name:  "empty flags",
+			input: FeatureFlags{},
+		},
+		{
+			name: "all flags set",
+			input: FeatureFlags{
+				WorkflowExecutionAlreadyCompletedErrorEnabled: true,
+				AutoforwardingEnabled:                         true,
+				PollerAutoScalerEnabled:                       true,
+				EphemeralTaskListsEnabled:                     true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := fromInternalFeatureFlags(tt.input)
+
+			assert.Equal(t, tt.input.WorkflowExecutionAlreadyCompletedErrorEnabled, result.WorkflowExecutionAlreadyCompletedErrorEnabled)
+			assert.Equal(t, tt.input.AutoforwardingEnabled, result.AutoforwardingEnabled)
+		})
+	}
 }

@@ -27,17 +27,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"runtime"
 	"sync"
-	"syscall"
 	"time"
 
-	"github.com/shirou/gopsutil/cpu"
+	"go.uber.org/cadence/internal/common/debug"
+	"go.uber.org/cadence/internal/worker"
+
+	"github.com/jonboulle/clockwork"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"golang.org/x/time/rate"
+
+	"github.com/opentracing/opentracing-go"
 
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common/backoff"
@@ -48,16 +49,14 @@ import (
 const (
 	retryPollOperationInitialInterval = 20 * time.Millisecond
 	retryPollOperationMaxInterval     = 10 * time.Second
-	hardwareMetricsCollectInterval    = 30 * time.Second
 )
 
 var (
-	pollOperationRetryPolicy = createPollRetryPolicy()
+	pollOperationRetryPolicy       = createPollRetryPolicy()
+	concurrentTaskHistogramBuckets = tally.ValueBuckets{0, 10, 20, 50, 100, 150, 200, 400, 600, 800, 1000, 1500, 2000, 3000, 5000, 10000}
 )
 
 var errShutdown = errors.New("worker shutting down")
-
-var collectHardwareUsageOnce sync.Once
 
 type (
 	// resultHandler that returns result
@@ -78,7 +77,7 @@ type (
 		localActivityClient
 		workflowTimerClient
 		SideEffect(f func() ([]byte, error), callback resultHandler)
-		GetVersion(changeID string, minSupported, maxSupported Version) Version
+		GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version
 		WorkflowInfo() *WorkflowInfo
 		Complete(result []byte, err error)
 		RegisterCancelHandler(handler func())
@@ -96,15 +95,17 @@ type (
 		AddSession(sessionInfo *SessionInfo)
 		RemoveSession(sessionID string)
 		GetContextPropagators() []ContextPropagator
+		GetTracer() opentracing.Tracer
 		UpsertSearchAttributes(attributes map[string]interface{}) error
 		GetRegistry() *registry
 		GetWorkflowInterceptors() []WorkflowInterceptorFactory
+		GetFeatureFlags() FeatureFlags
 	}
 
 	// WorkflowDefinition wraps the code that can execute a workflow.
 	workflowDefinition interface {
 		Execute(env workflowEnvironment, header *shared.Header, input []byte)
-		// Called for each non timed out startDecision event.
+		// OnDecisionTaskStarted is called for each non timed out startDecision event.
 		// Executed after all history events since the previous decision are applied to workflowDefinition
 		OnDecisionTaskStarted()
 		StackTrace() string // Stack trace of all coroutines owned by the Dispatcher instance
@@ -116,17 +117,18 @@ type (
 
 	// baseWorkerOptions options to configure base worker.
 	baseWorkerOptions struct {
-		pollerAutoScaler  pollerAutoScalerOptions
-		pollerCount       int
-		pollerRate        int
-		maxConcurrentTask int
-		maxTaskPerSecond  float64
-		taskWorker        taskPoller
-		identity          string
-		workerType        string
-		shutdownTimeout   time.Duration
-		userContextCancel context.CancelFunc
-		host              string
+		pollerAutoScaler              AutoScalerOptions
+		pollerCountWithoutAutoScaling int
+		pollerRate                    int
+		maxConcurrentTask             int
+		maxTaskPerSecond              float64
+		taskWorker                    taskPoller
+		identity                      string
+		workerType                    string
+		shutdownTimeout               time.Duration
+		userContextCancel             context.CancelFunc
+		host                          string
+		pollerTracker                 debug.PollerTracker
 	}
 
 	// baseWorker that wraps worker activities.
@@ -138,15 +140,15 @@ type (
 		pollLimiter          *rate.Limiter
 		taskLimiter          *rate.Limiter
 		limiterContext       context.Context
-		limiterContextCancel func()
+		limiterContextCancel context.CancelCauseFunc
 		retrier              *backoff.ConcurrentRetrier // Service errors back off retrier
 		logger               *zap.Logger
 		metricsScope         tally.Scope
 
-		pollerRequestCh    chan struct{}
-		pollerAutoScaler   *pollerAutoScaler
-		taskQueueCh        chan interface{}
-		sessionTokenBucket *sessionTokenBucket
+		concurrency           *worker.ConcurrencyLimit
+		concurrencyAutoScaler *worker.ConcurrencyAutoScaler
+		taskQueueCh           chan interface{}
+		sessionTokenBucket    *sessionTokenBucket
 	}
 
 	polledTask struct {
@@ -167,30 +169,47 @@ func createPollRetryPolicy() backoff.RetryPolicy {
 }
 
 func newBaseWorker(options baseWorkerOptions, logger *zap.Logger, metricsScope tally.Scope, sessionTokenBucket *sessionTokenBucket) *baseWorker {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
+	logger = logger.With(zap.String(tagWorkerType, options.workerType))
+	metricsScope = tagScope(metricsScope, tagWorkerType, options.workerType)
 
-	var pollerAS *pollerAutoScaler
+	concurrency := &worker.ConcurrencyLimit{
+		PollerPermit: worker.NewResizablePermit(options.pollerCountWithoutAutoScaling),
+		TaskPermit:   worker.NewResizablePermit(options.maxConcurrentTask),
+	}
+
+	var concurrencyAS *worker.ConcurrencyAutoScaler
 	if pollerOptions := options.pollerAutoScaler; pollerOptions.Enabled {
-		pollerAS = newPollerScaler(
-			pollerOptions,
-			logger,
-		)
+		concurrency = &worker.ConcurrencyLimit{
+			PollerPermit: worker.NewResizablePermit(pollerOptions.PollerInitCount),
+			TaskPermit:   worker.NewResizablePermit(options.maxConcurrentTask),
+		}
+		concurrencyAS = worker.NewConcurrencyAutoScaler(worker.ConcurrencyAutoScalerInput{
+			Concurrency:              concurrency,
+			Cooldown:                 pollerOptions.Cooldown,
+			PollerMaxCount:           pollerOptions.PollerMaxCount,
+			PollerMinCount:           pollerOptions.PollerMinCount,
+			PollerWaitTimeUpperBound: pollerOptions.PollerWaitTimeUpperBound,
+			PollerWaitTimeLowerBound: pollerOptions.PollerWaitTimeLowerBound,
+			Logger:                   logger,
+			Scope:                    metricsScope,
+			Clock:                    clockwork.NewRealClock(),
+		})
 	}
 
 	bw := &baseWorker{
-		options:          options,
-		shutdownCh:       make(chan struct{}),
-		taskLimiter:      rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
-		retrier:          backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
-		logger:           logger.With(zapcore.Field{Key: tagWorkerType, Type: zapcore.StringType, String: options.workerType}),
-		metricsScope:     tagScope(metricsScope, tagWorkerType, options.workerType),
-		pollerRequestCh:  make(chan struct{}, options.maxConcurrentTask),
-		pollerAutoScaler: pollerAS,
-		taskQueueCh:      make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
-
-		limiterContext:       ctx,
-		limiterContextCancel: cancel,
-		sessionTokenBucket:   sessionTokenBucket,
+		options:               options,
+		shutdownCh:            make(chan struct{}),
+		taskLimiter:           rate.NewLimiter(rate.Limit(options.maxTaskPerSecond), 1),
+		retrier:               backoff.NewConcurrentRetrier(pollOperationRetryPolicy),
+		logger:                logger,
+		metricsScope:          metricsScope,
+		concurrency:           concurrency,
+		concurrencyAutoScaler: concurrencyAS,
+		taskQueueCh:           make(chan interface{}), // no buffer, so poller only able to poll new task after previous is dispatched.
+		limiterContext:        ctx,
+		limiterContextCancel:  cancel,
+		sessionTokenBucket:    sessionTokenBucket,
 	}
 	if options.pollerRate > 0 {
 		bw.pollLimiter = rate.NewLimiter(rate.Limit(options.pollerRate), 1)
@@ -206,11 +225,13 @@ func (bw *baseWorker) Start() {
 
 	bw.metricsScope.Counter(metrics.WorkerStartCounter).Inc(1)
 
-	if bw.pollerAutoScaler != nil {
-		bw.pollerAutoScaler.Start()
-	}
+	bw.concurrencyAutoScaler.Start()
 
-	for i := 0; i < bw.options.pollerCount; i++ {
+	maxPollerCount := bw.options.pollerCountWithoutAutoScaling
+	if bw.options.pollerAutoScaler.Enabled {
+		maxPollerCount = bw.options.pollerAutoScaler.PollerMaxCount
+	}
+	for i := 0; i < maxPollerCount; i++ {
 		bw.shutdownWG.Add(1)
 		go bw.runPoller()
 	}
@@ -218,17 +239,16 @@ func (bw *baseWorker) Start() {
 	bw.shutdownWG.Add(1)
 	go bw.runTaskDispatcher()
 
-	// We want the emit function run once per host instead of run once per worker
-	// since the emit function is host level metric.
-	bw.shutdownWG.Add(1)
-	go bw.emitHardwareUsage()
-
 	bw.isWorkerStarted = true
 	traceLog(func() {
 		bw.logger.Info("Started Worker",
-			zap.Int("PollerCount", bw.options.pollerCount),
+			zap.Int("PollerCountWithoutAutoScaling", bw.options.pollerCountWithoutAutoScaling),
 			zap.Int("MaxConcurrentTask", bw.options.maxConcurrentTask),
 			zap.Float64("MaxTaskPerSecond", bw.options.maxTaskPerSecond),
+			zap.Bool("AutoscalerEnabled", bw.options.pollerAutoScaler.Enabled),
+			zap.Int("AutoscalerPollerMaxCount", bw.options.pollerAutoScaler.PollerMaxCount),
+			zap.Int("AutoscalerPollerMinCount", bw.options.pollerAutoScaler.PollerMinCount),
+			zap.Int("AutoscalerPollerInitialCount", bw.options.pollerAutoScaler.PollerInitCount),
 		)
 	})
 }
@@ -244,17 +264,24 @@ func (bw *baseWorker) isShutdown() bool {
 
 func (bw *baseWorker) runPoller() {
 	defer bw.shutdownWG.Done()
+	defer bw.options.pollerTracker.Start().Stop()
+
 	bw.metricsScope.Counter(metrics.PollerStartCounter).Inc(1)
 
 	for {
+		permitChannel, channelDone := bw.concurrency.TaskPermit.AcquireChan(bw.limiterContext)
 		select {
 		case <-bw.shutdownCh:
+			channelDone()
 			return
-		case <-bw.pollerRequestCh:
-			bw.metricsScope.Gauge(metrics.ConcurrentTaskQuota).Update(float64(cap(bw.pollerRequestCh)))
-			// This metric is used to monitor how many poll requests have been allocated
-			// and can be used to approximate number of concurrent task running (not pinpoint accurate)
-			bw.metricsScope.Gauge(metrics.PollerRequestBufferUsage).Update(float64(cap(bw.pollerRequestCh) - len(bw.pollerRequestCh)))
+		case <-permitChannel: // don't poll unless there is a task permit
+			channelDone()
+			// TODO move to a centralized place inside the worker
+			// emit metrics on concurrent task permit quota and current task permit count
+			// NOTE task permit doesn't mean there is a task running, it still needs to poll until it gets a task to process
+			// thus the metrics is only an estimated value of how many tasks are running concurrently
+			bw.metricsScope.Histogram(metrics.ConcurrentTaskQuota, concurrentTaskHistogramBuckets).RecordValue(float64(bw.concurrency.TaskPermit.Quota()))
+			bw.metricsScope.Histogram(metrics.PollerRequestBufferUsage, concurrentTaskHistogramBuckets).RecordValue(float64(bw.concurrency.TaskPermit.Count()))
 			if bw.sessionTokenBucket != nil {
 				bw.sessionTokenBucket.waitForAvailableToken()
 			}
@@ -265,10 +292,6 @@ func (bw *baseWorker) runPoller() {
 
 func (bw *baseWorker) runTaskDispatcher() {
 	defer bw.shutdownWG.Done()
-
-	for i := 0; i < bw.options.maxConcurrentTask; i++ {
-		bw.pollerRequestCh <- struct{}{}
-	}
 
 	for {
 		// wait for new task or shutdown
@@ -299,12 +322,13 @@ func (bw *baseWorker) pollTask() {
 	var err error
 	var task interface{}
 
-	if bw.pollerAutoScaler != nil {
-		if pErr := bw.pollerAutoScaler.Acquire(1); pErr == nil {
-			defer bw.pollerAutoScaler.Release(1)
-		} else {
-			bw.logger.Warn("poller auto scaler acquire error", zap.Error(pErr))
+	if pErr := bw.concurrency.PollerPermit.Acquire(bw.limiterContext); pErr == nil {
+		defer bw.concurrency.PollerPermit.Release()
+	} else {
+		if !errors.Is(context.Cause(bw.limiterContext), errShutdown) { // don't log on shutdown
+			bw.logger.Warn("poller permit acquire error", zap.Error(pErr))
 		}
+		return // don't try to poll without a permit, will retry on next poll
 	}
 
 	bw.retrier.Throttle()
@@ -315,21 +339,14 @@ func (bw *baseWorker) pollTask() {
 		}
 		if err != nil {
 			if isNonRetriableError(err) {
-				bw.logger.Error("Worker received non-retriable error. Shutting down.", zap.Error(err))
-				p, _ := os.FindProcess(os.Getpid())
-				p.Signal(syscall.SIGINT)
-				return
+				bw.logger.Error("Worker received non-retriable error from PollTask; continue polling.", zap.Error(err)) //Report error and continue polling
 			}
 			bw.retrier.Failed()
 		} else {
-			if bw.pollerAutoScaler != nil {
-				if pErr := bw.pollerAutoScaler.CollectUsage(task); pErr != nil {
-					bw.logger.Sugar().Warnw("poller auto scaler collect usage error",
-						"error", pErr,
-						"task", task)
-				}
-			}
 			bw.retrier.Succeeded()
+			if t, ok := task.(autoConfigHintAwareTask); ok {
+				bw.concurrencyAutoScaler.ProcessPollerHint(t.getAutoConfigHint())
+			}
 		}
 	}
 
@@ -339,7 +356,7 @@ func (bw *baseWorker) pollTask() {
 		case <-bw.shutdownCh:
 		}
 	} else {
-		bw.pollerRequestCh <- struct{}{} // poll failed, trigger a new poll
+		bw.concurrency.TaskPermit.Release() // poll failed, trigger a new poll by returning a task permit
 	}
 }
 
@@ -374,7 +391,7 @@ func (bw *baseWorker) processTask(task interface{}) {
 		}
 
 		if isPolledTask {
-			bw.pollerRequestCh <- struct{}{}
+			bw.concurrency.TaskPermit.Release() // task processed, trigger a new poll by returning a task permit
 		}
 	}()
 	err := bw.options.taskWorker.ProcessTask(task)
@@ -396,16 +413,14 @@ func (bw *baseWorker) Run() {
 	bw.Stop()
 }
 
-// Shutdown is a blocking call and cleans up all the resources associated with worker.
+// Stop is a blocking call and cleans up all the resources associated with worker.
 func (bw *baseWorker) Stop() {
 	if !bw.isWorkerStarted {
 		return
 	}
 	close(bw.shutdownCh)
-	bw.limiterContextCancel()
-	if bw.pollerAutoScaler != nil {
-		bw.pollerAutoScaler.Stop()
-	}
+	bw.limiterContextCancel(errShutdown)
+	bw.concurrencyAutoScaler.Stop()
 
 	if success := util.AwaitWaitGroup(&bw.shutdownWG, bw.options.shutdownTimeout); !success {
 		traceLog(func() {
@@ -418,54 +433,4 @@ func (bw *baseWorker) Stop() {
 		bw.options.userContextCancel()
 	}
 	return
-}
-
-func (bw *baseWorker) emitHardwareUsage() {
-	defer func() {
-		if p := recover(); p != nil {
-			bw.metricsScope.Counter(metrics.WorkerPanicCounter).Inc(1)
-			topLine := fmt.Sprintf("base worker for %s [panic]:", bw.options.workerType)
-			st := getStackTraceRaw(topLine, 7, 0)
-			bw.logger.Error("Unhandled panic in hardware emitting.",
-				zap.String(tagPanicError, fmt.Sprintf("%v", p)),
-				zap.String(tagPanicStack, st))
-		}
-	}()
-	defer bw.shutdownWG.Done()
-	collectHardwareUsageOnce.Do(
-		func() {
-			ticker := time.NewTicker(hardwareMetricsCollectInterval)
-			for {
-				select {
-				case <-bw.shutdownCh:
-					ticker.Stop()
-					return
-				case <-ticker.C:
-					host := bw.options.host
-					scope := bw.metricsScope.Tagged(map[string]string{clientHostTag: host})
-
-					cpuPercent, err := cpu.Percent(0, false)
-					if err != nil {
-						bw.logger.Warn("Failed to get cpu percent", zap.Error(err))
-						return
-					}
-					cpuCores, err := cpu.Counts(false)
-					if err != nil {
-						bw.logger.Warn("Failed to get number of cpu cores", zap.Error(err))
-						return
-					}
-					scope.Gauge(metrics.NumCPUCores).Update(float64(cpuCores))
-					scope.Gauge(metrics.CPUPercentage).Update(cpuPercent[0])
-
-					var memStats runtime.MemStats
-					runtime.ReadMemStats(&memStats)
-
-					scope.Gauge(metrics.NumGoRoutines).Update(float64(runtime.NumGoroutine()))
-					scope.Gauge(metrics.TotalMemory).Update(float64(memStats.Sys))
-					scope.Gauge(metrics.MemoryUsedHeap).Update(float64(memStats.HeapInuse))
-					scope.Gauge(metrics.MemoryUsedStack).Update(float64(memStats.StackInuse))
-				}
-			}
-		})
-
 }

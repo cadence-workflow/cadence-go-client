@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLRU(t *testing.T) {
@@ -60,6 +61,79 @@ func TestLRU(t *testing.T) {
 
 	cache.Delete("A")
 	assert.Nil(t, cache.Get("A"))
+}
+
+func TestExist(t *testing.T) {
+	cache := NewLRUWithInitialCapacity(5, 5)
+
+	assert.False(t, cache.Exist("A"))
+
+	cache.Put("A", "Foo")
+	assert.True(t, cache.Exist("A"))
+	assert.False(t, cache.Exist("B"))
+
+	cache.Put("B", "Bar")
+	assert.True(t, cache.Exist("B"))
+
+	cache.Delete("A")
+	assert.False(t, cache.Exist("A"))
+}
+
+func TestPutIfNotExistSuccess(t *testing.T) {
+	cache := New(2, nil)
+
+	existing, err := cache.PutIfNotExist("A", "Foo")
+	assert.NoError(t, err)
+	assert.Equal(t, "Foo", existing)
+
+	existing, err = cache.PutIfNotExist("A", "Bar")
+	assert.NoError(t, err)
+	assert.Equal(t, "Foo", existing)
+
+	assert.Equal(t, "Foo", cache.Get("A"))
+}
+
+func TestNoPutInPin(t *testing.T) {
+	cache := New(2, &Options{
+		Pin: true,
+	})
+
+	assert.Panics(t, func() {
+		cache.Put("A", "Foo")
+	})
+}
+
+func TestPinningTTL(t *testing.T) {
+	cache := New(3, &Options{
+		Pin: true,
+		TTL: time.Millisecond * 100,
+	}).(*lru)
+
+	currentTime := time.UnixMilli(123)
+	cache.now = func() time.Time { return currentTime }
+
+	// Add two elements so the cache is full
+	_, err := cache.PutIfNotExist("A", "Foo")
+	require.NoError(t, err)
+	_, err = cache.PutIfNotExist("B", "Bar")
+	require.NoError(t, err)
+
+	// Release B so it can be evicted
+	cache.Release("B")
+
+	currentTime = currentTime.Add(time.Millisecond * 300)
+	assert.Equal(t, "Foo", cache.Get("A"))
+
+	// B can be evicted, so we can add another element
+	_, err = cache.PutIfNotExist("C", "Baz")
+	require.NoError(t, err)
+
+	// A cannot be evicted since it's pinned, so we can't add another element
+	_, err = cache.PutIfNotExist("D", "Qux")
+	assert.ErrorContains(t, err, "Cache capacity is fully occupied with pinned elements")
+
+	// B is gone
+	assert.Nil(t, cache.Get("B"))
 }
 
 func TestLRUWithTTL(t *testing.T) {

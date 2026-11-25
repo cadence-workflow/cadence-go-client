@@ -5,6 +5,99 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Added RequestID to StartWorkflowOptions so start and signal-with-start requests can supply an idempotency key instead of always generating a new UUID. The value must be a UUID string; the client validates it before sending.
+- `workflow.WithCronSchedule` to set a cron schedule on ContinueAsNew and child-workflow context options. Cron is not inherited from the current run; pass it explicitly to keep a schedule. `WithChildOptions` copies `CronSchedule` only when it is non-empty so it does not clear a prior `WithCronSchedule`.
+- Added `encoded.DataComparer`, which a `DataConverter` can implement so the workflow replayer and shadow worker compare workflow results with it instead of byte equality. An error from `DataEqual`, e.g. a payload it can't decrypt, fails the replay with that error.
+- Added `JitterCoefficient` to `RetryPolicy` to randomize activity and workflow retry intervals: each interval is multiplied by a random factor in (1 - JitterCoefficient, 1]. Values within [0, 0.2] are recommended. Requires a server version that supports it; older servers ignore the field. Local activity retries apply the jitter client-side.
+
+### Changed
+- `GetVersion` mismatches are no longer reported as workflow panics. They are counted on the new `cadence-decision-task-version-mismatch` metric, tagged with `VersionMismatchType` (`toonew` or `tooold`), instead of `cadence-decision-task-panic`, and logged as `Workflow version mismatch.` instead of `Workflow panic.`. A version that is too new, which is expected while a rolling deployment is in progress, is logged at Warn. A version that is too old, which means the workflow code dropped support for a version still in use, is logged at Error. The decision task still fails and is retried as before. If you alert on `cadence-decision-task-panic` or search logs for `Workflow panic.` to catch version mismatches, update those to use the new metric or log message.
+
+### Fixed
+- Skip seeding the workflow span context when the tracer is a `NoopTracer`, preventing panics for workflow tests that mix the testsuite (which defaults to `NoopTracer`) with a real tracer such as `mocktracer`. Follow-up to the span activation added in #1506 and the `NoopTracer` guard in #1516.
+
+## [v1.4.0] - 2026-06-22
+### Added
+- Added Go-native ScheduleClient SDK with Create, Describe, Update, Pause, Unpause, Backfill, List, and Delete operations (#1505)
+- Added wire protocol infrastructure for 8 schedule RPCs (#1502)
+- Added describe-then-update callback pattern for ScheduleClient.Update (#1510)
+- Added action Memo and SearchAttributes to DescribeSchedule response (#1509)
+- Added span activation on activity and workflow execution (#1506)
+- Added rate limiting to sticky pollers (#1497)
+- Added ActiveClusterSelectionPolicy to workflow start options (#1438)
+
+### Changed
+- **Breaking:** `compatibility.NewThrift2ProtoAdapter` now takes an `AdapterClients` struct instead of positional arguments (#1502)
+- Switched metrics default emit mode to histogram only (#1513)
+- Upgraded grpc-go and yarpc dependencies (#1494)
+- Synced idl submodule (#1508)
+- Cleaned up duplicate function (#1511)
+
+### Removed
+- Removed experimental x/blocks package (#1496)
+
+## [v1.3.0] - 2025-07-08
+### Added
+- Added PollerInitCount and reduced default PollerMaxCount in AutoScalerOptions (#1433)
+- Added ExecuteWithVersion and ExecuteWithMinVersion to GetVersion (#1427)
+- Added NewBatchFuture and BatchFuture API (#1426)
+- Added CronOverlapPolicy to StartWorkflowOptions (#1425)
+- Added GetSpanContext and WithSpanContext API (#1423)
+- Added ConcurrencyLimit to worker to enable dynamic tuning of concurrencies (#1410)
+- Added worker.NewV2 with validation on decision poller count (#1370)
+- Added interfaces for worker statistics and debugging capabilities (#1356, #1362, #1363)
+- Added FirstRunAt to StartWorkflowOptions (#1360)
+- Added PR template for breaking changes (#1351)
+- Added methods on Worker to get registered workflows and activities (#1342)
+- Added workflow and activity APIs to testsuite (#1343)
+- Added option to exclude workflows by type (#1335)
+- Added server-like `make build` (#1329)
+- Added 85% code coverage requirement (#1325)
+- Added wrapper implementations for StartWorkflowExecution and SignalWithStartWorkflowExecution APIs (#1321)
+- Added codecov integration and metadata generation (#1320)
+- Added documentation for context propagators (#1312)
+- Increased test coverage to 85% (#1331, #1316, #1345, #1346, #1349, #1350, #1372, #1373, #1378, #1380, #1382, #1383, #1384, #1385, #1386, #1387, #1388, #1389, #1390, #1391, #1392, #1393, #1395, #1397, #1398, #1401, #1404)
+
+### Changed
+- Fixed and enforced linting across the codebase (#1429)
+- Changed license to Apache 2.0 (#1422)
+- Upgraded internal tooling to support Go 1.24 (no user-facing changes) (#1421)
+- Reworked poller auto-scaler logic (#1411)
+- Updated cadence-idl submodule (#1408)
+- Updated Codecov configuration for the new GitHub organization (#1403)
+- Documented a significant caveat for SideEffect functions (#1399)
+- Moved licensegen file under internal/tools (#1381)
+- Updated the minimum supported Go version to 1.21 (#1379)
+- Changed registry API signatures to return info interfaces (#1355)
+- Updated compatibility adapter to support new enum values (#1337)
+- Bumped golang.org/x/tools and related dependencies to support Go 1.22 (#1336)
+- Migrated CI from AWS to Google Kubernetes Engine (#1333)
+- Extracted domain client into a separate file (#1348)
+- Improved example test by sorting output (#1366)
+- Pinned mockery version and regenerated all mocks (#1328)
+- Updated client wrappers to include new async APIs (#1327)
+
+### Removed
+- Removed worker hardware utilization code (#1400)
+- Removed deprecated Fossa integration (#1361)
+- Removed strings.Compare usage from example tests (#1367)
+- Removed Coveralls integration (#1354)
+
+### Fixed
+- Fixed AutoConfigHint population in the mapper (#1415)
+- Minor race prevention: do not mutate callers' retry policy (#1413)
+- Fixed incorrect nil handling in workflowTaskPoller (#1412)
+- Fixed go-generate calling, do more before running tests (#1377)
+- Restored race-checking tests (#1376)
+- Skipped racy tests (#1375)
+- Fixed panics in test activities (#1374)
+- Adjusted startedCount assertion in Test_WorkflowLocalActivityWithMockAndListeners (#1353)
+- Partially fixed Continue as new case (#1347)
+- Fixed unit_test failure detection, and tests for data converters (#1341)
+- Fixed coverage metadata commit info (#1323)
+
+
 ## [v1.2.9] - 2024-03-01
 ### Added
 - retract directive for v1.2.8
@@ -48,16 +141,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed in TestEnv workflow interceptor is not propagated correctly for child workflows #1289
 
 ## [v1.0.2] - 2023-09-25
-### Added 
+### Added
 - Add a structured error for non-determinism failures
 
-### Changed 
-- Do not log when automatic heart beating fails due to cancellations 
+### Changed
+- Do not log when automatic heart beating fails due to cancellations
 
 ## [v1.0.1] - 2023-08-14
 ### Added
 - Emit cadence worker's hardware utilization inside worker once per host by @timl3136 in #1260
-### Changed 
+### Changed
 - Updated supported Go version to 1.19
 - Log when the automatic heartbeating fails
 - Updated golang.org/x/net and github.com/prometheus/client_golang

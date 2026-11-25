@@ -23,9 +23,11 @@ package internal
 const (
 	tagActivityID                  = "ActivityID"
 	tagActivityType                = "ActivityType"
+	tagActivityOutcome             = "ActivityOutcome"
 	tagDomain                      = "Domain"
 	tagEventID                     = "EventID"
 	tagEventType                   = "EventType"
+	tagAttempt                     = "Attempt"
 	tagRunID                       = "RunID"
 	tagTaskList                    = "TaskList"
 	tagTimerID                     = "TimerID"
@@ -44,6 +46,7 @@ const (
 	causeTag                       = "pollerrorcause"
 	tagWorkflowRuntimeLength       = "workflowruntimelength"
 	tagNonDeterminismDetectionType = "NonDeterminismDetectionType"
+	tagVersionMismatchType         = "VersionMismatchType"
 )
 
 type nonDeterminismDetectionType string

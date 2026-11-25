@@ -60,9 +60,20 @@ func DescribeDomainResponse(t *apiv1.DescribeDomainResponse) *shared.DescribeDom
 		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
 			ActiveClusterName: &t.Domain.ActiveClusterName,
 			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
 		},
 		FailoverVersion: &t.Domain.FailoverVersion,
 		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
+	}
+}
+
+func GetTaskListsByDomainResponse(t *apiv1.GetTaskListsByDomainResponse) *shared.GetTaskListsByDomainResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.GetTaskListsByDomainResponse{
+		DecisionTaskListMap: DescribeTaskListResponseMap(t.DecisionTaskListMap),
+		ActivityTaskListMap: DescribeTaskListResponseMap(t.ActivityTaskListMap),
 	}
 }
 
@@ -73,6 +84,7 @@ func DescribeTaskListResponse(t *apiv1.DescribeTaskListResponse) *shared.Describ
 	return &shared.DescribeTaskListResponse{
 		Pollers:        PollerInfoArray(t.Pollers),
 		TaskListStatus: TaskListStatus(t.TaskListStatus),
+		TaskList:       TaskList(t.TaskList),
 	}
 }
 
@@ -86,6 +98,16 @@ func DescribeWorkflowExecutionResponse(t *apiv1.DescribeWorkflowExecutionRespons
 		PendingActivities:      PendingActivityInfoArray(t.PendingActivities),
 		PendingChildren:        PendingChildExecutionInfoArray(t.PendingChildren),
 		PendingDecision:        PendingDecisionInfo(t.PendingDecision),
+	}
+}
+
+func DiagnoseWorkflowExecutionResponse(t *apiv1.DiagnoseWorkflowExecutionResponse) *shared.DiagnoseWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.DiagnoseWorkflowExecutionResponse{
+		Domain:                      Domain(t.Domain),
+		DiagnosticWorkflowExecution: WorkflowExecution(t.DiagnosticWorkflowExecution),
 	}
 }
 
@@ -200,6 +222,7 @@ func PollForActivityTaskResponse(t *apiv1.PollForActivityTaskResponse) *shared.P
 		WorkflowType:                    WorkflowType(t.WorkflowType),
 		WorkflowDomain:                  &t.WorkflowDomain,
 		Header:                          Header(t.Header),
+		AutoConfigHint:                  AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -224,6 +247,7 @@ func PollForDecisionTaskResponse(t *apiv1.PollForDecisionTaskResponse) *shared.P
 		Queries:                   WorkflowQueryMap(t.Queries),
 		NextEventId:               &t.NextEventId,
 		TotalHistoryBytes:         &t.TotalHistoryBytes,
+		AutoConfigHint:            AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -237,7 +261,7 @@ func QueryWorkflowResponse(t *apiv1.QueryWorkflowResponse) *shared.QueryWorkflow
 	}
 }
 
-func RecordActivityTaskHeartbeatByIdResponse(t *apiv1.RecordActivityTaskHeartbeatByIDResponse) *shared.RecordActivityTaskHeartbeatResponse {
+func RecordActivityTaskHeartbeatByIDResponse(t *apiv1.RecordActivityTaskHeartbeatByIDResponse) *shared.RecordActivityTaskHeartbeatResponse {
 	if t == nil {
 		return nil
 	}
@@ -341,6 +365,7 @@ func UpdateDomainResponse(t *apiv1.UpdateDomainResponse) *shared.UpdateDomainRes
 		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
 			ActiveClusterName: &t.Domain.ActiveClusterName,
 			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
 		},
 		FailoverVersion: &t.Domain.FailoverVersion,
 		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
@@ -354,5 +379,47 @@ func RestartWorkflowExecutionResponse(t *apiv1.RestartWorkflowExecutionResponse)
 
 	return &shared.RestartWorkflowExecutionResponse{
 		RunId: &t.RunId,
+	}
+}
+
+func FailoverDomainResponse(t *apiv1.FailoverDomainResponse) *shared.FailoverDomainResponse {
+	if t == nil || t.Domain == nil {
+		return nil
+	}
+	return &shared.FailoverDomainResponse{
+		DomainInfo: &shared.DomainInfo{
+			Name:        &t.Domain.Name,
+			Status:      DomainStatus(t.Domain.Status),
+			Description: &t.Domain.Description,
+			OwnerEmail:  &t.Domain.OwnerEmail,
+			Data:        t.Domain.Data,
+			UUID:        &t.Domain.Id,
+		},
+		Configuration: &shared.DomainConfiguration{
+			WorkflowExecutionRetentionPeriodInDays: durationToDays(t.Domain.WorkflowExecutionRetentionPeriod),
+			EmitMetric:                             boolPtr(true),
+			BadBinaries:                            BadBinaries(t.Domain.BadBinaries),
+			HistoryArchivalStatus:                  ArchivalStatus(t.Domain.HistoryArchivalStatus),
+			HistoryArchivalURI:                     &t.Domain.HistoryArchivalUri,
+			VisibilityArchivalStatus:               ArchivalStatus(t.Domain.VisibilityArchivalStatus),
+			VisibilityArchivalURI:                  &t.Domain.VisibilityArchivalUri,
+		},
+		ReplicationConfiguration: &shared.DomainReplicationConfiguration{
+			ActiveClusterName: &t.Domain.ActiveClusterName,
+			Clusters:          ClusterReplicationConfigurationArray(t.Domain.Clusters),
+			ActiveClusters:    ActiveClusters(t.Domain.ActiveClusters),
+		},
+		FailoverVersion: &t.Domain.FailoverVersion,
+		IsGlobalDomain:  &t.Domain.IsGlobalDomain,
+	}
+}
+
+func ListFailoverHistoryResponse(t *apiv1.ListFailoverHistoryResponse) *shared.ListFailoverHistoryResponse {
+	if t == nil {
+		return nil
+	}
+	return &shared.ListFailoverHistoryResponse{
+		FailoverEvents: FailoverEventArray(t.FailoverEvents),
+		NextPageToken:  t.NextPageToken,
 	}
 }

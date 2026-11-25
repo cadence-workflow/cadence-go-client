@@ -578,10 +578,7 @@ func (s *SessionTestSuite) TestUserTimerWithinSession() {
 
 		defer CompleteSession(sessionCtx)
 
-		if err := NewTimer(sessionCtx, time.Hour).Get(sessionCtx, nil); err != nil {
-			return err
-		}
-		return nil
+		return NewTimer(sessionCtx, time.Hour).Get(sessionCtx, nil)
 	}
 
 	env := newTestWorkflowEnv(s.T())
@@ -615,10 +612,7 @@ func (s *SessionTestSuite) TestActivityRetryWithinSession() {
 
 		defer CompleteSession(sessionCtx)
 
-		if err := ExecuteActivity(sessionCtx, testSessionActivity, "").Get(sessionCtx, nil); err != nil {
-			return err
-		}
-		return nil
+		return ExecuteActivity(sessionCtx, testSessionActivity, "").Get(sessionCtx, nil)
 	}
 
 	env := newTestWorkflowEnv(s.T())

@@ -24,7 +24,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -32,10 +31,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gogo/protobuf/jsonpb"
+
 	"go.uber.org/zap"
 
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/yarpc"
 
 	s "go.uber.org/cadence/.gen/go/shared"
@@ -59,13 +61,17 @@ const (
 	clientImplHeaderName  = "cadence-client-name"
 	clientImplHeaderValue = "uber-go"
 
+	// callerTypeHeaderName refers to the name of the header that contains the caller type
+	callerTypeHeaderName  = "cadence-caller-type"
+	callerTypeHeaderValue = "sdk"
+
 	clientFeatureFlagsHeaderName = "cadence-client-feature-flags"
 
 	// defaultRPCTimeout is the default tchannel rpc call timeout
 	defaultRPCTimeout = 10 * time.Second
-	//minRPCTimeout is minimum rpc call timeout allowed
+	// minRPCTimeout is minimum rpc call timeout allowed
 	minRPCTimeout = 1 * time.Second
-	//maxRPCTimeout is maximum rpc call timeout allowed
+	// maxRPCTimeout is maximum rpc call timeout allowed
 	maxRPCTimeout = 5 * time.Second
 	// maxQueryRPCTimeout is the maximum rpc call timeout allowed for query
 	maxQueryRPCTimeout = 20 * time.Second
@@ -74,7 +80,14 @@ const (
 type (
 	FeatureFlags struct {
 		WorkflowExecutionAlreadyCompletedErrorEnabled bool
-		PollerAutoScalerEnabled                       bool
+		AutoforwardingEnabled                         bool
+		// Deprecated: use AutoScalerOptions instead
+		PollerAutoScalerEnabled   bool
+		EphemeralTaskListsEnabled bool
+		// MetricEmitMode controls how latency metrics are emitted (timers, histograms, or both).
+		// Default: metrics.EmitHistogramsOnly (post-migration) - set automatically if not specified.
+		// Set to metrics.EmitTimersOnly for legacy OSS behavior, or metrics.EmitHistogramsOnly post-migration.
+		MetricEmitMode metrics.MetricEmitMode
 	}
 )
 
@@ -84,32 +97,26 @@ var (
 		yarpc.WithHeader(libraryVersionHeaderName, LibraryVersion),
 		yarpc.WithHeader(featureVersionHeaderName, FeatureVersion),
 		yarpc.WithHeader(clientImplHeaderName, clientImplHeaderValue),
+		yarpc.WithHeader(callerTypeHeaderName, callerTypeHeaderValue),
 	}
 )
 
-func fromInternalFeatureFlags(featureFlags FeatureFlags) s.FeatureFlags {
+func fromInternalFeatureFlags(featureFlags FeatureFlags) apiv1.FeatureFlags {
 	// if we are using client-side-only flags in client.FeatureFlags;
 	// don't include them in shared.FeatureFlags and drop them here
-	return s.FeatureFlags{
-		WorkflowExecutionAlreadyCompletedErrorEnabled: common.BoolPtr(featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled),
+	return apiv1.FeatureFlags{
+		WorkflowExecutionAlreadyCompletedErrorEnabled: featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled,
+		AutoforwardingEnabled:                         featureFlags.AutoforwardingEnabled,
 	}
-}
-
-func toInternalFeatureFlags(featureFlags *s.FeatureFlags) FeatureFlags {
-	flags := FeatureFlags{}
-	if featureFlags != nil {
-		if featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled != nil {
-			flags.WorkflowExecutionAlreadyCompletedErrorEnabled = *featureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled
-		}
-	}
-	return flags
 }
 
 func featureFlagsHeader(featureFlags FeatureFlags) string {
-	serialized := ""
-	buf, err := json.Marshal(fromInternalFeatureFlags(featureFlags))
-	if err == nil {
-		serialized = string(buf)
+	var marshaler jsonpb.Marshaler
+	flags := fromInternalFeatureFlags(featureFlags)
+	serialized, err := marshaler.MarshalToString(&flags)
+	if err != nil {
+		// fail open silently
+		return ""
 	}
 	return serialized
 }
@@ -242,6 +249,9 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *CustomError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
@@ -257,6 +267,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *CanceledError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			// treat this as a failure, not a cancel, as it likely is not a real cancel
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
@@ -270,6 +284,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 		}
 		return errReasonCanceled, data
 	case *PanicError:
+		if err == nil {
+			// treat this as a failure, not a panic, as it likely is not a real panic
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		data, err0 := encodeArgs(dataConverter, []interface{}{err.Error(), err.StackTrace()})
 		if err0 != nil {
 			panic(err0)
@@ -278,6 +296,10 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 	case *TimeoutError:
 		var data []byte
 		var err0 error
+		if err == nil {
+			// treat this as a failure, not a timeout, as it likely is not a real timeout
+			return errReasonGeneric, []byte(fmt.Sprintf(badNilErrMsgFmt, err))
+		}
 		switch details := err.details.(type) {
 		case ErrorDetailsValues:
 			data, err0 = encodeArgs(dataConverter, details)
@@ -294,6 +316,16 @@ func getErrorDetails(err error, dataConverter DataConverter) (string, []byte) {
 		// will be convert to GenericError when receiving from server.
 		return errReasonGeneric, []byte(err.Error())
 	}
+}
+
+func getFailureOptions(err error) *s.FailureOptions {
+	if asCustom, ok := err.(*CustomError); ok {
+		return &s.FailureOptions{
+			FailureCategory:          asCustom.GetFailureCategory().Ptr(),
+			NextRetryIntervalSeconds: durationToThriftSeconds(asCustom.GetNextRetryDelay()),
+		}
+	}
+	return nil
 }
 
 // constructError construct error from reason and details sending down from server.

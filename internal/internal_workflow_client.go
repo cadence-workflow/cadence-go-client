@@ -41,6 +41,9 @@ import (
 	"go.uber.org/cadence/internal/common/metrics"
 )
 
+//go:generate mockery --name HistoryEventIterator --output ../mocks
+//go:generate mockery --name WorkflowRun --output ../mocks
+
 // Assert that structs do indeed implement the interfaces
 var _ Client = (*workflowClient)(nil)
 
@@ -398,7 +401,8 @@ func (wc *workflowClient) CancelWorkflow(ctx context.Context, workflowID string,
 			WorkflowId: common.StringPtr(workflowID),
 			RunId:      getRunID(runID),
 		},
-		Identity: common.StringPtr(wc.identity),
+		Identity:  common.StringPtr(wc.identity),
+		RequestId: common.StringPtr(uuid.New()),
 	}
 
 	for _, opt := range opts {
@@ -442,6 +446,26 @@ func (wc *workflowClient) TerminateWorkflow(ctx context.Context, workflowID stri
 	return err
 }
 
+// GetWorkflowHistoryWithOptionsRequest is the request to GetWorkflowHistoryWithOptions
+type GetWorkflowHistoryWithOptionsRequest struct {
+	// WorkflowID specifies the workflow to request. Required.
+	WorkflowID string
+	// RunID is an optional field used to identify a specific run of the workflow.
+	// If RunID is not provided the latest run will be used.
+	RunID string
+	// IsLongPoll is an optional field indicating whether to continue polling for new events until the workflow is terminal.
+	// If IsLongPoll is true, the client can continue to iterate on new events that occur after the initial request.
+	// Note that this means the client request will remain open until the workflow is terminal.
+	IsLongPoll bool
+	// FilterType is an optional field used to specify which events to return.
+	// CloseEvent will only return the last event in the workflow history.
+	FilterType s.HistoryEventFilterType
+	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
+	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
+	// If not set, server will use the default consistency level.
+	QueryConsistencyLevel QueryConsistencyLevel
+}
+
 // GetWorkflowHistory return a channel which contains the history events of a given workflow
 func (wc *workflowClient) GetWorkflowHistory(
 	ctx context.Context,
@@ -450,19 +474,37 @@ func (wc *workflowClient) GetWorkflowHistory(
 	isLongPoll bool,
 	filterType s.HistoryEventFilterType,
 ) HistoryEventIterator {
+	request := &GetWorkflowHistoryWithOptionsRequest{
+		WorkflowID:            workflowID,
+		RunID:                 runID,
+		IsLongPoll:            isLongPoll,
+		FilterType:            filterType,
+		QueryConsistencyLevel: QueryConsistencyLevelUnspecified,
+	}
+	iter := wc.GetWorkflowHistoryWithOptions(ctx, request)
+	return iter
+}
 
+// GetWorkflowHistoryWithOptions gets history events with additional options including query consistency level.
+// See GetWorkflowHistoryWithOptionsRequest for more information.
+// The errors it can return:
+//   - EntityNotExistsError
+//   - BadRequestError
+//   - InternalServiceError
+func (wc *workflowClient) GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator {
 	domain := wc.domain
 	paginate := func(nextToken []byte) (*s.GetWorkflowExecutionHistoryResponse, error) {
-		request := &s.GetWorkflowExecutionHistoryRequest{
+		req := &s.GetWorkflowExecutionHistoryRequest{
 			Domain: common.StringPtr(domain),
 			Execution: &s.WorkflowExecution{
-				WorkflowId: common.StringPtr(workflowID),
-				RunId:      getRunID(runID),
+				WorkflowId: common.StringPtr(request.WorkflowID),
+				RunId:      getRunID(request.RunID),
 			},
-			WaitForNewEvent:        common.BoolPtr(isLongPoll),
-			HistoryEventFilterType: &filterType,
+			WaitForNewEvent:        common.BoolPtr(request.IsLongPoll),
+			HistoryEventFilterType: &request.FilterType,
 			NextPageToken:          nextToken,
-			SkipArchival:           common.BoolPtr(isLongPoll),
+			SkipArchival:           common.BoolPtr(request.IsLongPoll),
+			QueryConsistencyLevel:  convertQueryConsistencyLevel(request.QueryConsistencyLevel),
 		}
 
 		var response *s.GetWorkflowExecutionHistoryResponse
@@ -474,7 +516,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 				func() error {
 					var err1 error
 					tchCtx, cancel, opt := newChannelContext(ctx, wc.featureFlags, func(builder *contextBuilder) {
-						if isLongPoll {
+						if request.IsLongPoll {
 							builder.Timeout = defaultGetHistoryTimeoutInSecs * time.Second
 							deadline, ok := ctx.Deadline()
 							if ok && deadline.Before(time.Now().Add(builder.Timeout)) {
@@ -484,14 +526,14 @@ func (wc *workflowClient) GetWorkflowHistory(
 						}
 					})
 					defer cancel()
-					response, err1 = wc.workflowService.GetWorkflowExecutionHistory(tchCtx, request, opt...)
+					response, err1 = wc.workflowService.GetWorkflowExecutionHistory(tchCtx, req, opt...)
 
 					if err1 != nil {
 						return err1
 					}
 
 					if response.RawHistory != nil {
-						history, err := serializer.DeserializeBlobDataToHistoryEvents(response.RawHistory, filterType)
+						history, err := serializer.DeserializeBlobDataToHistoryEvents(response.RawHistory, request.FilterType)
 						if err != nil {
 							return err
 						}
@@ -508,7 +550,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 			if err != nil {
 				return nil, err
 			}
-			if isLongPoll && len(response.History.Events) == 0 && len(response.NextPageToken) != 0 {
+			if request.IsLongPoll && len(response.History.Events) == 0 && len(response.NextPageToken) != 0 {
 				if isFinalLongPoll {
 					// essentially a deadline exceeded, the last attempt did not get a result.
 					// this is necessary because the server does not know if we are able to try again,
@@ -516,7 +558,7 @@ func (wc *workflowClient) GetWorkflowHistory(
 					// attempt's token can be returned if it wishes to retry.
 					return nil, fmt.Errorf("timed out waiting for the workflow to finish: %w", context.DeadlineExceeded)
 				}
-				request.NextPageToken = response.NextPageToken
+				req.NextPageToken = response.NextPageToken
 				continue Loop
 			}
 			break Loop
@@ -779,18 +821,47 @@ func (wc *workflowClient) GetSearchAttributes(ctx context.Context) (*s.GetSearch
 	return response, nil
 }
 
+// DescribeWorkflowExecutionWithOptionsRequest is the request to DescribeWorkflowExecutionWithOptions
+type DescribeWorkflowExecutionWithOptionsRequest struct {
+	// WorkflowID specifies the workflow to request. Required.
+	WorkflowID string
+	// RunID is an optional field used to identify a specific run of the workflow.
+	// If RunID is not provided the latest run will be used.
+	RunID string
+	// QueryConsistencyLevel is an optional field used to specify the consistency level for the query.
+	// QueryConsistencyLevelStrong will query the currently active cluster for this workflow - at the potential cost of additional latency.
+	// If not set, server will use the default consistency level.
+	QueryConsistencyLevel QueryConsistencyLevel
+}
+
 // DescribeWorkflowExecution returns information about the specified workflow execution.
 // The errors it can return:
 //   - BadRequestError
 //   - InternalServiceError
 //   - EntityNotExistError
 func (wc *workflowClient) DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error) {
-	request := &s.DescribeWorkflowExecutionRequest{
+	request := &DescribeWorkflowExecutionWithOptionsRequest{
+		WorkflowID:            workflowID,
+		RunID:                 runID,
+		QueryConsistencyLevel: QueryConsistencyLevelUnspecified,
+	}
+	return wc.DescribeWorkflowExecutionWithOptions(ctx, request)
+}
+
+// DescribeWorkflowExecutionWithOptions returns information about workflow execution with additional options including query consistency level.
+// See DescribeWorkflowExecutionWithOptionsRequest for more information.
+// The errors it can return:
+//   - BadRequestError
+//   - InternalServiceError
+//   - EntityNotExistError
+func (wc *workflowClient) DescribeWorkflowExecutionWithOptions(ctx context.Context, request *DescribeWorkflowExecutionWithOptionsRequest) (*s.DescribeWorkflowExecutionResponse, error) {
+	req := &s.DescribeWorkflowExecutionRequest{
 		Domain: common.StringPtr(wc.domain),
 		Execution: &s.WorkflowExecution{
-			WorkflowId: common.StringPtr(workflowID),
-			RunId:      common.StringPtr(runID),
+			WorkflowId: common.StringPtr(request.WorkflowID),
+			RunId:      common.StringPtr(request.RunID),
 		},
+		QueryConsistencyLevel: convertQueryConsistencyLevel(request.QueryConsistencyLevel),
 	}
 	var response *s.DescribeWorkflowExecutionResponse
 	err := backoff.Retry(ctx,
@@ -798,7 +869,7 @@ func (wc *workflowClient) DescribeWorkflowExecution(ctx context.Context, workflo
 			var err1 error
 			tchCtx, cancel, opt := newChannelContext(ctx, wc.featureFlags)
 			defer cancel()
-			response, err1 = wc.workflowService.DescribeWorkflowExecution(tchCtx, request, opt...)
+			response, err1 = wc.workflowService.DescribeWorkflowExecution(tchCtx, req, opt...)
 			return err1
 		}, createDynamicServiceRetryPolicy(ctx), isServiceTransientError)
 	if err != nil {
@@ -1022,6 +1093,10 @@ func (wc *workflowClient) getWorkflowStartRequest(
 		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
 	}
 
+	if err := validateRequestID(options.RequestID); err != nil {
+		return nil, err
+	}
+
 	// Validate type and its arguments.
 	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, args, wc.dataConverter, wc.registry)
 	if err != nil {
@@ -1048,6 +1123,19 @@ func (wc *workflowClient) getWorkflowStartRequest(
 		return nil, errors.New("Invalid JitterStart option")
 	}
 
+	firstRunAtTimestamp := options.FirstRunAt.UnixNano()
+	if options.FirstRunAt.IsZero() {
+		firstRunAtTimestamp = 0
+	}
+	if firstRunAtTimestamp < 0 {
+		return nil, errors.New("Invalid FirstRunAt option")
+	}
+
+	activeClusterSelectionPolicy, err := convertActiveClusterSelectionPolicy(options.ActiveClusterSelectionPolicy)
+	if err != nil {
+		return nil, err
+	}
+
 	// create a workflow start span and attach it to the context object.
 	// N.B. we need to finish this immediately as jaeger does not give us a way
 	// to recreate a span given a span context - which means we will run into
@@ -1055,7 +1143,7 @@ func (wc *workflowClient) getWorkflowStartRequest(
 	// workflow start span and passing in that context to the workflow. So
 	// everything beginning with the StartWorkflowExecutionRequest will be
 	// parented by the created start workflow span.
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID, options.CronSchedule != "")
 	span.Finish()
 
 	// get workflow headers from the context
@@ -1064,7 +1152,7 @@ func (wc *workflowClient) getWorkflowStartRequest(
 	// run propagators to extract information about tracing and other stuff, store in headers field
 	startRequest := &s.StartWorkflowExecutionRequest{
 		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
+		RequestId:                           common.StringPtr(requestIDOrNew(options.RequestID)),
 		WorkflowId:                          common.StringPtr(workflowID),
 		WorkflowType:                        workflowTypePtr(*workflowType),
 		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
@@ -1080,6 +1168,9 @@ func (wc *workflowClient) getWorkflowStartRequest(
 		Header:                              header,
 		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
 		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
+		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
+		CronOverlapPolicy:                   common.CronOverlapPolicyPtr(options.CronOverlapPolicy),
+		ActiveClusterSelectionPolicy:        activeClusterSelectionPolicy,
 	}
 
 	return startRequest, nil
@@ -1120,6 +1211,10 @@ func (wc *workflowClient) getSignalWithStartRequest(
 		decisionTaskTimeout = defaultDecisionTaskTimeoutInSecs
 	}
 
+	if err := validateRequestID(options.RequestID); err != nil {
+		return nil, err
+	}
+
 	// Validate type and its arguments.
 	workflowType, input, err := getValidatedWorkflowFunction(workflowFunc, workflowArgs, wc.dataConverter, wc.registry)
 	if err != nil {
@@ -1146,8 +1241,21 @@ func (wc *workflowClient) getSignalWithStartRequest(
 		return nil, errors.New("Invalid JitterStart option")
 	}
 
+	firstRunAtTimestamp := options.FirstRunAt.UnixNano()
+	if options.FirstRunAt.IsZero() {
+		firstRunAtTimestamp = 0
+	}
+	if firstRunAtTimestamp < 0 {
+		return nil, errors.New("Invalid FirstRunAt option")
+	}
+
+	activeClusterSelectionPolicy, err := convertActiveClusterSelectionPolicy(options.ActiveClusterSelectionPolicy)
+	if err != nil {
+		return nil, err
+	}
+
 	// create a workflow start span and attach it to the context object. finish it immediately
-	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID)
+	ctx, span := createOpenTracingWorkflowSpan(ctx, wc.tracer, time.Now(), fmt.Sprintf("%s-%s", tracePrefix, workflowType.Name), workflowID, options.CronSchedule != "")
 	span.Finish()
 
 	// get workflow headers from the context
@@ -1155,7 +1263,7 @@ func (wc *workflowClient) getSignalWithStartRequest(
 
 	signalWithStartRequest := &s.SignalWithStartWorkflowExecutionRequest{
 		Domain:                              common.StringPtr(wc.domain),
-		RequestId:                           common.StringPtr(uuid.New()),
+		RequestId:                           common.StringPtr(requestIDOrNew(options.RequestID)),
 		WorkflowId:                          common.StringPtr(workflowID),
 		WorkflowType:                        workflowTypePtr(*workflowType),
 		TaskList:                            common.TaskListPtr(s.TaskList{Name: common.StringPtr(options.TaskList)}),
@@ -1173,6 +1281,9 @@ func (wc *workflowClient) getSignalWithStartRequest(
 		Header:                              header,
 		DelayStartSeconds:                   common.Int32Ptr(delayStartSeconds),
 		JitterStartSeconds:                  common.Int32Ptr(jitterStartSeconds),
+		FirstRunAtTimestamp:                 common.Int64Ptr(firstRunAtTimestamp),
+		CronOverlapPolicy:                   common.CronOverlapPolicyPtr(options.CronOverlapPolicy),
+		ActiveClusterSelectionPolicy:        activeClusterSelectionPolicy,
 	}
 
 	return signalWithStartRequest, nil
@@ -1184,6 +1295,23 @@ func getRunID(runID string) *string {
 		return nil
 	}
 	return common.StringPtr(runID)
+}
+
+func requestIDOrNew(requestID string) string {
+	if requestID == "" {
+		return uuid.New()
+	}
+	return requestID
+}
+
+func validateRequestID(requestID string) error {
+	if requestID == "" {
+		return nil
+	}
+	if uuid.Parse(requestID) == nil {
+		return errors.New("invalid RequestID")
+	}
+	return nil
 }
 
 func (iter *historyEventIteratorImpl) HasNext() bool {

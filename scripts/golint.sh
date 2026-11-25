@@ -1,9 +1,12 @@
 #!/bin/sh
 
+# intentionally NOT `set -e` to simplify checks before exiting,
+# make changes with care
+
 # refresh deps
-make tidy
+make tidy || exit 1
 # regenerate, format, and make sure everything builds
-make build
+make build || exit 1
 
 # intentionally capture stderr, so status-errors are also PR-failing.
 # in particular this catches "dubious ownership" failures, which otherwise

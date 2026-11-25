@@ -73,6 +73,12 @@ func (w *workflowServiceIsolationGroupWrapper) DescribeWorkflowExecution(ctx con
 	return result, err
 }
 
+func (w *workflowServiceIsolationGroupWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
+	return result, err
+}
+
 func (w *workflowServiceIsolationGroupWrapper) GetWorkflowExecutionHistory(ctx context.Context, request *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) (*shared.GetWorkflowExecutionHistoryResponse, error) {
 	opts = append(opts, w.getIsolationGroupIdentifier())
 	result, err := w.service.GetWorkflowExecutionHistory(ctx, request, opts...)
@@ -304,4 +310,61 @@ func (w *workflowServiceIsolationGroupWrapper) RefreshWorkflowTasks(ctx context.
 func (w *workflowServiceIsolationGroupWrapper) RestartWorkflowExecution(ctx context.Context, request *shared.RestartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.RestartWorkflowExecutionResponse, error) {
 	opts = append(opts, w.getIsolationGroupIdentifier())
 	return w.service.RestartWorkflowExecution(ctx, request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) DeleteDomain(ctx context.Context, DeleteRequest *shared.DeleteDomainRequest, opts ...yarpc.CallOption) error {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.DeleteDomain(ctx, DeleteRequest, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.FailoverDomain(ctx, request, opts...)
+	return result, err
+}
+
+func (w *workflowServiceIsolationGroupWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
+	return result, err
+}
+
+func (w *workflowServiceIsolationGroupWrapper) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.BackfillSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.CreateSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.DeleteSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.DescribeSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.ListSchedules(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.PauseSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.UnpauseSchedule(ctx, Request, opts...)
+}
+
+func (w *workflowServiceIsolationGroupWrapper) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	opts = append(opts, w.getIsolationGroupIdentifier())
+	return w.service.UpdateSchedule(ctx, Request, opts...)
 }

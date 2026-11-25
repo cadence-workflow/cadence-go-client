@@ -62,8 +62,19 @@ func DescribeDomainResponse(t *shared.DescribeDomainResponse) *apiv1.DescribeDom
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &apiv1.DescribeDomainResponse{Domain: &domain}
+}
+
+func GetTaskListsByDomainResponse(t *shared.GetTaskListsByDomainResponse) *apiv1.GetTaskListsByDomainResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.GetTaskListsByDomainResponse{
+		DecisionTaskListMap: DescribeTaskListResponseMap(t.DecisionTaskListMap),
+		ActivityTaskListMap: DescribeTaskListResponseMap(t.ActivityTaskListMap),
+	}
 }
 
 func DescribeTaskListResponse(t *shared.DescribeTaskListResponse) *apiv1.DescribeTaskListResponse {
@@ -73,6 +84,7 @@ func DescribeTaskListResponse(t *shared.DescribeTaskListResponse) *apiv1.Describ
 	return &apiv1.DescribeTaskListResponse{
 		Pollers:        PollerInfoArray(t.Pollers),
 		TaskListStatus: TaskListStatus(t.TaskListStatus),
+		TaskList:       TaskList(t.TaskList),
 	}
 }
 
@@ -86,6 +98,16 @@ func DescribeWorkflowExecutionResponse(t *shared.DescribeWorkflowExecutionRespon
 		PendingActivities:      PendingActivityInfoArray(t.PendingActivities),
 		PendingChildren:        PendingChildExecutionInfoArray(t.PendingChildren),
 		PendingDecision:        PendingDecisionInfo(t.PendingDecision),
+	}
+}
+
+func DiagnoseWorkflowExecutionResponse(t *shared.DiagnoseWorkflowExecutionResponse) *apiv1.DiagnoseWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      t.GetDomain(),
+		DiagnosticWorkflowExecution: WorkflowExecution(t.DiagnosticWorkflowExecution),
 	}
 }
 
@@ -200,6 +222,7 @@ func PollForActivityTaskResponse(t *shared.PollForActivityTaskResponse) *apiv1.P
 		WorkflowType:               WorkflowType(t.WorkflowType),
 		WorkflowDomain:             t.GetWorkflowDomain(),
 		Header:                     Header(t.Header),
+		AutoConfigHint:             AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -224,6 +247,7 @@ func PollForDecisionTaskResponse(t *shared.PollForDecisionTaskResponse) *apiv1.P
 		Queries:                   WorkflowQueryMap(t.Queries),
 		NextEventId:               t.GetNextEventId(),
 		TotalHistoryBytes:         t.GetTotalHistoryBytes(),
+		AutoConfigHint:            AutoConfigHint(t.AutoConfigHint),
 	}
 }
 
@@ -237,7 +261,7 @@ func QueryWorkflowResponse(t *shared.QueryWorkflowResponse) *apiv1.QueryWorkflow
 	}
 }
 
-func RecordActivityTaskHeartbeatByIdResponse(t *shared.RecordActivityTaskHeartbeatResponse) *apiv1.RecordActivityTaskHeartbeatByIDResponse {
+func RecordActivityTaskHeartbeatByIDResponse(t *shared.RecordActivityTaskHeartbeatResponse) *apiv1.RecordActivityTaskHeartbeatByIDResponse {
 	if t == nil {
 		return nil
 	}
@@ -329,8 +353,51 @@ func UpdateDomainResponse(t *shared.UpdateDomainResponse) *apiv1.UpdateDomainRes
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &apiv1.UpdateDomainResponse{
 		Domain: domain,
+	}
+}
+
+func FailoverDomainResponse(t *shared.FailoverDomainResponse) *apiv1.FailoverDomainResponse {
+	if t == nil {
+		return nil
+	}
+	domain := apiv1.Domain{
+		FailoverVersion: t.GetFailoverVersion(),
+		IsGlobalDomain:  t.GetIsGlobalDomain(),
+	}
+	if info := t.DomainInfo; info != nil {
+		domain.Id = info.GetUUID()
+		domain.Name = info.GetName()
+		domain.Status = DomainStatus(info.Status)
+		domain.Description = info.GetDescription()
+		domain.OwnerEmail = info.GetOwnerEmail()
+		domain.Data = info.Data
+	}
+	if config := t.Configuration; config != nil {
+		domain.WorkflowExecutionRetentionPeriod = daysToDuration(config.WorkflowExecutionRetentionPeriodInDays)
+		domain.BadBinaries = BadBinaries(config.BadBinaries)
+		domain.HistoryArchivalStatus = ArchivalStatus(config.HistoryArchivalStatus)
+		domain.HistoryArchivalUri = config.GetHistoryArchivalURI()
+		domain.VisibilityArchivalStatus = ArchivalStatus(config.VisibilityArchivalStatus)
+		domain.VisibilityArchivalUri = config.GetVisibilityArchivalURI()
+	}
+	if repl := t.ReplicationConfiguration; repl != nil {
+		domain.ActiveClusterName = repl.GetActiveClusterName()
+		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
+	}
+	return &apiv1.FailoverDomainResponse{Domain: &domain}
+}
+
+func ListFailoverHistoryResponse(t *shared.ListFailoverHistoryResponse) *apiv1.ListFailoverHistoryResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ListFailoverHistoryResponse{
+		FailoverEvents: FailoverEventArray(t.FailoverEvents),
+		NextPageToken:  t.NextPageToken,
 	}
 }

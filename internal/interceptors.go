@@ -63,7 +63,7 @@ type WorkflowInterceptor interface {
 	GetSignalChannel(ctx Context, signalName string) Channel
 	SideEffect(ctx Context, f func(ctx Context) interface{}) Value
 	MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, equals func(a, b interface{}) bool) Value
-	GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version
+	GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version
 	SetQueryHandler(ctx Context, queryType string, handler interface{}) error
 	IsReplaying(ctx Context) bool
 	HasLastCompletionResult(ctx Context) bool
@@ -158,8 +158,8 @@ func (t *WorkflowInterceptorBase) MutableSideEffect(ctx Context, id string, f fu
 }
 
 // GetVersion forwards to t.Next
-func (t *WorkflowInterceptorBase) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
-	return t.Next.GetVersion(ctx, changeID, minSupported, maxSupported)
+func (t *WorkflowInterceptorBase) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+	return t.Next.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 
 // SetQueryHandler forwards to t.Next

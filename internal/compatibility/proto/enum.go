@@ -35,6 +35,8 @@ func TaskListKind(t *shared.TaskListKind) apiv1.TaskListKind {
 		return apiv1.TaskListKind_TASK_LIST_KIND_NORMAL
 	case shared.TaskListKindSticky:
 		return apiv1.TaskListKind_TASK_LIST_KIND_STICKY
+	case shared.TaskListKindEphemeral:
+		return apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL
 	}
 	panic("unexpected enum value")
 }
@@ -106,7 +108,7 @@ func ContinueAsNewInitiator(t *shared.ContinueAsNewInitiator) apiv1.ContinueAsNe
 	panic("unexpected enum value")
 }
 
-func WorkflowIdReusePolicy(t *shared.WorkflowIdReusePolicy) apiv1.WorkflowIdReusePolicy {
+func WorkflowIDReusePolicy(t *shared.WorkflowIdReusePolicy) apiv1.WorkflowIdReusePolicy {
 	if t == nil {
 		return apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_INVALID
 	}
@@ -392,4 +394,47 @@ func ChildWorkflowExecutionFailedCause(t *shared.ChildWorkflowExecutionFailedCau
 		return apiv1.ChildWorkflowExecutionFailedCause_CHILD_WORKFLOW_EXECUTION_FAILED_CAUSE_WORKFLOW_ALREADY_RUNNING
 	}
 	panic("unexpected enum value")
+}
+
+func CronOverlapPolicy(t *shared.CronOverlapPolicy) apiv1.CronOverlapPolicy {
+	if t == nil {
+		return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID
+	}
+	switch *t {
+	case shared.CronOverlapPolicySkipped:
+		return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED
+	case shared.CronOverlapPolicyBufferone:
+		return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE
+	}
+	return apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID
+}
+
+func FailoverType(t *shared.FailoverType) apiv1.FailoverType {
+	if t == nil {
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+	}
+	switch *t {
+	case shared.FailoverTypeInvalid:
+		return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+	case shared.FailoverTypeForce:
+		return apiv1.FailoverType_FAILOVER_TYPE_FORCE
+	case shared.FailoverTypeGraceful:
+		return apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL
+	}
+	return apiv1.FailoverType_FAILOVER_TYPE_INVALID
+}
+
+func FailureCategory(t *shared.FailureCategory) apiv1.FailureCategory {
+	if t == nil {
+		return apiv1.FailureCategory_FAILURE_CATEGORY_INVALID
+	}
+	switch *t {
+	case shared.FailureCategoryPoll:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_POLL
+	case shared.FailureCategoryStandard:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD
+	case shared.FailureCategoryFatal:
+		return apiv1.FailureCategory_FAILURE_CATEGORY_FATAL
+	}
+	return apiv1.FailureCategory_FAILURE_CATEGORY_INVALID
 }

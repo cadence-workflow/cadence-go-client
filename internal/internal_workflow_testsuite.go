@@ -30,6 +30,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jonboulle/clockwork"
+
+	"go.uber.org/cadence/internal/common/debug"
+
 	"github.com/facebookgo/clock"
 	"github.com/golang/mock/gomock"
 	"github.com/opentracing/opentracing-go"
@@ -187,9 +191,10 @@ type (
 		workerStopChannel  chan struct{}
 		sessionEnvironment *testSessionEnvironmentImpl
 
-		cronSchedule   string
-		cronIterations int
-		workflowInput  []byte
+		cronSchedule      string
+		cronIterations    int
+		workflowInput     []byte
+		cronOverlapPolicy shared.CronOverlapPolicy
 	}
 
 	testSessionEnvironmentImpl struct {
@@ -322,6 +327,7 @@ func newTestWorkflowEnvironmentImpl(s *WorkflowTestSuite, parentRegistry *regist
 
 	env.service = mockService
 
+	env.workerOptions.FeatureFlags = FeatureFlags{EphemeralTaskListsEnabled: true}
 	if env.workerOptions.Logger == nil {
 		env.workerOptions.Logger = env.logger
 	}
@@ -387,6 +393,7 @@ func (env *testWorkflowEnvironmentImpl) newTestWorkflowEnvironmentForChild(param
 	childEnv.workflowInfo.ParentWorkflowDomain = &env.workflowInfo.Domain
 	childEnv.workflowInfo.ParentWorkflowExecution = &env.workflowInfo.WorkflowExecution
 	childEnv.executionTimeout = time.Duration(*params.executionStartToCloseTimeoutSeconds) * time.Second
+	childEnv.cronOverlapPolicy = params.cronOverlapPolicy
 	if workflowHandler, ok := env.runningWorkflows[params.workflowID]; ok {
 		// duplicate workflow ID
 		if !workflowHandler.handled {
@@ -626,10 +633,11 @@ func (env *testWorkflowEnvironmentImpl) executeLocalActivity(
 		},
 	}
 	taskHandler := localActivityTaskHandler{
-		userContext:  env.workerOptions.BackgroundActivityContext,
-		metricsScope: env.metricsScope,
-		logger:       env.logger,
-		tracer:       opentracing.NoopTracer{},
+		userContext:     env.workerOptions.BackgroundActivityContext,
+		metricsScope:    env.metricsScope,
+		logger:          env.logger,
+		tracer:          opentracing.NoopTracer{},
+		activityTracker: debug.NewNoopActivityTracker(),
 	}
 
 	result := taskHandler.executeLocalActivityTask(task)
@@ -1027,6 +1035,13 @@ func (env *testWorkflowEnvironmentImpl) GetContextPropagators() []ContextPropaga
 	return env.workerOptions.ContextPropagators
 }
 
+func (env *testWorkflowEnvironmentImpl) GetTracer() opentracing.Tracer {
+	if env.workerOptions.Tracer == nil {
+		return opentracing.NoopTracer{}
+	}
+	return env.workerOptions.Tracer
+}
+
 func (env *testWorkflowEnvironmentImpl) ExecuteActivity(parameters executeActivityParams, callback resultHandler) *activityInfo {
 	var activityID string
 	if parameters.ActivityID == nil || *parameters.ActivityID == "" {
@@ -1121,7 +1136,7 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 
 		// check if a retry is needed
 		if request, ok := result.(*shared.RespondActivityTaskFailedRequest); ok && parameters.RetryPolicy != nil {
-			p := fromThriftRetryPolicy(parameters.RetryPolicy)
+			p := convertFromThriftRetryPolicy(parameters.RetryPolicy)
 			backoff := getRetryBackoffWithNowTime(p, task.GetAttempt(), *request.Reason, env.Now(), expireTime)
 			if backoff > 0 {
 				// need a retry
@@ -1152,23 +1167,12 @@ func (env *testWorkflowEnvironmentImpl) executeActivityWithRetryForTest(
 	return
 }
 
-func fromThriftRetryPolicy(p *shared.RetryPolicy) *RetryPolicy {
-	return &RetryPolicy{
-		InitialInterval:          time.Second * time.Duration(p.GetInitialIntervalInSeconds()),
-		BackoffCoefficient:       p.GetBackoffCoefficient(),
-		MaximumInterval:          time.Second * time.Duration(p.GetMaximumIntervalInSeconds()),
-		ExpirationInterval:       time.Second * time.Duration(p.GetExpirationIntervalInSeconds()),
-		MaximumAttempts:          p.GetMaximumAttempts(),
-		NonRetriableErrorReasons: p.NonRetriableErrorReasons,
-	}
-}
-
 func getRetryBackoffFromThriftRetryPolicy(tp *shared.RetryPolicy, attempt int32, errReason string, now, expireTime time.Time) time.Duration {
 	if tp == nil {
 		return noRetryBackoff
 	}
 
-	p := fromThriftRetryPolicy(tp)
+	p := convertFromThriftRetryPolicy(tp)
 	return getRetryBackoffWithNowTime(p, attempt, errReason, now, expireTime)
 }
 
@@ -1195,6 +1199,7 @@ func (env *testWorkflowEnvironmentImpl) ExecuteLocalActivity(params executeLocal
 		dataConverter:      wOptions.DataConverter,
 		tracer:             wOptions.Tracer,
 		contextPropagators: wOptions.ContextPropagators,
+		activityTracker:    debug.NewNoopActivityTracker(),
 	}
 
 	env.localActivities[activityID] = task
@@ -1626,7 +1631,7 @@ func (env *testWorkflowEnvironmentImpl) newTestActivityTaskHandler(taskList stri
 	wOptions.DataConverter = dataConverter
 	params := workerExecutionParameters{
 		WorkerOptions:     wOptions,
-		TaskList:          taskList,
+		TaskList:          &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		UserContext:       wOptions.BackgroundActivityContext,
 		WorkerStopChannel: env.workerStopChannel,
 	}
@@ -1671,7 +1676,7 @@ func (env *testWorkflowEnvironmentImpl) newTestActivityTaskHandler(taskList stri
 		return &activityExecutorWrapper{activityExecutor: ae, env: env}
 	}
 
-	taskHandler := newActivityTaskHandlerWithCustomProvider(env.service, params, registry, getActivity)
+	taskHandler := newActivityTaskHandlerWithCustomProvider(env.service, params, registry, getActivity, clockwork.NewRealClock())
 	return taskHandler
 }
 
@@ -1691,6 +1696,7 @@ func newTestActivityTask(workflowID, runID, activityID, workflowTypeName, domain
 		StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(params.StartToCloseTimeoutSeconds),
 		HeartbeatTimeoutSeconds:         common.Int32Ptr(params.HeartbeatTimeoutSeconds),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &shared.WorkflowType{
 			Name: common.StringPtr(workflowTypeName),
 		},
@@ -1922,7 +1928,7 @@ func (env *testWorkflowEnvironmentImpl) SideEffect(f func() ([]byte, error), cal
 	callback(f())
 }
 
-func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version) (retVersion Version) {
+func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) (retVersion Version) {
 	if mockVersion, ok := env.getMockedVersion(changeID, changeID, minSupported, maxSupported); ok {
 		// GetVersion for changeID is mocked
 		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, mockVersion, env.changeVersions))
@@ -1941,9 +1947,43 @@ func (env *testWorkflowEnvironmentImpl) GetVersion(changeID string, minSupported
 		validateVersion(changeID, version, minSupported, maxSupported)
 		return version
 	}
-	env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, maxSupported, env.changeVersions))
-	env.changeVersions[changeID] = maxSupported
-	return maxSupported
+
+	// Apply the functional options to get the configuration
+	config := &getVersionConfig{}
+	for _, opt := range opts {
+		opt.apply(config)
+	}
+
+	// Determine the version to use based on the options provided
+	var version Version
+	switch {
+	// If ExecuteWithVersion option is used, use the custom version provided
+	case config.CustomVersion != nil:
+		version = *config.CustomVersion
+
+	// If ExecuteWithMinVersion option is set, use the minimum supported version
+	case config.UseMinVersion:
+		version = minSupported
+
+	// Otherwise, use the maximum supported version
+	default:
+		version = maxSupported
+	}
+
+	// Validate the version against the min and max supported versions
+	// ensuring it is within the acceptable range
+	validateVersion(changeID, version, minSupported, maxSupported)
+
+	// If the version is not the DefaultVersion, update search attributes
+	// Keeping the DefaultVersion as a special case where no search attributes are updated
+	if version != DefaultVersion {
+		env.UpsertSearchAttributes(createSearchAttributesForChangeVersion(changeID, version, env.changeVersions))
+	}
+
+	// Store the version to ensure that the version is stable
+	// during the workflow execution
+	env.changeVersions[changeID] = version
+	return version
 }
 
 func (env *testWorkflowEnvironmentImpl) getMockedVersion(mockedChangeID, changeID string, minSupported, maxSupported Version) (Version, bool) {
@@ -2121,6 +2161,10 @@ func (env *testWorkflowEnvironmentImpl) GetRegistry() *registry {
 
 func (env *testWorkflowEnvironmentImpl) GetWorkflowInterceptors() []WorkflowInterceptorFactory {
 	return env.workflowInterceptors
+}
+
+func (env *testWorkflowEnvironmentImpl) GetFeatureFlags() FeatureFlags {
+	return env.workerOptions.FeatureFlags
 }
 
 func newTestSessionEnvironment(testWorkflowEnvironment *testWorkflowEnvironmentImpl,

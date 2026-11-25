@@ -28,6 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+
 	"go.uber.org/cadence"
 	"go.uber.org/cadence/activity"
 	"go.uber.org/cadence/worker"
@@ -37,6 +40,7 @@ type Activities struct {
 	mu          sync.Mutex
 	invocations []string
 	activities2 *Activities2
+	tracer      opentracing.Tracer
 }
 
 type Activities2 struct {
@@ -47,7 +51,7 @@ var errFailOnPurpose = cadence.NewCustomError("failing-on-purpose")
 
 func newActivities() *Activities {
 	activities2 := &Activities2{}
-	result := &Activities{activities2: activities2}
+	result := &Activities{activities2: activities2, tracer: mocktracer.New()}
 	activities2.impl = result
 	return result
 }
@@ -146,6 +150,17 @@ func (a *Activities) InspectActivityInfo(ctx context.Context, domain, taskList, 
 	return nil
 }
 
+func (a *Activities) InspectActivitySpan(ctx context.Context) (map[string]string, error) {
+	span := opentracing.SpanFromContext(ctx)
+	carrier := make(map[string]string)
+	err := a.tracer.Inject(span.Context(), opentracing.TextMap, opentracing.TextMapCarrier(carrier))
+	return carrier, err
+}
+
+func (a *Activities) GetTaskList(ctx context.Context) (string, error) {
+	return activity.GetInfo(ctx).TaskList, nil
+}
+
 func (a *Activities) register(worker worker.Worker) {
 	// Kept to verify backward compatibility of activity registration.
 	activity.RegisterWithOptions(a, activity.RegisterOptions{Name: "Activities_", DisableAlreadyRegisteredCheck: true})
@@ -155,4 +170,5 @@ func (a *Activities) register(worker worker.Worker) {
 	worker.RegisterActivityWithOptions(a.activities2, activity.RegisterOptions{Name: "Prefix_", DisableAlreadyRegisteredCheck: true})
 	worker.RegisterActivityWithOptions(a.InspectActivityInfo, activity.RegisterOptions{Name: "inspectActivityInfo"})
 	worker.RegisterActivityWithOptions(a.HeartbeatAndSleep, activity.RegisterOptions{Name: "HeartbeatAndSleep", EnableAutoHeartbeat: true})
+	worker.RegisterActivityWithOptions(a.InspectActivitySpan, activity.RegisterOptions{Name: "inspectActivitySpan"})
 }

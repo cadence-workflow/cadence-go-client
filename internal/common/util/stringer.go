@@ -78,109 +78,115 @@ func valueToString(v reflect.Value) string {
 
 // HistoryEventToString convert HistoryEvent to string
 func HistoryEventToString(e *s.HistoryEvent) string {
-	var data interface{}
-	switch e.GetEventType() {
-	case s.EventTypeWorkflowExecutionStarted:
-		data = e.WorkflowExecutionStartedEventAttributes
-
-	case s.EventTypeWorkflowExecutionCompleted:
-		data = e.WorkflowExecutionCompletedEventAttributes
-
-	case s.EventTypeWorkflowExecutionFailed:
-		data = e.WorkflowExecutionFailedEventAttributes
-
-	case s.EventTypeWorkflowExecutionTimedOut:
-		data = e.WorkflowExecutionTimedOutEventAttributes
-
-	case s.EventTypeDecisionTaskScheduled:
-		data = e.DecisionTaskScheduledEventAttributes
-
-	case s.EventTypeDecisionTaskStarted:
-		data = e.DecisionTaskStartedEventAttributes
-
-	case s.EventTypeDecisionTaskCompleted:
-		data = e.DecisionTaskCompletedEventAttributes
-
-	case s.EventTypeDecisionTaskTimedOut:
-		data = e.DecisionTaskTimedOutEventAttributes
-
-	case s.EventTypeActivityTaskScheduled:
-		data = e.ActivityTaskScheduledEventAttributes
-
-	case s.EventTypeActivityTaskStarted:
-		data = e.ActivityTaskStartedEventAttributes
-
-	case s.EventTypeActivityTaskCompleted:
-		data = e.ActivityTaskCompletedEventAttributes
-
-	case s.EventTypeActivityTaskFailed:
-		data = e.ActivityTaskFailedEventAttributes
-
-	case s.EventTypeActivityTaskTimedOut:
-		data = e.ActivityTaskTimedOutEventAttributes
-
-	case s.EventTypeActivityTaskCancelRequested:
-		data = e.ActivityTaskCancelRequestedEventAttributes
-
-	case s.EventTypeRequestCancelActivityTaskFailed:
-		data = e.RequestCancelActivityTaskFailedEventAttributes
-
-	case s.EventTypeActivityTaskCanceled:
-		data = e.ActivityTaskCanceledEventAttributes
-
-	case s.EventTypeTimerStarted:
-		data = e.TimerStartedEventAttributes
-
-	case s.EventTypeTimerFired:
-		data = e.TimerFiredEventAttributes
-
-	case s.EventTypeCancelTimerFailed:
-		data = e.CancelTimerFailedEventAttributes
-
-	case s.EventTypeTimerCanceled:
-		data = e.TimerCanceledEventAttributes
-
-	case s.EventTypeMarkerRecorded:
-		data = e.MarkerRecordedEventAttributes
-
-	case s.EventTypeWorkflowExecutionTerminated:
-		data = e.WorkflowExecutionTerminatedEventAttributes
-
-	default:
-		data = e
-	}
+	data := getHistoryEventData(e)
 
 	return e.GetEventType().String() + ": " + anyToString(data)
 }
 
-// DecisionToString convert Decision to string
-func DecisionToString(d *s.Decision) string {
-	var data interface{}
-	switch d.GetDecisionType() {
-	case s.DecisionTypeScheduleActivityTask:
-		data = d.ScheduleActivityTaskDecisionAttributes
+func getHistoryEventData(e *s.HistoryEvent) interface{} {
+	switch e.GetEventType() {
+	case s.EventTypeWorkflowExecutionStarted:
+		return e.WorkflowExecutionStartedEventAttributes
 
-	case s.DecisionTypeRequestCancelActivityTask:
-		data = d.RequestCancelActivityTaskDecisionAttributes
+	case s.EventTypeWorkflowExecutionCompleted:
+		return e.WorkflowExecutionCompletedEventAttributes
 
-	case s.DecisionTypeStartTimer:
-		data = d.StartTimerDecisionAttributes
+	case s.EventTypeWorkflowExecutionFailed:
+		return e.WorkflowExecutionFailedEventAttributes
 
-	case s.DecisionTypeCancelTimer:
-		data = d.CancelTimerDecisionAttributes
+	case s.EventTypeWorkflowExecutionTimedOut:
+		return e.WorkflowExecutionTimedOutEventAttributes
 
-	case s.DecisionTypeCompleteWorkflowExecution:
-		data = d.CompleteWorkflowExecutionDecisionAttributes
+	case s.EventTypeDecisionTaskScheduled:
+		return e.DecisionTaskScheduledEventAttributes
 
-	case s.DecisionTypeFailWorkflowExecution:
-		data = d.FailWorkflowExecutionDecisionAttributes
+	case s.EventTypeDecisionTaskStarted:
+		return e.DecisionTaskStartedEventAttributes
 
-	case s.DecisionTypeRecordMarker:
-		data = d.RecordMarkerDecisionAttributes
+	case s.EventTypeDecisionTaskCompleted:
+		return e.DecisionTaskCompletedEventAttributes
+
+	case s.EventTypeDecisionTaskTimedOut:
+		return e.DecisionTaskTimedOutEventAttributes
+
+	case s.EventTypeActivityTaskScheduled:
+		return e.ActivityTaskScheduledEventAttributes
+
+	case s.EventTypeActivityTaskStarted:
+		return e.ActivityTaskStartedEventAttributes
+
+	case s.EventTypeActivityTaskCompleted:
+		return e.ActivityTaskCompletedEventAttributes
+
+	case s.EventTypeActivityTaskFailed:
+		return e.ActivityTaskFailedEventAttributes
+
+	case s.EventTypeActivityTaskTimedOut:
+		return e.ActivityTaskTimedOutEventAttributes
+
+	case s.EventTypeActivityTaskCancelRequested:
+		return e.ActivityTaskCancelRequestedEventAttributes
+
+	case s.EventTypeRequestCancelActivityTaskFailed:
+		return e.RequestCancelActivityTaskFailedEventAttributes
+
+	case s.EventTypeActivityTaskCanceled:
+		return e.ActivityTaskCanceledEventAttributes
+
+	case s.EventTypeTimerStarted:
+		return e.TimerStartedEventAttributes
+
+	case s.EventTypeTimerFired:
+		return e.TimerFiredEventAttributes
+
+	case s.EventTypeCancelTimerFailed:
+		return e.CancelTimerFailedEventAttributes
+
+	case s.EventTypeTimerCanceled:
+		return e.TimerCanceledEventAttributes
+
+	case s.EventTypeMarkerRecorded:
+		return e.MarkerRecordedEventAttributes
+
+	case s.EventTypeWorkflowExecutionTerminated:
+		return e.WorkflowExecutionTerminatedEventAttributes
 
 	default:
-		data = d
+		return e
 	}
+}
+
+// DecisionToString convert Decision to string
+func DecisionToString(d *s.Decision) string {
+	data := decisionGetData(d)
 
 	return d.GetDecisionType().String() + ": " + anyToString(data)
+}
+
+func decisionGetData(d *s.Decision) interface{} {
+	switch d.GetDecisionType() {
+	case s.DecisionTypeScheduleActivityTask:
+		return d.ScheduleActivityTaskDecisionAttributes
+
+	case s.DecisionTypeRequestCancelActivityTask:
+		return d.RequestCancelActivityTaskDecisionAttributes
+
+	case s.DecisionTypeStartTimer:
+		return d.StartTimerDecisionAttributes
+
+	case s.DecisionTypeCancelTimer:
+		return d.CancelTimerDecisionAttributes
+
+	case s.DecisionTypeCompleteWorkflowExecution:
+		return d.CompleteWorkflowExecutionDecisionAttributes
+
+	case s.DecisionTypeFailWorkflowExecution:
+		return d.FailWorkflowExecutionDecisionAttributes
+
+	case s.DecisionTypeRecordMarker:
+		return d.RecordMarkerDecisionAttributes
+
+	default:
+		return d
+	}
 }

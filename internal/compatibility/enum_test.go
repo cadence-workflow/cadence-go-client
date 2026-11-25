@@ -266,6 +266,7 @@ func TestTaskListKind(t *testing.T) {
 		apiv1.TaskListKind_TASK_LIST_KIND_INVALID,
 		apiv1.TaskListKind_TASK_LIST_KIND_NORMAL,
 		apiv1.TaskListKind_TASK_LIST_KIND_STICKY,
+		apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL,
 	} {
 		assert.Equal(t, item, proto.TaskListKind(thrift.TaskListKind(item)))
 	}
@@ -330,8 +331,42 @@ func TestWorkflowIDReusePolicy(t *testing.T) {
 		apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 		apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
 	} {
-		assert.Equal(t, item, proto.WorkflowIdReusePolicy(thrift.WorkflowIdReusePolicy(item)))
+		assert.Equal(t, item, proto.WorkflowIDReusePolicy(thrift.WorkflowIDReusePolicy(item)))
 	}
-	assert.Panics(t, func() { proto.WorkflowIdReusePolicy(shared.WorkflowIdReusePolicy(UnknownValue).Ptr()) })
-	assert.Panics(t, func() { thrift.WorkflowIdReusePolicy(apiv1.WorkflowIdReusePolicy(UnknownValue)) })
+	assert.Panics(t, func() { proto.WorkflowIDReusePolicy(shared.WorkflowIdReusePolicy(UnknownValue).Ptr()) })
+	assert.Panics(t, func() { thrift.WorkflowIDReusePolicy(apiv1.WorkflowIdReusePolicy(UnknownValue)) })
+}
+
+func TestCronOverlapPolicy(t *testing.T) {
+	for _, v := range []apiv1.CronOverlapPolicy{
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID,
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+		apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
+	} {
+		assert.Equal(t, v, proto.CronOverlapPolicy(thrift.CronOverlapPolicy(v)))
+	}
+	assert.Equal(t, apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID, proto.CronOverlapPolicy(thrift.CronOverlapPolicy(999)))
+}
+
+func TestFailoverType(t *testing.T) {
+	for _, v := range []apiv1.FailoverType{
+		apiv1.FailoverType_FAILOVER_TYPE_INVALID,
+		apiv1.FailoverType_FAILOVER_TYPE_FORCE,
+		apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL,
+	} {
+		assert.Equal(t, v, proto.FailoverType(thrift.FailoverType(v)))
+	}
+	assert.Equal(t, apiv1.FailoverType_FAILOVER_TYPE_INVALID, proto.FailoverType(thrift.FailoverType(999)))
+}
+
+func TestFailureCategory(t *testing.T) {
+	for _, v := range []apiv1.FailureCategory{
+		apiv1.FailureCategory_FAILURE_CATEGORY_INVALID,
+		apiv1.FailureCategory_FAILURE_CATEGORY_POLL,
+		apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD,
+		apiv1.FailureCategory_FAILURE_CATEGORY_FATAL,
+	} {
+		assert.Equal(t, v, proto.FailureCategory(thrift.FailureCategory(v)))
+	}
+	assert.Equal(t, apiv1.FailureCategory_FAILURE_CATEGORY_INVALID, proto.FailureCategory(thrift.FailureCategory(999)))
 }

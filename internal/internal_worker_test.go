@@ -31,6 +31,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
+	"go.uber.org/cadence/internal/common/debug"
+
 	"github.com/golang/mock/gomock"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
@@ -39,11 +43,11 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
+	"go.uber.org/cadence/internal/common/metrics"
 )
 
 func testInternalWorkerRegister(r *registry) {
@@ -121,7 +125,7 @@ func (s *internalWorkerTestSuite) TearDownTest() {
 }
 
 func getTestLogger(t *testing.T) *zap.Logger {
-	return zaptest.NewLogger(t)
+	return testlogger.NewZap(t)
 }
 
 func (s *internalWorkerTestSuite) testDecisionTaskHandlerHelper(params workerExecutionParameters) {
@@ -214,10 +218,13 @@ func (s *internalWorkerTestSuite) TestCreateWorker_WithDataConverter() {
 
 func (s *internalWorkerTestSuite) TestCreateShadowWorker() {
 	worker := createShadowWorker(s.T(), s.service, &ShadowOptions{})
-	s.Nil(worker.workflowWorker)
-	s.Nil(worker.activityWorker)
-	s.Nil(worker.locallyDispatchedActivityWorker)
-	s.Nil(worker.sessionWorker)
+	w, ok := worker.(*aggregatedWorker)
+	s.True(ok)
+	s.NotNil(w)
+	s.Nil(w.workflowWorker)
+	s.Nil(w.activityWorker)
+	s.Nil(w.locallyDispatchedActivityWorker)
+	s.Nil(w.sessionWorker)
 }
 
 func (s *internalWorkerTestSuite) TestCreateWorker_WithAutoScaler() {
@@ -233,16 +240,6 @@ func (s *internalWorkerTestSuite) TestCreateWorker_WithStrictNonDeterminism() {
 	err := worker.Start()
 	require.NoError(s.T(), err)
 	time.Sleep(time.Millisecond * 200)
-	worker.Stop()
-}
-
-func (s *internalWorkerTestSuite) TestCreateWorker_WithHost() {
-	worker := createWorkerWithHost(s.T(), s.service)
-	err := worker.Start()
-	require.NoError(s.T(), err)
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(s.T(), "test_host", worker.activityWorker.worker.options.host)
-	assert.Equal(s.T(), "test_host", worker.workflowWorker.worker.options.host)
 	worker.Stop()
 }
 
@@ -268,10 +265,10 @@ func (s *internalWorkerTestSuite) TestCreateWorkerRun() {
 func (s *internalWorkerTestSuite) TestNoActivitiesOrWorkflows() {
 	t := s.T()
 	w := createWorker(s.T(), s.service)
-	w.registry = newRegistry()
-	assert.Empty(t, w.registry.getRegisteredActivities())
-	assert.Empty(t, w.registry.GetRegisteredWorkflowTypes())
+	assert.Empty(t, w.GetRegisteredActivities())
+	assert.Empty(t, w.GetRegisteredWorkflows())
 	assert.NoError(t, w.Start())
+	w.Stop()
 }
 
 func (s *internalWorkerTestSuite) TestWorkerStartFailsWithInvalidDomain() {
@@ -296,6 +293,8 @@ func (s *internalWorkerTestSuite) TestWorkerStartFailsWithInvalidDomain() {
 			}).Times(2)
 
 		worker := createWorker(s.T(), service)
+		worker.RegisterWorkflow(testWorkflowSample) // at least register one workflow otherwise workflow worker will not be started
+		worker.RegisterActivity(testActivity)       // at least register one activity otherwise activity worker will not be started
 		if tc.isErrFatal {
 			err := worker.Start()
 			assert.Error(t, err, "worker.start() MUST fail when domain is invalid")
@@ -356,7 +355,7 @@ func (m *mockPollForActivityTaskRequest) String() string {
 func createWorker(
 	t *testing.T,
 	service *workflowservicetest.MockClient,
-) *aggregatedWorker {
+) Worker {
 	return createWorkerWithThrottle(t, service, 0, WorkerOptions{})
 }
 
@@ -364,7 +363,7 @@ func createShadowWorker(
 	t *testing.T,
 	service *workflowservicetest.MockClient,
 	shadowOptions *ShadowOptions,
-) *aggregatedWorker {
+) Worker {
 	return createWorkerWithThrottle(t, service, 0, WorkerOptions{
 		EnableShadowWorker: true,
 		ShadowOptions:      *shadowOptions,
@@ -376,7 +375,7 @@ func createWorkerWithThrottle(
 	service *workflowservicetest.MockClient,
 	activitiesPerSecond float64,
 	workerOptions WorkerOptions,
-) *aggregatedWorker {
+) Worker {
 	domain := "testDomain"
 	domainStatus := shared.DomainStatusRegistered
 	domainDesc := &shared.DescribeDomainResponse{
@@ -408,44 +407,38 @@ func createWorkerWithThrottle(
 	// Configure worker options.
 	workerOptions.WorkerActivitiesPerSecond = 20
 	workerOptions.TaskListActivitiesPerSecond = activitiesPerSecond
-	workerOptions.Logger = zaptest.NewLogger(t)
-	workerOptions.EnableSessionWorker = true
+	workerOptions.Logger = testlogger.NewZap(t)
+	workerOptions.EnableSessionWorker = false
 
 	// Start Worker.
-	worker := NewWorker(
+	worker, err := NewWorker(
 		service,
 		domain,
 		"testGroupName2",
 		workerOptions)
+	require.NoError(t, err)
 	return worker
 }
 
 func createWorkerWithDataConverter(
 	t *testing.T,
 	service *workflowservicetest.MockClient,
-) *aggregatedWorker {
+) Worker {
 	return createWorkerWithThrottle(t, service, 0, WorkerOptions{DataConverter: newTestDataConverter()})
 }
 
 func createWorkerWithAutoscaler(
 	t *testing.T,
 	service *workflowservicetest.MockClient,
-) *aggregatedWorker {
+) Worker {
 	return createWorkerWithThrottle(t, service, 0, WorkerOptions{FeatureFlags: FeatureFlags{PollerAutoScalerEnabled: true}})
 }
 
 func createWorkerWithStrictNonDeterminismDisabled(
 	t *testing.T,
 	service *workflowservicetest.MockClient,
-) *aggregatedWorker {
+) Worker {
 	return createWorkerWithThrottle(t, service, 0, WorkerOptions{WorkerBugPorts: WorkerBugPorts{DisableStrictNonDeterminismCheck: true}})
-}
-
-func createWorkerWithHost(
-	t *testing.T,
-	service *workflowservicetest.MockClient,
-) *aggregatedWorker {
-	return createWorkerWithThrottle(t, service, 0, WorkerOptions{Host: "test_host"})
 }
 
 func (s *internalWorkerTestSuite) testCompleteActivityHelper(opt *ClientOptions) {
@@ -1073,7 +1066,8 @@ func TestActivityNilArgs(t *testing.T) {
 func TestWorkerOptionDefaults(t *testing.T) {
 	domain := "worker-options-test"
 	taskList := "worker-options-tl"
-	aggWorker := newAggregatedWorker(nil, domain, taskList, WorkerOptions{})
+	aggWorker, err := newAggregatedWorker(nil, domain, taskList, WorkerOptions{})
+	require.NoError(t, err)
 	decisionWorker := aggWorker.workflowWorker
 	require.True(t, decisionWorker.executionParameters.Identity != "")
 	require.NotNil(t, decisionWorker.executionParameters.Logger)
@@ -1081,7 +1075,7 @@ func TestWorkerOptionDefaults(t *testing.T) {
 	require.Nil(t, decisionWorker.executionParameters.ContextPropagators)
 
 	expected := workerExecutionParameters{
-		TaskList: taskList,
+		TaskList: &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers:        defaultConcurrentPollRoutineSize,
 			MaxConcurrentDecisionTaskPollers:        defaultConcurrentPollRoutineSize,
@@ -1097,7 +1091,12 @@ func TestWorkerOptionDefaults(t *testing.T) {
 			Tracer:                                  opentracing.NoopTracer{},
 			Logger:                                  decisionWorker.executionParameters.Logger,
 			MetricsScope:                            decisionWorker.executionParameters.MetricsScope,
-			Identity:                                decisionWorker.executionParameters.Identity},
+			Identity:                                decisionWorker.executionParameters.Identity,
+			WorkerStats: debug.WorkerStats{
+				PollerTracker:   debug.NewNoopPollerTracker(),
+				ActivityTracker: debug.NewNoopActivityTracker(),
+			},
+		},
 		UserContext: decisionWorker.executionParameters.UserContext,
 	}
 
@@ -1109,6 +1108,7 @@ func TestWorkerOptionDefaults(t *testing.T) {
 	require.NotNil(t, activityWorker.executionParameters.MetricsScope)
 	require.Nil(t, activityWorker.executionParameters.ContextPropagators)
 	assertWorkerExecutionParamsEqual(t, expected, activityWorker.executionParameters)
+	assert.Equal(t, expected.WorkerStats, aggWorker.GetWorkerStats())
 }
 
 func TestWorkerOptionNonDefaults(t *testing.T) {
@@ -1131,16 +1131,17 @@ func TestWorkerOptionNonDefaults(t *testing.T) {
 		DataConverter:                           &defaultDataConverter{},
 		BackgroundActivityContext:               context.Background(),
 		Logger:                                  zap.NewNop(),
-		MetricsScope:                            tally.NoopScope,
-		Tracer:                                  opentracing.NoopTracer{},
+		MetricsScope:                            tally.NewTestScope("", nil),
+		Tracer:                                  opentracing.GlobalTracer(),
 	}
 
-	aggWorker := newAggregatedWorker(nil, domain, taskList, options)
+	aggWorker, err := newAggregatedWorker(nil, domain, taskList, options)
+	require.NoError(t, err)
 	decisionWorker := aggWorker.workflowWorker
 	require.True(t, len(decisionWorker.executionParameters.ContextPropagators) > 0)
 
 	expected := workerExecutionParameters{
-		TaskList: taskList,
+		TaskList: &shared.TaskList{Name: common.StringPtr(taskList), Kind: shared.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers:        options.MaxConcurrentActivityTaskPollers,
 			MaxConcurrentDecisionTaskPollers:        options.MaxConcurrentDecisionTaskPollers,
@@ -1156,7 +1157,12 @@ func TestWorkerOptionNonDefaults(t *testing.T) {
 			Tracer:                                  options.Tracer,
 			Logger:                                  options.Logger,
 			MetricsScope:                            options.MetricsScope,
-			Identity:                                options.Identity},
+			Identity:                                options.Identity,
+			WorkerStats: debug.WorkerStats{
+				PollerTracker:   debug.NewNoopPollerTracker(),
+				ActivityTracker: debug.NewNoopActivityTracker(),
+			},
+		},
 	}
 
 	assertWorkerExecutionParamsEqual(t, expected, decisionWorker.executionParameters)
@@ -1164,6 +1170,7 @@ func TestWorkerOptionNonDefaults(t *testing.T) {
 	activityWorker := aggWorker.activityWorker
 	require.True(t, len(activityWorker.executionParameters.ContextPropagators) > 0)
 	assertWorkerExecutionParamsEqual(t, expected, activityWorker.executionParameters)
+	assert.Equal(t, expected.WorkerStats, aggWorker.GetWorkerStats())
 }
 
 func assertWorkerExecutionParamsEqual(t *testing.T, paramsA workerExecutionParameters, paramsB workerExecutionParameters) {
@@ -1183,6 +1190,8 @@ func assertWorkerExecutionParamsEqual(t *testing.T, paramsA workerExecutionParam
 	require.Equal(t, paramsA.NonDeterministicWorkflowPolicy, paramsB.NonDeterministicWorkflowPolicy)
 	require.Equal(t, paramsA.EnableLoggingInReplay, paramsB.EnableLoggingInReplay)
 	require.Equal(t, paramsA.DisableStickyExecution, paramsB.DisableStickyExecution)
+	require.Equal(t, paramsA.WorkerStats.PollerTracker, paramsB.WorkerStats.PollerTracker)
+	require.Equal(t, paramsA.WorkerStats.ActivityTracker, paramsB.WorkerStats.ActivityTracker)
 }
 
 /*
@@ -1290,14 +1299,9 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				WorkerLocalActivitiesPerSecond:          20,
 				TaskListActivitiesPerSecond:             30,
 				MaxConcurrentActivityTaskPollers:        10,
-				MinConcurrentActivityTaskPollers:        2,
 				MaxConcurrentDecisionTaskExecutionSize:  40,
 				WorkerDecisionTasksPerSecond:            50,
 				MaxConcurrentDecisionTaskPollers:        15,
-				MinConcurrentDecisionTaskPollers:        4,
-				PollerAutoScalerCooldown:                time.Minute * 2,
-				PollerAutoScalerTargetUtilization:       0.8,
-				PollerAutoScalerDryRun:                  false,
 				Identity:                                "identity",
 				MetricsScope:                            tally.NoopScope,
 				Logger:                                  zap.NewNop(),
@@ -1317,8 +1321,17 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  nil,
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
+				AutoScalerOptions: AutoScalerOptions{
+					Enabled:                  true,
+					PollerMinCount:           10,
+					PollerMaxCount:           20,
+					PollerInitCount:          5,
+					Cooldown:                 time.Minute * 3,
+					PollerWaitTimeUpperBound: time.Millisecond * 200,
+					PollerWaitTimeLowerBound: time.Millisecond * 100,
+				},
 			}},
 			want: WorkerOptions{
 				MaxConcurrentActivityExecutionSize:      3,
@@ -1327,14 +1340,9 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				WorkerLocalActivitiesPerSecond:          20,
 				TaskListActivitiesPerSecond:             30,
 				MaxConcurrentActivityTaskPollers:        10,
-				MinConcurrentActivityTaskPollers:        2,
 				MaxConcurrentDecisionTaskExecutionSize:  40,
 				WorkerDecisionTasksPerSecond:            50,
 				MaxConcurrentDecisionTaskPollers:        15,
-				MinConcurrentDecisionTaskPollers:        4,
-				PollerAutoScalerCooldown:                time.Minute * 2,
-				PollerAutoScalerTargetUtilization:       0.8,
-				PollerAutoScalerDryRun:                  false,
 				Identity:                                "identity",
 				MetricsScope:                            tally.NoopScope,
 				Logger:                                  zap.NewNop(),
@@ -1354,8 +1362,17 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
+				AutoScalerOptions: AutoScalerOptions{
+					Enabled:                  true,
+					PollerMinCount:           10,
+					PollerMaxCount:           20,
+					PollerInitCount:          5,
+					Cooldown:                 time.Minute * 3,
+					PollerWaitTimeUpperBound: time.Millisecond * 200,
+					PollerWaitTimeLowerBound: time.Millisecond * 100,
+				},
 			},
 		},
 		{
@@ -1368,14 +1385,9 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				WorkerLocalActivitiesPerSecond:          100000,
 				TaskListActivitiesPerSecond:             100000,
 				MaxConcurrentActivityTaskPollers:        2,
-				MinConcurrentActivityTaskPollers:        1,
 				MaxConcurrentDecisionTaskExecutionSize:  1000,
 				WorkerDecisionTasksPerSecond:            100000,
 				MaxConcurrentDecisionTaskPollers:        2,
-				MinConcurrentDecisionTaskPollers:        1,
-				PollerAutoScalerCooldown:                time.Minute,
-				PollerAutoScalerTargetUtilization:       0.6,
-				PollerAutoScalerDryRun:                  false,
 				Identity:                                "",
 				MetricsScope:                            nil,
 				Logger:                                  nil,
@@ -1395,8 +1407,17 @@ func Test_augmentWorkerOptions(t *testing.T) {
 				Tracer:                                  opentracing.NoopTracer{},
 				EnableShadowWorker:                      false,
 				ShadowOptions:                           ShadowOptions{},
-				FeatureFlags:                            FeatureFlags{},
+				FeatureFlags:                            FeatureFlags{MetricEmitMode: metrics.EmitHistogramsOnly},
 				Authorization:                           nil,
+				AutoScalerOptions: AutoScalerOptions{
+					Enabled:                  false,
+					PollerMinCount:           2,
+					PollerMaxCount:           20,
+					PollerInitCount:          2,
+					Cooldown:                 time.Second * 10,
+					PollerWaitTimeUpperBound: time.Millisecond * 256,
+					PollerWaitTimeLowerBound: time.Millisecond * 16,
+				},
 			},
 		},
 	}
@@ -1405,4 +1426,239 @@ func Test_augmentWorkerOptions(t *testing.T) {
 			assert.Equalf(t, tt.want, AugmentWorkerOptions(tt.args.options), "AugmentWorkerOptions(%v)", tt.args.options)
 		})
 	}
+}
+
+func TestValidateFnFormat_Activity(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		fn      any
+		wantErr string
+	}{
+		{
+			name:    "not a function",
+			fn:      1,
+			wantErr: "expected a func as input",
+		},
+		{
+			name:    "function without return",
+			fn:      func() {},
+			wantErr: "expected function to return result",
+		},
+		{
+			name:    "function with too many return values",
+			fn:      func() (int, int, error) { return 0, 0, nil },
+			wantErr: "expected function to return result",
+		},
+		{
+			name:    "function without error",
+			fn:      func() int { return 0 },
+			wantErr: "expected function second return value",
+		},
+		{
+			name:    "function with error but in the wrong place",
+			fn:      func() (error, int) { return nil, 0 },
+			wantErr: "expected function second return value",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateFnFormat(reflect.TypeOf(tc.fn), false)
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestTestValidateFnFormat_Workflow(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		fn      any
+		wantErr string
+	}{
+		{
+			name:    "not a function",
+			fn:      1,
+			wantErr: "expected a func as input",
+		},
+		{
+			name:    "function without return",
+			fn:      func(_ Context) {},
+			wantErr: "expected function to return result",
+		},
+		{
+			name:    "function with too many return values",
+			fn:      func(_ Context) (int, int, error) { return 0, 0, nil },
+			wantErr: "expected function to return result",
+		},
+		{
+			name:    "function without error",
+			fn:      func(_ Context) int { return 0 },
+			wantErr: "expected function second return value",
+		},
+		{
+			name:    "function with error but in the wrong place",
+			fn:      func(_ Context) (error, int) { return nil, 0 },
+			wantErr: "expected function second return value",
+		},
+		{
+			name:    "workflow without args",
+			fn:      func() error { return nil },
+			wantErr: "expected at least one argument of type workflow.Context",
+		},
+		{
+			name:    "workflow with wrong args",
+			fn:      func(int) error { return nil },
+			wantErr: "expected first argument to be workflow.Context",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateFnFormat(reflect.TypeOf(tc.fn), true)
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestGetTaskAutoConfigHint(t *testing.T) {
+
+	hint := shared.AutoConfigHint{
+		EnableAutoConfig:   common.BoolPtr(true),
+		PollerWaitTimeInMs: common.Int64Ptr(100),
+	}
+
+	for _, tt := range []struct {
+		name string
+		task interface{}
+		want *shared.AutoConfigHint
+	}{
+		{
+			"decision task",
+			&workflowTask{
+				task: &shared.PollForDecisionTaskResponse{AutoConfigHint: &hint}},
+			&hint,
+		},
+		{
+			"empty decision task",
+			&workflowTask{
+				autoConfigHint: &hint},
+			&hint,
+		},
+		{
+			"activity task",
+			&activityTask{
+				task: &shared.PollForActivityTaskResponse{AutoConfigHint: &hint}},
+			&hint,
+		},
+		{
+			"empty activity task",
+			&activityTask{
+				autoConfigHint: &hint},
+			&hint,
+		},
+		{
+			"localactivity task",
+			&localActivityTask{},
+			nil,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			task, ok := tt.task.(autoConfigHintAwareTask)
+			if tt.want == nil {
+				assert.False(t, ok)
+			} else {
+				assert.True(t, ok)
+				assert.Equal(t, tt.want, task.getAutoConfigHint())
+			}
+		})
+	}
+}
+
+func TestAugmentWorkerOptions_MetricEmitMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    WorkerOptions
+		expected metrics.MetricEmitMode
+	}{
+		{
+			name:     "unset defaults to EmitHistogramsOnly",
+			input:    WorkerOptions{},
+			expected: metrics.EmitHistogramsOnly,
+		},
+		{
+			name: "explicit EmitModeUnset defaults to EmitHistogramsOnly",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitModeUnset,
+				},
+			},
+			expected: metrics.EmitHistogramsOnly,
+		},
+		{
+			name: "explicit EmitTimersOnly is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitTimersOnly,
+				},
+			},
+			expected: metrics.EmitTimersOnly,
+		},
+		{
+			name: "explicit EmitBoth is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitBoth,
+				},
+			},
+			expected: metrics.EmitBoth,
+		},
+		{
+			name: "explicit EmitHistogramsOnly is preserved",
+			input: WorkerOptions{
+				FeatureFlags: FeatureFlags{
+					MetricEmitMode: metrics.EmitHistogramsOnly,
+				},
+			},
+			expected: metrics.EmitHistogramsOnly,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := AugmentWorkerOptions(tt.input)
+			assert.Equal(t, tt.expected, result.FeatureFlags.MetricEmitMode)
+		})
+	}
+}
+
+func TestNewAggregatedWorker_SetsMetricEmitMode(t *testing.T) {
+	// This test verifies that creating a worker actually sets the global metric emit mode
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockService := workflowservicetest.NewMockClient(mockCtrl)
+
+	// Reset to known state
+	metrics.SetEmitMode(metrics.EmitHistogramsOnly)
+	initialMode := metrics.GetCurrentEmitMode()
+	assert.Equal(t, metrics.EmitHistogramsOnly, initialMode)
+
+	// Create worker with EmitTimersOnly
+	_, err := newAggregatedWorker(
+		mockService,
+		"test-domain",
+		"test-tasklist",
+		WorkerOptions{
+			FeatureFlags: FeatureFlags{
+				MetricEmitMode: metrics.EmitTimersOnly,
+			},
+		},
+	)
+
+	// Worker creation may fail due to missing setup, but we only care that SetEmitMode was called
+	// The important part is that the mode was set, not whether worker creation succeeded
+	_ = err // ignore error
+
+	// Verify the mode was set
+	currentMode := metrics.GetCurrentEmitMode()
+	assert.Equal(t, metrics.EmitTimersOnly, currentMode, "newAggregatedWorker should set the global emit mode")
+
+	// Clean up: restore to default
+	metrics.SetEmitMode(metrics.EmitHistogramsOnly)
 }

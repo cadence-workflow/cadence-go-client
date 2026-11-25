@@ -34,6 +34,8 @@ import (
 	"go.uber.org/cadence/.gen/go/shared"
 )
 
+//go:generate mockery --name ServiceInvoker --inpackage --with-expecter --case snake --filename service_invoker_mock.go
+
 type (
 	// RegistryActivityInfo
 	RegistryActivityInfo interface {
@@ -222,6 +224,11 @@ func GetActivityInfo(ctx context.Context) ActivityInfo {
 	}
 }
 
+// HasActivityInfo returns if the context contains activity information
+func HasActivityInfo(ctx context.Context) bool {
+	return hasActivityEnv(ctx)
+}
+
 // HasHeartbeatDetails checks if there is heartbeat details from last attempt.
 func HasHeartbeatDetails(ctx context.Context) bool {
 	env := getActivityEnv(ctx)
@@ -349,6 +356,7 @@ func WithActivityTask(
 		zapcore.Field{Key: tagWorkflowType, Type: zapcore.StringType, String: *task.WorkflowType.Name},
 		zapcore.Field{Key: tagWorkflowID, Type: zapcore.StringType, String: *task.WorkflowExecution.WorkflowId},
 		zapcore.Field{Key: tagRunID, Type: zapcore.StringType, String: *task.WorkflowExecution.RunId},
+		zapcore.Field{Key: tagAttempt, Type: zapcore.Int64Type, Integer: int64(task.GetAttempt())},
 	)
 
 	return context.WithValue(ctx, activityEnvContextKey, &activityEnvironment{

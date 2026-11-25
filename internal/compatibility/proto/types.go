@@ -45,6 +45,25 @@ func Failure(reason *string, details []byte) *apiv1.Failure {
 	}
 }
 
+func FailureWithOptions(reason *string, details []byte, options *shared.FailureOptions) *apiv1.Failure {
+	failure := Failure(reason, details)
+	if failure == nil {
+		return nil
+	}
+	failure.Options = FailureOptions(options)
+	return failure
+}
+
+func FailureOptions(options *shared.FailureOptions) *apiv1.FailureOptions {
+	if options == nil {
+		return nil
+	}
+	return &apiv1.FailureOptions{
+		FailureCategory:   FailureCategory(options.FailureCategory),
+		NextRetryInterval: secondsToDuration(options.NextRetryIntervalSeconds),
+	}
+}
+
 func WorkflowExecution(t *shared.WorkflowExecution) *apiv1.WorkflowExecution {
 	if t == nil {
 		return nil
@@ -58,13 +77,13 @@ func WorkflowExecution(t *shared.WorkflowExecution) *apiv1.WorkflowExecution {
 	}
 }
 
-func WorkflowRunPair(workflowId, runId string) *apiv1.WorkflowExecution {
-	if workflowId == "" && runId == "" {
+func WorkflowRunPair(workflowID, runID string) *apiv1.WorkflowExecution {
+	if workflowID == "" && runID == "" {
 		return nil
 	}
 	return &apiv1.WorkflowExecution{
-		WorkflowId: workflowId,
-		RunId:      runId,
+		WorkflowId: workflowID,
+		RunId:      runID,
 	}
 }
 
@@ -74,6 +93,16 @@ func ActivityType(t *shared.ActivityType) *apiv1.ActivityType {
 	}
 	return &apiv1.ActivityType{
 		Name: t.GetName(),
+	}
+}
+
+func AutoConfigHint(t *shared.AutoConfigHint) *apiv1.AutoConfigHint {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.AutoConfigHint{
+		EnableAutoConfig:   t.GetEnableAutoConfig(),
+		PollerWaitTimeInMs: t.GetPollerWaitTimeInMs(),
 	}
 }
 
@@ -91,8 +120,9 @@ func TaskList(t *shared.TaskList) *apiv1.TaskList {
 		return nil
 	}
 	return &apiv1.TaskList{
-		Name: t.GetName(),
-		Kind: TaskListKind(t.Kind),
+		Name:     t.GetName(),
+		Kind:     TaskListKind(t.Kind),
+		BaseName: t.GetBaseName(),
 	}
 }
 
@@ -112,6 +142,7 @@ func RetryPolicy(t *shared.RetryPolicy) *apiv1.RetryPolicy {
 	return &apiv1.RetryPolicy{
 		InitialInterval:          secondsToDuration(t.InitialIntervalInSeconds),
 		BackoffCoefficient:       t.GetBackoffCoefficient(),
+		JitterCoefficient:        t.GetJitterCoefficient(),
 		MaximumInterval:          secondsToDuration(t.MaximumIntervalInSeconds),
 		MaximumAttempts:          t.GetMaximumAttempts(),
 		NonRetryableErrorReasons: t.NonRetriableErrorReasons,
@@ -364,11 +395,11 @@ func TaskListStatus(t *shared.TaskListStatus) *apiv1.TaskListStatus {
 		ReadLevel:        t.GetReadLevel(),
 		AckLevel:         t.GetAckLevel(),
 		RatePerSecond:    t.GetRatePerSecond(),
-		TaskIdBlock:      TaskIdBlock(t.TaskIDBlock),
+		TaskIdBlock:      TaskIDBlock(t.TaskIDBlock),
 	}
 }
 
-func TaskIdBlock(t *shared.TaskIDBlock) *apiv1.TaskIDBlock {
+func TaskIDBlock(t *shared.TaskIDBlock) *apiv1.TaskIDBlock {
 	if t == nil {
 		return nil
 	}
@@ -407,6 +438,7 @@ func WorkflowExecutionInfo(t *shared.WorkflowExecutionInfo) *apiv1.WorkflowExecu
 		AutoResetPoints:     ResetPoints(t.AutoResetPoints),
 		TaskList:            t.GetTaskList(),
 		IsCron:              t.GetIsCron(),
+		CronOverlapPolicy:   CronOverlapPolicy(t.CronOverlapPolicy),
 	}
 }
 
@@ -462,7 +494,7 @@ func PendingActivityInfo(t *shared.PendingActivityInfo) *apiv1.PendingActivityIn
 		MaximumAttempts:    t.GetMaximumAttempts(),
 		ScheduledTime:      unixNanoToTime(t.ScheduledTimestamp),
 		ExpirationTime:     unixNanoToTime(t.ExpirationTimestamp),
-		LastFailure:        Failure(t.LastFailureReason, t.LastFailureDetails),
+		LastFailure:        FailureWithOptions(t.LastFailureReason, t.LastFailureDetails, t.LastFailureOptions),
 		LastWorkerIdentity: t.GetLastWorkerIdentity(),
 	}
 }
@@ -542,6 +574,7 @@ func DescribeDomainResponseDomain(t *shared.DescribeDomainResponse) *apiv1.Domai
 	if repl := t.ReplicationConfiguration; repl != nil {
 		domain.ActiveClusterName = repl.GetActiveClusterName()
 		domain.Clusters = ClusterReplicationConfigurationArray(repl.Clusters)
+		domain.ActiveClusters = ActiveClusters(repl.ActiveClusters)
 	}
 	return &domain
 }
@@ -682,6 +715,144 @@ func ActivityLocalDispatchInfoMap(t map[string]*shared.ActivityLocalDispatchInfo
 	v := make(map[string]*apiv1.ActivityLocalDispatchInfo, len(t))
 	for key := range t {
 		v[key] = ActivityLocalDispatchInfo(t[key])
+	}
+	return v
+}
+
+func ActiveClusterSelectionPolicy(t *shared.ActiveClusterSelectionPolicy) *apiv1.ActiveClusterSelectionPolicy {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ActiveClusterSelectionPolicy{
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
+
+func ClusterAttribute(t *shared.ClusterAttribute) *apiv1.ClusterAttribute {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ClusterAttribute{
+		Scope: t.GetScope(),
+		Name:  t.GetName(),
+	}
+}
+
+func ActiveClusters(t *shared.ActiveClusters) *apiv1.ActiveClusters {
+	if t == nil {
+		return nil
+	}
+	var activeClustersByClusterAttribute map[string]*apiv1.ClusterAttributeScope
+	if t.ActiveClustersByClusterAttribute != nil {
+		activeClustersByClusterAttribute = make(map[string]*apiv1.ClusterAttributeScope)
+		for scopeType, scope := range t.ActiveClustersByClusterAttribute {
+			activeClustersByClusterAttribute[scopeType] = ClusterAttributeScope(scope)
+		}
+	}
+
+	return &apiv1.ActiveClusters{
+		ActiveClustersByClusterAttribute: activeClustersByClusterAttribute,
+	}
+}
+
+func ClusterAttributeScope(t *shared.ClusterAttributeScope) *apiv1.ClusterAttributeScope {
+	if t == nil {
+		return nil
+	}
+	var clusterAttributes map[string]*apiv1.ActiveClusterInfo
+	if len(t.ClusterAttributes) > 0 {
+		clusterAttributes = make(map[string]*apiv1.ActiveClusterInfo)
+		for name, clusterInfo := range t.ClusterAttributes {
+			clusterAttributes[name] = ActiveClusterInfo(clusterInfo)
+		}
+	}
+
+	return &apiv1.ClusterAttributeScope{
+		ClusterAttributes: clusterAttributes,
+	}
+}
+
+func ActiveClusterInfo(t *shared.ActiveClusterInfo) *apiv1.ActiveClusterInfo {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ActiveClusterInfo{
+		ActiveClusterName: t.GetActiveClusterName(),
+		FailoverVersion:   t.GetFailoverVersion(),
+	}
+}
+
+func ClusterFailoverArray(t []*shared.ClusterFailover) []*apiv1.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	v := make([]*apiv1.ClusterFailover, len(t))
+	for i := range t {
+		v[i] = ClusterFailover(t[i])
+	}
+	return v
+}
+
+func ClusterFailover(t *shared.ClusterFailover) *apiv1.ClusterFailover {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ClusterFailover{
+		FromCluster:      ActiveClusterInfo(t.FromCluster),
+		ToCluster:        ActiveClusterInfo(t.ToCluster),
+		ClusterAttribute: ClusterAttribute(t.ClusterAttribute),
+	}
+}
+
+func FailoverEventArray(t []*shared.FailoverEvent) []*apiv1.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	v := make([]*apiv1.FailoverEvent, len(t))
+	for i := range t {
+		v[i] = FailoverEvent(t[i])
+	}
+	return v
+}
+
+func FailoverEvent(t *shared.FailoverEvent) *apiv1.FailoverEvent {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.FailoverEvent{
+		Id:               t.GetID(),
+		CreatedTime:      unixNanoToTime(t.CreatedTime),
+		FailoverType:     FailoverType(t.FailoverType),
+		ClusterFailovers: ClusterFailoverArray(t.ClusterFailovers),
+	}
+}
+
+func PaginationOptions(t *shared.PaginationOptions) *apiv1.PaginationOptions {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.PaginationOptions{
+		PageSize:      t.GetPageSize(),
+		NextPageToken: t.NextPageToken,
+	}
+}
+
+func ListFailoverHistoryRequestFilters(t *shared.ListFailoverHistoryRequestFilters) *apiv1.ListFailoverHistoryRequestFilters {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.ListFailoverHistoryRequestFilters{
+		DomainId: t.GetDomainID(),
+	}
+}
+
+func DescribeTaskListResponseMap(t map[string]*shared.DescribeTaskListResponse) map[string]*apiv1.DescribeTaskListResponse {
+	if t == nil {
+		return nil
+	}
+	v := make(map[string]*apiv1.DescribeTaskListResponse, len(t))
+	for key := range t {
+		v[key] = DescribeTaskListResponse(t[key])
 	}
 	return v
 }

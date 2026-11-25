@@ -24,12 +24,13 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	"go.uber.org/cadence/.gen/go/shared"
@@ -56,7 +57,7 @@ func TestActivityTestSuite(t *testing.T) {
 func (s *activityTestSuite) SetupTest() {
 	s.mockCtrl = gomock.NewController(s.T())
 	s.service = workflowservicetest.NewMockClient(s.mockCtrl)
-	s.logger = zaptest.NewLogger(s.T())
+	s.logger = testlogger.NewZap(s.T())
 }
 
 func (s *activityTestSuite) TearDownTest() {
@@ -231,4 +232,26 @@ func (s *activityTestSuite) TestGetWorkerStopChannel() {
 	ctx := context.WithValue(context.Background(), activityEnvContextKey, &activityEnvironment{workerStopChannel: ch})
 	channel := GetWorkerStopChannel(ctx)
 	s.NotNil(channel)
+}
+
+func (s *activityTestSuite) TestHasActivityInfo() {
+	// Test context without activity info
+	ctx := context.Background()
+	s.False(HasActivityInfo(ctx))
+
+	// Test context with activity info
+	activityEnv := &activityEnvironment{
+		activityID:   "test-activity-id",
+		activityType: ActivityType{Name: "test-activity-type"},
+	}
+	ctxWithActivity := context.WithValue(ctx, activityEnvContextKey, activityEnv)
+	s.True(HasActivityInfo(ctxWithActivity))
+
+	// Test context with nil activity env
+	ctxWithNilActivity := context.WithValue(ctx, activityEnvContextKey, nil)
+	s.False(HasActivityInfo(ctxWithNilActivity))
+
+	// Test context with other values in context
+	ctxWithOtherValue := context.WithValue(ctx, activityOptionsContextKey, "other-value")
+	s.False(HasActivityInfo(ctxWithOtherValue))
 }

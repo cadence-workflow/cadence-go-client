@@ -219,6 +219,15 @@ type (
 		//		}
 		GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType s.HistoryEventFilterType) HistoryEventIterator
 
+		// GetWorkflowHistoryWithOptions gets history events of a particular workflow.
+		// See GetWorkflowHistoryWithOptionsRequest for more information.
+		// Returns an iterator of HistoryEvents - see shared.HistoryEvent for more details.
+		// The errors it can return:
+		//  - EntityNotExistsError
+		//  - BadRequestError
+		//  - InternalServiceError
+		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator
+
 		// CompleteActivity reports activity completed.
 		// activity Execute method can return acitivity.activity.ErrResultPending to
 		// indicate the activity is not completed when it's Execute method returns. In that case, this CompleteActivity() method
@@ -367,6 +376,14 @@ type (
 		//  - EntityNotExistError
 		DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error)
 
+		// DescribeWorkflowExecutionWithOptions returns information about the specified workflow execution.
+		// See DescribeWorkflowExecutionWithOptionsRequest for more information.
+		// The errors it can return:
+		//  - BadRequestError
+		//  - InternalServiceError
+		//  - EntityNotExistError
+		DescribeWorkflowExecutionWithOptions(ctx context.Context, request *DescribeWorkflowExecutionWithOptionsRequest) (*s.DescribeWorkflowExecutionResponse, error)
+
 		// DescribeTaskList returns information about the target tasklist, right now this API returns the
 		// pollers which polled this tasklist in last few minutes.
 		// The errors it can return:
@@ -384,6 +401,9 @@ type (
 		//  - ServiceBusyError
 		//  - EntityNotExistError
 		RefreshWorkflowTasks(ctx context.Context, workflowID, runID string) error
+
+		// ScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
+		ScheduleClient() ScheduleClient
 	}
 
 	// ClientOptions are optional parameters for Client creation.
@@ -405,6 +425,22 @@ type (
 		// ID - The business identifier of the workflow execution.
 		// Optional: defaulted to a uuid.
 		ID string
+
+		// RequestID - Unique identifier for this start request. Used for idempotency so retries of the
+		// same start or signal-with-start call do not create duplicate executions.
+		// Must be a UUID string; the client rejects other values before sending the request.
+		// Optional: defaulted to a generated UUID.
+		//
+		// To derive a RequestID deterministically from a business string, use a name-based UUID
+		// (RFC 4122 version 5). The same namespace and name always produce the same UUID:
+		//
+		//   ns := uuid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8") // or uuid.NameSpace_OID
+		//   options.RequestID = uuid.NewSHA1(ns, []byte("order-123:start")).String()
+		//
+		// Prefer a stable, service-specific namespace UUID so names do not collide with UUIDs
+		// generated for other purposes. Do not hash the business string with SHA-1/MD5 and
+		// format it yourself; only RFC 4122 UUID strings are accepted.
+		RequestID string
 
 		// TaskList - The decisions of the workflow are scheduled on this queue.
 		// This is also the default task list on which activities are scheduled. The workflow author can choose
@@ -466,6 +502,34 @@ type (
 		// This works with CronSchedule and with DelayStart.
 		// Optional: defaulted to 0 seconds
 		JitterStart time.Duration
+
+		// FirstRunAt - Specific time (in RFC 3339 format) to let the first run of the workflow to start at,
+		// This will only be used and override DelayStart and JitterStart if provided in the first run
+		// Optional: defaulted to Unix epoch time
+		FirstRunAt time.Time
+
+		// CronOverlapPolicy - Policy for handling cron workflow overlaps when a previous execution is still running by the
+		// start of next scheduled execution.
+		//
+		// Example scenario: A workflow scheduled to run every 5 minutes takes 8 minutes to complete in one of the runs.
+		// Without CronOverlapPolicy, assuming the start of that run r1 is t0, then the next scheduled run r2 that is
+		// supposed to run at t0+5 is skipped, and the next run r3 is scheduled at t0+10.
+		//
+		// Currently supported values are:
+		// - CronOverlapPolicySkip: skip the new execution if the previous one takes too long.
+		//   This is the default behavior and is the same with not specifying this option.
+		//   Run r2 will be skipped and next run will be scheduled at t0+10.
+		// - CronOverlapPolicyBufferOne: start the next run immediately after the previous one that takes too long completes.
+		//   In this case, run r2 will be started at t0+8, and the next run r3 will be scheduled at t0+10.
+		//   (assuming r2 finishes by then, otherwise r3 will start immediately after r2 completes).
+		//
+		// Note: JitterStart remains used when determining the actual start time of executions.
+		// Optional: defaulted to CronOverlapPolicySkip
+		CronOverlapPolicy s.CronOverlapPolicy
+
+		// ActiveClusterSelectionPolicy - Policy for selecting the active cluster to start the workflow execution on for active-active domains.
+		// Optional: defaulted to nil, if it's nil, the active cluster of the workflow is the domain's active cluster.
+		ActiveClusterSelectionPolicy *ActiveClusterSelectionPolicy
 	}
 
 	// RetryPolicy defines the retry policy.
@@ -484,17 +548,25 @@ type (
 		// Must be 1 or larger. Default is 2.0.
 		BackoffCoefficient float64
 
+		// Coefficient for proportional jitter, used to spread retries out. Must be between 0 and 1.
+		// Each retry interval is multiplied by a random factor in (1 - JitterCoefficient, 1], applied after
+		// MaximumInterval is enforced. Default is 0 (no jitter). Values within [0, 0.2] are recommended.
+		JitterCoefficient float64
+
 		// Maximum backoff interval between retries. Exponential backoff leads to interval increase.
 		// This value is the cap of the interval. Default is 100x of initial interval.
 		MaximumInterval time.Duration
 
-		// Maximum time to retry. Either ExpirationInterval or MaximumAttempts is required.
-		// When exceeded the retries stop even if maximum retries is not reached yet.
+		// Maximum time to retry.
+		// Either MaximumAttempts or ExpirationInterval must be set.
+		// Retrying will stop when either MaximumAttempts is reached or ExpirationInterval is exceeded, whichever comes first.
 		ExpirationInterval time.Duration
 
-		// Maximum number of attempts. When exceeded the retries stop even if not expired yet.
-		// If not set or set to 0, it means unlimited, and rely on ExpirationInterval to stop.
-		// Either MaximumAttempts or ExpirationInterval is required.
+		// Maximum number of attempts.
+		// The total attempts includes the initial attempt. Setting this to 1 means 0 retries (only the initial attempt).
+		// If set to 0 the number of attempts is unlimited. This is the default.
+		// Either MaximumAttempts or ExpirationInterval must be set.
+		// Retrying will stop when either MaximumAttempts is reached or ExpirationInterval is exceeded, whichever comes first.
 		MaximumAttempts int32
 
 		// Non-Retriable errors. This is optional. Cadence server will stop retry if error reason matches this list.
@@ -532,6 +604,13 @@ type (
 		//	- BadRequestError
 		//	- InternalServiceError
 		Update(ctx context.Context, request *s.UpdateDomainRequest) error
+
+		// Failover a domain to another cluster.
+		// The errors it can throw:
+		//	- EntityNotExistsError
+		//	- BadRequestError
+		//	- InternalServiceError
+		Failover(ctx context.Context, request *s.FailoverDomainRequest) error
 	}
 
 	// WorkflowIDReusePolicy defines workflow ID reuse behavior.
@@ -539,6 +618,25 @@ type (
 
 	// ParentClosePolicy defines the action on children when parent is closed
 	ParentClosePolicy int
+
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel int
+
+	ClusterAttribute struct {
+		Scope string
+		Name  string
+	}
+	// ActiveClusterSelectionPolicy defines the policy for selecting the active cluster to start the workflow execution on for active-active domains.
+	// Active-active domains are domains having cluster attributes. Each cluster attribute have their own active cluster which can be different from domain's active cluster.
+	// Workflows in active-active domains are divided into sub-groups by their cluster attributes.
+	// A workflow can specify its cluster attribute by setting the active cluster selection policy in its start workflow request.
+	// If no active cluster selection policy is provided or the cluster attribute is not found in domain's metadata,
+	// the workflow's active cluster is the domain's active cluster.
+	ActiveClusterSelectionPolicy struct {
+		ClusterAttribute *ClusterAttribute
+	}
 )
 
 const (
@@ -568,12 +666,18 @@ const (
 	WorkflowIDReusePolicyTerminateIfRunning
 )
 
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified QueryConsistencyLevel = iota
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong
+)
+
 func getFeatureFlags(options *ClientOptions) FeatureFlags {
 	if options != nil {
-		return FeatureFlags{
-			WorkflowExecutionAlreadyCompletedErrorEnabled: options.FeatureFlags.WorkflowExecutionAlreadyCompletedErrorEnabled,
-			PollerAutoScalerEnabled:                       options.FeatureFlags.PollerAutoScalerEnabled,
-		}
+		return options.FeatureFlags
 	}
 	return FeatureFlags{}
 }
@@ -590,7 +694,7 @@ func NewClient(service workflowserviceclient.Interface, domain string, options *
 	if options != nil {
 		metricScope = options.MetricsScope
 	}
-	metricScope = tagScope(metricScope, tagDomain, domain, clientImplHeaderName, clientImplHeaderValue)
+	metricScope = tagScope(metricScope, tagDomain, domain, clientImplHeaderName, clientImplHeaderValue, callerTypeHeaderName, callerTypeHeaderValue)
 	var dataConverter DataConverter
 	if options != nil && options.DataConverter != nil {
 		dataConverter = options.DataConverter
@@ -640,7 +744,7 @@ func NewDomainClient(service workflowserviceclient.Interface, options *ClientOpt
 	if options != nil {
 		metricScope = options.MetricsScope
 	}
-	metricScope = tagScope(metricScope, tagDomain, "domain-client", clientImplHeaderName, clientImplHeaderValue)
+	metricScope = tagScope(metricScope, tagDomain, "domain-client", clientImplHeaderName, clientImplHeaderValue, callerTypeHeaderName, callerTypeHeaderValue)
 	if options != nil && options.Authorization != nil {
 		service = auth.NewWorkflowServiceWrapper(service, options.Authorization)
 	}

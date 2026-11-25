@@ -19,10 +19,8 @@
 // THE SOFTWARE.
 
 // when adding any, make sure you update the files that it checks in the makefile
-//go:generate mockery --srcpkg . --name Client --output ../mocks --boilerplate-file ../LICENSE
-//go:generate mockery --srcpkg . --name DomainClient --output ../mocks --boilerplate-file ../LICENSE
-//go:generate mockery --srcpkg go.uber.org/cadence/internal --name HistoryEventIterator --output ../mocks --boilerplate-file ../LICENSE
-//go:generate mockery --srcpkg go.uber.org/cadence/internal --name WorkflowRun --output ../mocks --boilerplate-file ../LICENSE
+//go:generate mockery --srcpkg . --name Client --output ../mocks
+//go:generate mockery --srcpkg . --name DomainClient --output ../mocks
 
 // Package client contains functions to create Cadence clients used to communicate to Cadence service.
 //
@@ -80,8 +78,35 @@ type (
 	// QueryWorkflowWithOptionsResponse defines the response to QueryWorkflowWithOptions
 	QueryWorkflowWithOptionsResponse = internal.QueryWorkflowWithOptionsResponse
 
+	// GetWorkflowHistoryWithOptionsRequest defines the request to GetWorkflowHistoryWithOptions
+	GetWorkflowHistoryWithOptionsRequest = internal.GetWorkflowHistoryWithOptionsRequest
+
+	// DescribeWorkflowExecutionWithOptionsRequest defines the request to DescribeWorkflowExecutionWithOptions
+	DescribeWorkflowExecutionWithOptionsRequest = internal.DescribeWorkflowExecutionWithOptionsRequest
+
 	// ParentClosePolicy defines the behavior performed on a child workflow when its parent is closed
 	ParentClosePolicy = internal.ParentClosePolicy
+
+	// QueryConsistencyLevel defines the level of consistency the query should respond with.
+	// It will default to the cluster's configuration if not specified.
+	// Valid values are QueryConsistencyLevelEventual (served by the receiving cluster), and QueryConsistencyLevelStrong (redirects to the active cluster).
+	QueryConsistencyLevel = internal.QueryConsistencyLevel
+
+	// ClusterAttribute represents a secondary attribute of global domains. Each domain can have multiple cluster attributes and each cluster attribute manages its own
+	// active cluster independently. It provides a way to split workflows from a domain into sub-domains by, distinguished by cluster attributes.
+	ClusterAttribute = internal.ClusterAttribute
+
+	// ActiveClusterSelectionPolicy - Policy for selecting the active cluster to start the workflow execution on for active-active domains.
+	// An example policy is:
+	//   {
+	//     ClusterAttribute: {
+	//       Scope: "region",
+	//       Name: "us-west",
+	//     }
+	//   }
+	// The workflow will be active in the corresponding active cluster of that cluster attribute specified in the policy
+	// If the policy is empty or nil or the cluster attribute doesn't exist, the workflow will be active in the domain's active cluster.
+	ActiveClusterSelectionPolicy = internal.ActiveClusterSelectionPolicy
 
 	// CancelOption values are functional options for the CancelWorkflow method.
 	// Supported values can be created with:
@@ -227,6 +252,26 @@ type (
 		//			events = append(events, event)
 		//		}
 		GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType s.HistoryEventFilterType) HistoryEventIterator
+
+		// GetWorkflowHistoryWithOptions gets history events of a particular workflow.
+		// See GetWorkflowHistoryWithOptionsRequest for more information.
+		// Returns an iterator of HistoryEvents - see shared.HistoryEvent for more details.
+		// Example:-
+		//	To iterate all events,
+		// 		iter := GetWorkflowHistory(ctx, workflowID, runID, isLongPoll, filterType)
+		//		events := []*shared.HistoryEvent{}
+		//		for iter.HasNext() {
+		//			event, err := iter.Next()
+		//			if err != nil {
+		//				return err
+		//			}
+		//			events = append(events, event)
+		//		}
+		// Returns the following errors:
+		//  - EntityNotExistsError
+		//  - BadRequestError
+		//  - InternalServiceError
+		GetWorkflowHistoryWithOptions(ctx context.Context, request *GetWorkflowHistoryWithOptionsRequest) HistoryEventIterator
 
 		// CompleteActivity reports activity completed.
 		// activity Execute method can return activity.ErrResultPending to
@@ -385,6 +430,14 @@ type (
 		//  - EntityNotExistError
 		DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*s.DescribeWorkflowExecutionResponse, error)
 
+		// DescribeWorkflowExecutionWithOptions returns information about the specified workflow execution.
+		// See DescribeWorkflowExecutionWithOptionsRequest for more information.
+		// The errors it can return:
+		//  - BadRequestError
+		//  - InternalServiceError
+		//  - EntityNotExistError
+		DescribeWorkflowExecutionWithOptions(ctx context.Context, request *DescribeWorkflowExecutionWithOptionsRequest) (*s.DescribeWorkflowExecutionResponse, error)
+
 		// DescribeTaskList returns information about the target tasklist, right now this API returns the
 		// pollers which polled this tasklist in last few minutes.
 		// The errors it can return:
@@ -402,6 +455,9 @@ type (
 		//  - ServiceBusyError
 		//  - EntityNotExistError
 		RefreshWorkflowTasks(ctx context.Context, workflowID, runID string) error
+
+		// ScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
+		ScheduleClient() ScheduleClient
 	}
 
 	// DomainClient is the client for managing operations on the domain.
@@ -430,7 +486,76 @@ type (
 		//	- BadRequestError
 		//	- InternalServiceError
 		Update(ctx context.Context, request *s.UpdateDomainRequest) error
+
+		// Failover a domain to another cluster.
+		// The errors it can throw:
+		//	- EntityNotExistsError
+		//	- BadRequestError
+		//	- InternalServiceError
+		Failover(ctx context.Context, request *s.FailoverDomainRequest) error
 	}
+)
+
+// ── Schedule API ──────────────────────────────────────────────────────────────
+
+type (
+	// ScheduleOverlapPolicy defines behavior when a new run is triggered while a previous run is still active.
+	ScheduleOverlapPolicy = internal.ScheduleOverlapPolicy
+
+	// ScheduleCatchUpPolicy controls how missed runs are handled when a schedule resumes after being paused.
+	ScheduleCatchUpPolicy = internal.ScheduleCatchUpPolicy
+
+	// ScheduleSpec defines when a schedule triggers.
+	ScheduleSpec = internal.ScheduleSpec
+
+	// ScheduleStartWorkflowAction describes the workflow to start when the schedule triggers.
+	ScheduleStartWorkflowAction = internal.ScheduleStartWorkflowAction
+
+	// ScheduleAction defines what the schedule does when it triggers.
+	ScheduleAction = internal.ScheduleAction
+
+	// ScheduleStartWorkflowActionDescription is the describe (read) form of the start-workflow
+	// action; its Memo/SearchAttributes are raw encoded bytes for you to decode.
+	ScheduleStartWorkflowActionDescription = internal.ScheduleStartWorkflowActionDescription
+
+	// ScheduleActionDescription is the describe (read) form of a schedule's action.
+	ScheduleActionDescription = internal.ScheduleActionDescription
+
+	// SchedulePolicies controls the runtime behavior of a schedule.
+	SchedulePolicies = internal.SchedulePolicies
+
+	// SchedulePauseInfo records when and why a schedule was paused.
+	SchedulePauseInfo = internal.SchedulePauseInfo
+
+	// ScheduleState is the runtime pause/unpause state of a schedule.
+	ScheduleState = internal.ScheduleState
+
+	// BackfillInfo describes a single active or completed backfill operation.
+	BackfillInfo = internal.BackfillInfo
+
+	// ScheduleInfo contains runtime statistics for a schedule.
+	ScheduleInfo = internal.ScheduleInfo
+
+	// ScheduleListEntry is a summary of a schedule returned by ScheduleClient.List.
+	ScheduleListEntry = internal.ScheduleListEntry
+
+	// CreateScheduleRequest is the request to ScheduleClient.Create.
+	CreateScheduleRequest = internal.CreateScheduleRequest
+
+	// ScheduleUpdate is the mutable current state passed to ScheduleClient.Update's callback.
+	ScheduleUpdate = internal.ScheduleUpdate
+
+	// BackfillRequest triggers workflow runs for a historical time range.
+	BackfillRequest = internal.BackfillRequest
+
+	// DescribeScheduleResponse is returned by ScheduleClient.Describe.
+	DescribeScheduleResponse = internal.DescribeScheduleResponse
+
+	// ListSchedulesResponse is returned by ScheduleClient.List.
+	ListSchedulesResponse = internal.ListSchedulesResponse
+
+	// ScheduleClient is the client for managing Cadence schedules within a domain.
+	ScheduleClient = internal.ScheduleClient
 )
 
 const (
@@ -460,6 +585,41 @@ const (
 	ParentClosePolicyAbandon = internal.ParentClosePolicyAbandon
 )
 
+const (
+	// QueryConsistencyLevelUnspecified will use the default consistency level provided by the cluster.
+	QueryConsistencyLevelUnspecified = internal.QueryConsistencyLevelUnspecified
+	// QueryConsistencyLevelEventual passes the request to the receiving cluster and returns eventually consistent results
+	QueryConsistencyLevelEventual = internal.QueryConsistencyLevelEventual
+	// QueryConsistencyLevelStrong will redirect the request to the active cluster and returns strongly consistent results
+	QueryConsistencyLevelStrong = internal.QueryConsistencyLevelStrong
+)
+
+const (
+	// ScheduleOverlapPolicyUnspecified defers to the server default.
+	ScheduleOverlapPolicyUnspecified = internal.ScheduleOverlapPolicyUnspecified
+	// ScheduleOverlapPolicySkipNew skips the new run if the previous is still active.
+	ScheduleOverlapPolicySkipNew = internal.ScheduleOverlapPolicySkipNew
+	// ScheduleOverlapPolicyBuffer queues new runs and executes them sequentially.
+	ScheduleOverlapPolicyBuffer = internal.ScheduleOverlapPolicyBuffer
+	// ScheduleOverlapPolicyConcurrent allows multiple runs to execute simultaneously.
+	ScheduleOverlapPolicyConcurrent = internal.ScheduleOverlapPolicyConcurrent
+	// ScheduleOverlapPolicyCancelPrevious cancels the active run and starts the new one.
+	ScheduleOverlapPolicyCancelPrevious = internal.ScheduleOverlapPolicyCancelPrevious
+	// ScheduleOverlapPolicyTerminatePrevious terminates the active run and starts the new one.
+	ScheduleOverlapPolicyTerminatePrevious = internal.ScheduleOverlapPolicyTerminatePrevious
+)
+
+const (
+	// ScheduleCatchUpPolicyUnspecified defers to the server default.
+	ScheduleCatchUpPolicyUnspecified = internal.ScheduleCatchUpPolicyUnspecified
+	// ScheduleCatchUpPolicySkip discards all missed runs.
+	ScheduleCatchUpPolicySkip = internal.ScheduleCatchUpPolicySkip
+	// ScheduleCatchUpPolicyOne executes at most one missed run on resume.
+	ScheduleCatchUpPolicyOne = internal.ScheduleCatchUpPolicyOne
+	// ScheduleCatchUpPolicyAll executes every missed run on resume.
+	ScheduleCatchUpPolicyAll = internal.ScheduleCatchUpPolicyAll
+)
+
 // NewClient creates an instance of a workflow client
 func NewClient(service workflowserviceclient.Interface, domain string, options *Options) Client {
 	return internal.NewClient(service, domain, options)
@@ -470,7 +630,7 @@ func NewDomainClient(service workflowserviceclient.Interface, options *Options) 
 	return internal.NewDomainClient(service, options)
 }
 
-// make sure if new methods are added to internal.Client they are also added to public Client.
+// Compile-time checks: ensure public interfaces stay in sync with their internal counterparts.
 var _ Client = internal.Client(nil)
 var _ internal.Client = Client(nil)
 var _ DomainClient = internal.DomainClient(nil)

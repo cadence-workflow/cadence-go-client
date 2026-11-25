@@ -365,8 +365,7 @@ func (t *TestWorkflowEnvironment) OnRequestCancelExternalWorkflow(domainName, wo
 }
 
 // OnGetVersion setup a mock for workflow.GetVersion() call. By default, if mock is not setup, the GetVersion call from
-// workflow code will always return the maxSupported version. Make it not possible to test old version branch. With this
-// mock support, it is possible to test code branch for different versions.
+// workflow code will always return the maxSupported version or version specified by GetVersionOption.
 //
 // Note: mock can be setup for a specific changeID. Or if mock.Anything is used as changeID then all calls to GetVersion
 // will be mocked. Mock for a specific changeID has higher priority over mock.Anything.
@@ -402,6 +401,13 @@ func (c *MockCallWrapper) Twice() *MockCallWrapper {
 // Times indicates that the mock should only return the indicated number of times.
 func (c *MockCallWrapper) Times(i int) *MockCallWrapper {
 	c.call.Times(i)
+	return c
+}
+
+// Maybe indicates that the mock is optional.
+// Not calling an optional mock will not cause an error while asserting expectations.
+func (c *MockCallWrapper) Maybe() *MockCallWrapper {
+	c.call.Maybe()
 	return c
 }
 
@@ -472,6 +478,7 @@ func (t *TestWorkflowEnvironment) SetTestTimeout(idleTimeout time.Duration) *Tes
 // This is based on the workflow time (a.k.a workflow.Now() time).
 func (t *TestWorkflowEnvironment) SetWorkflowTimeout(executionTimeout time.Duration) *TestWorkflowEnvironment {
 	t.impl.executionTimeout = executionTimeout
+	t.impl.workflowInfo.ExecutionStartToCloseTimeoutSeconds = int32(executionTimeout.Seconds())
 	return t
 }
 

@@ -102,6 +102,11 @@ func GetInfo(ctx context.Context) Info {
 	return internal.GetActivityInfo(ctx)
 }
 
+// HasInfo returns if the context contains activity information
+func HasInfo(ctx context.Context) bool {
+	return internal.HasActivityInfo(ctx)
+}
+
 // GetLogger returns a logger that can be used in activity
 func GetLogger(ctx context.Context) *zap.Logger {
 	return internal.GetActivityLogger(ctx)

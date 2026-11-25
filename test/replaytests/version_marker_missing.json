@@ -1,0 +1,212 @@
+[
+  {
+    "eventId": 1,
+    "timestamp": 1700000000001000000,
+    "eventType": "WorkflowExecutionStarted",
+    "taskId": 1001,
+    "workflowExecutionStartedEventAttributes": {
+      "workflowType": {
+        "name": "VersionMarkerMissingWorkflow"
+      },
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "executionStartToCloseTimeoutSeconds": 60,
+      "taskStartToCloseTimeoutSeconds": 60,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 2,
+    "timestamp": 1700000000002000000,
+    "eventType": "DecisionTaskScheduled",
+    "taskId": 1002,
+    "decisionTaskScheduledEventAttributes": {
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "startToCloseTimeoutSeconds": 60
+    }
+  },
+  {
+    "eventId": 3,
+    "timestamp": 1700000000003000000,
+    "eventType": "DecisionTaskStarted",
+    "taskId": 1003,
+    "decisionTaskStartedEventAttributes": {
+      "scheduledEventId": 2,
+      "identity": "replayer-worker",
+      "requestId": "req-2"
+    }
+  },
+  {
+    "eventId": 4,
+    "timestamp": 1700000000004000000,
+    "eventType": "DecisionTaskCompleted",
+    "taskId": 1004,
+    "decisionTaskCompletedEventAttributes": {
+      "scheduledEventId": 2,
+      "startedEventId": 3,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 5,
+    "timestamp": 1700000000005000000,
+    "eventType": "ActivityTaskScheduled",
+    "taskId": 1005,
+    "activityTaskScheduledEventAttributes": {
+      "activityId": "0",
+      "activityType": {
+        "name": "activityA"
+      },
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "scheduleToCloseTimeoutSeconds": 60,
+      "scheduleToStartTimeoutSeconds": 60,
+      "startToCloseTimeoutSeconds": 60,
+      "decisionTaskCompletedEventId": 4
+    }
+  },
+  {
+    "eventId": 6,
+    "timestamp": 1700000000006000000,
+    "eventType": "ActivityTaskStarted",
+    "taskId": 1006,
+    "activityTaskStartedEventAttributes": {
+      "scheduledEventId": 5,
+      "identity": "replayer-worker",
+      "requestId": "act-5"
+    }
+  },
+  {
+    "eventId": 7,
+    "timestamp": 1700000000007000000,
+    "eventType": "ActivityTaskCompleted",
+    "taskId": 1007,
+    "activityTaskCompletedEventAttributes": {
+      "scheduledEventId": 5,
+      "startedEventId": 6,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 8,
+    "timestamp": 1700000000008000000,
+    "eventType": "DecisionTaskScheduled",
+    "taskId": 1008,
+    "decisionTaskScheduledEventAttributes": {
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "startToCloseTimeoutSeconds": 60
+    }
+  },
+  {
+    "eventId": 9,
+    "timestamp": 1700000000009000000,
+    "eventType": "DecisionTaskStarted",
+    "taskId": 1009,
+    "decisionTaskStartedEventAttributes": {
+      "scheduledEventId": 8,
+      "identity": "replayer-worker",
+      "requestId": "req-8"
+    }
+  },
+  {
+    "eventId": 10,
+    "timestamp": 1700000000010000000,
+    "eventType": "DecisionTaskCompleted",
+    "taskId": 1010,
+    "decisionTaskCompletedEventAttributes": {
+      "scheduledEventId": 8,
+      "startedEventId": 9,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 11,
+    "timestamp": 1700000000013000000,
+    "eventType": "ActivityTaskScheduled",
+    "taskId": 1011,
+    "activityTaskScheduledEventAttributes": {
+      "activityId": "1",
+      "activityType": {
+        "name": "activityB"
+      },
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "scheduleToCloseTimeoutSeconds": 60,
+      "scheduleToStartTimeoutSeconds": 60,
+      "startToCloseTimeoutSeconds": 60,
+      "decisionTaskCompletedEventId": 10
+    }
+  },
+  {
+    "eventId": 12,
+    "timestamp": 1700000000014000000,
+    "eventType": "ActivityTaskStarted",
+    "taskId": 1012,
+    "activityTaskStartedEventAttributes": {
+      "scheduledEventId": 11,
+      "identity": "replayer-worker",
+      "requestId": "act-13"
+    }
+  },
+  {
+    "eventId": 13,
+    "timestamp": 1700000000015000000,
+    "eventType": "ActivityTaskCompleted",
+    "taskId": 1013,
+    "activityTaskCompletedEventAttributes": {
+      "scheduledEventId": 11,
+      "startedEventId": 12,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 14,
+    "timestamp": 1700000000016000000,
+    "eventType": "DecisionTaskScheduled",
+    "taskId": 1014,
+    "decisionTaskScheduledEventAttributes": {
+      "taskList": {
+        "name": "replayer-tl"
+      },
+      "startToCloseTimeoutSeconds": 60
+    }
+  },
+  {
+    "eventId": 15,
+    "timestamp": 1700000000017000000,
+    "eventType": "DecisionTaskStarted",
+    "taskId": 1015,
+    "decisionTaskStartedEventAttributes": {
+      "scheduledEventId": 14,
+      "identity": "replayer-worker",
+      "requestId": "req-16"
+    }
+  },
+  {
+    "eventId": 16,
+    "timestamp": 1700000000018000000,
+    "eventType": "DecisionTaskCompleted",
+    "taskId": 1016,
+    "decisionTaskCompletedEventAttributes": {
+      "scheduledEventId": 14,
+      "startedEventId": 15,
+      "identity": "replayer-worker"
+    }
+  },
+  {
+    "eventId": 17,
+    "timestamp": 1700000000019000000,
+    "eventType": "WorkflowExecutionCompleted",
+    "taskId": 1017,
+    "workflowExecutionCompletedEventAttributes": {
+      "decisionTaskCompletedEventId": 16
+    }
+  }
+]

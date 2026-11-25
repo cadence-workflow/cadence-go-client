@@ -56,7 +56,7 @@ const (
 	scopeNameListClosedWorkflowExecutions          = CadenceMetricsPrefix + "ListClosedWorkflowExecutions"
 	scopeNameListOpenWorkflowExecutions            = CadenceMetricsPrefix + "ListOpenWorkflowExecutions"
 	scopeNameListWorkflowExecutions                = CadenceMetricsPrefix + "ListWorkflowExecutions"
-	scopeNameListArchivedWorkflowExecutions        = CadenceMetricsPrefix + "ListArchviedExecutions"
+	scopeNameListArchivedWorkflowExecutions        = CadenceMetricsPrefix + "ListArchivedWorkflowExecutions"
 	scopeNameScanWorkflowExecutions                = CadenceMetricsPrefix + "ScanWorkflowExecutions"
 	scopeNameCountWorkflowExecutions               = CadenceMetricsPrefix + "CountWorkflowExecutions"
 	scopeNamePollForActivityTask                   = CadenceMetricsPrefix + "PollForActivityTask"
@@ -85,11 +85,25 @@ const (
 	scopeNameDescribeTaskList                      = CadenceMetricsPrefix + "DescribeTaskList"
 	scopeNameRespondQueryTaskCompleted             = CadenceMetricsPrefix + "RespondQueryTaskCompleted"
 	scopeNameDescribeWorkflowExecution             = CadenceMetricsPrefix + "DescribeWorkflowExecution"
+	scopeNameDiagnoseWorkflowExecution             = CadenceMetricsPrefix + "DiagnoseWorkflowExecution"
 	scopeNameResetStickyTaskList                   = CadenceMetricsPrefix + "ResetStickyTaskList"
 	scopeNameGetSearchAttributes                   = CadenceMetricsPrefix + "GetSearchAttributes"
 	scopeNameListTaskListPartitions                = CadenceMetricsPrefix + "ListTaskListPartitions"
 	scopeNameGetClusterInfo                        = CadenceMetricsPrefix + "GetClusterInfo"
 	scopeRefreshWorkflowTasks                      = CadenceMetricsPrefix + "RefreshWorkflowTasks"
+	scopeNameGetTaskListsByDomain                  = CadenceMetricsPrefix + "GetTaskListsByDomain"
+	scopeRestartWorkflowExecution                  = CadenceMetricsPrefix + "RestartWorkflowExecution"
+	scopeDeleteDomain                              = CadenceMetricsPrefix + "DeleteDomain"
+	scopeNameFailoverDomain                        = CadenceMetricsPrefix + "FailoverDomain"
+	scopeNameListFailoverHistory                   = CadenceMetricsPrefix + "ListFailoverHistory"
+	scopeNameBackfillSchedule                      = CadenceMetricsPrefix + "BackfillSchedule"
+	scopeNameCreateSchedule                        = CadenceMetricsPrefix + "CreateSchedule"
+	scopeNameDeleteSchedule                        = CadenceMetricsPrefix + "DeleteSchedule"
+	scopeNameDescribeSchedule                      = CadenceMetricsPrefix + "DescribeSchedule"
+	scopeNameListSchedules                         = CadenceMetricsPrefix + "ListSchedules"
+	scopeNamePauseSchedule                         = CadenceMetricsPrefix + "PauseSchedule"
+	scopeNameUnpauseSchedule                       = CadenceMetricsPrefix + "UnpauseSchedule"
+	scopeNameUpdateSchedule                        = CadenceMetricsPrefix + "UpdateSchedule"
 )
 
 // NewWorkflowServiceWrapper creates a new wrapper to WorkflowService that will emit metrics for each service call.
@@ -118,7 +132,7 @@ func (w *workflowServiceMetricsWrapper) getOperationScope(scopeName string) *ope
 }
 
 func (s *operationScope) handleError(err error) {
-	s.scope.Timer(CadenceLatency).Record(time.Since(s.startTime))
+	EmitLatency(s.scope, CadenceLatency, time.Since(s.startTime), Default1ms100s)
 	if err != nil {
 		switch err.(type) {
 		case *shared.EntityNotExistsError,
@@ -158,6 +172,13 @@ func (w *workflowServiceMetricsWrapper) DescribeDomain(ctx context.Context, requ
 func (w *workflowServiceMetricsWrapper) DescribeWorkflowExecution(ctx context.Context, request *shared.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DescribeWorkflowExecutionResponse, error) {
 	scope := w.getOperationScope(scopeNameDescribeWorkflowExecution)
 	result, err := w.service.DescribeWorkflowExecution(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	scope := w.getOperationScope(scopeNameDiagnoseWorkflowExecution)
+	result, err := w.service.DiagnoseWorkflowExecution(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }
@@ -414,8 +435,11 @@ func (w *workflowServiceMetricsWrapper) GetClusterInfo(ctx context.Context, opts
 	return result, err
 }
 
-func (w *workflowServiceMetricsWrapper) GetTaskListsByDomain(ctx context.Context, Request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
-	panic("implement me")
+func (w *workflowServiceMetricsWrapper) GetTaskListsByDomain(ctx context.Context, request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
+	scope := w.getOperationScope(scopeNameGetTaskListsByDomain)
+	result, err := w.service.GetTaskListsByDomain(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
 }
 
 func (w *workflowServiceMetricsWrapper) RefreshWorkflowTasks(ctx context.Context, request *shared.RefreshWorkflowTasksRequest, opts ...yarpc.CallOption) error {
@@ -426,8 +450,85 @@ func (w *workflowServiceMetricsWrapper) RefreshWorkflowTasks(ctx context.Context
 }
 
 func (w *workflowServiceMetricsWrapper) RestartWorkflowExecution(ctx context.Context, request *shared.RestartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.RestartWorkflowExecutionResponse, error) {
-	scope := w.getOperationScope(scopeRefreshWorkflowTasks)
+	scope := w.getOperationScope(scopeRestartWorkflowExecution)
 	resp, err := w.service.RestartWorkflowExecution(ctx, request, opts...)
 	scope.handleError(err)
 	return resp, err
+}
+
+func (w *workflowServiceMetricsWrapper) DeleteDomain(ctx context.Context, request *shared.DeleteDomainRequest, opts ...yarpc.CallOption) error {
+	scope := w.getOperationScope(scopeDeleteDomain)
+	err := w.service.DeleteDomain(ctx, request, opts...)
+	scope.handleError(err)
+	return err
+}
+
+func (w *workflowServiceMetricsWrapper) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	scope := w.getOperationScope(scopeNameFailoverDomain)
+	result, err := w.service.FailoverDomain(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	scope := w.getOperationScope(scopeNameListFailoverHistory)
+	result, err := w.service.ListFailoverHistory(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameBackfillSchedule)
+	result, err := w.service.BackfillSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameCreateSchedule)
+	result, err := w.service.CreateSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameDeleteSchedule)
+	result, err := w.service.DeleteSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameDescribeSchedule)
+	result, err := w.service.DescribeSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	scope := w.getOperationScope(scopeNameListSchedules)
+	result, err := w.service.ListSchedules(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNamePauseSchedule)
+	result, err := w.service.PauseSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameUnpauseSchedule)
+	result, err := w.service.UnpauseSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	scope := w.getOperationScope(scopeNameUpdateSchedule)
+	result, err := w.service.UpdateSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
 }

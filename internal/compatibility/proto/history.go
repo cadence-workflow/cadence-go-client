@@ -187,7 +187,7 @@ func ActivityTaskFailedEventAttributes(t *shared.ActivityTaskFailedEventAttribut
 		return nil
 	}
 	return &apiv1.ActivityTaskFailedEventAttributes{
-		Failure:          Failure(t.Reason, t.Details),
+		Failure:          FailureWithOptions(t.Reason, t.Details, t.FailureOptions),
 		ScheduledEventId: t.GetScheduledEventId(),
 		StartedEventId:   t.GetStartedEventId(),
 		Identity:         t.GetIdentity(),
@@ -223,7 +223,7 @@ func ActivityTaskStartedEventAttributes(t *shared.ActivityTaskStartedEventAttrib
 		Identity:         t.GetIdentity(),
 		RequestId:        t.GetRequestId(),
 		Attempt:          t.GetAttempt(),
-		LastFailure:      Failure(t.LastFailureReason, t.LastFailureDetails),
+		LastFailure:      FailureWithOptions(t.LastFailureReason, t.LastFailureDetails, t.LastFailureOptions),
 	}
 }
 
@@ -236,7 +236,7 @@ func ActivityTaskTimedOutEventAttributes(t *shared.ActivityTaskTimedOutEventAttr
 		ScheduledEventId: t.GetScheduledEventId(),
 		StartedEventId:   t.GetStartedEventId(),
 		TimeoutType:      TimeoutType(t.TimeoutType),
-		LastFailure:      Failure(t.LastFailureReason, t.LastFailureDetails),
+		LastFailure:      FailureWithOptions(t.LastFailureReason, t.LastFailureDetails, t.LastFailureOptions),
 	}
 }
 
@@ -534,7 +534,7 @@ func StartChildWorkflowExecutionInitiatedEventAttributes(t *shared.StartChildWor
 		ParentClosePolicy:            ParentClosePolicy(t.ParentClosePolicy),
 		Control:                      t.Control,
 		DecisionTaskCompletedEventId: t.GetDecisionTaskCompletedEventId(),
-		WorkflowIdReusePolicy:        WorkflowIdReusePolicy(t.WorkflowIdReusePolicy),
+		WorkflowIdReusePolicy:        WorkflowIDReusePolicy(t.WorkflowIdReusePolicy),
 		RetryPolicy:                  RetryPolicy(t.RetryPolicy),
 		CronSchedule:                 t.GetCronSchedule(),
 		Header:                       Header(t.Header),
@@ -542,6 +542,7 @@ func StartChildWorkflowExecutionInitiatedEventAttributes(t *shared.StartChildWor
 		SearchAttributes:             SearchAttributes(t.SearchAttributes),
 		DelayStart:                   secondsToDuration(t.DelayStartSeconds),
 		JitterStart:                  secondsToDuration(t.JitterStartSeconds),
+		FirstRunAt:                   unixNanoToTime(t.FirstRunAtTimestamp),
 	}
 }
 

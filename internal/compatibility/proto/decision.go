@@ -142,6 +142,8 @@ func Decision(d *shared.Decision) *apiv1.Decision {
 				Memo:                         Memo(attr.Memo),
 				SearchAttributes:             SearchAttributes(attr.SearchAttributes),
 				JitterStart:                  secondsToDuration(attr.JitterStartSeconds),
+				CronOverlapPolicy:            CronOverlapPolicy(attr.CronOverlapPolicy),
+				ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(attr.ActiveClusterSelectionPolicy),
 			},
 		}
 	case shared.DecisionTypeStartChildWorkflowExecution:
@@ -157,12 +159,14 @@ func Decision(d *shared.Decision) *apiv1.Decision {
 				TaskStartToCloseTimeout:      secondsToDuration(attr.TaskStartToCloseTimeoutSeconds),
 				ParentClosePolicy:            ParentClosePolicy(attr.ParentClosePolicy),
 				Control:                      attr.Control,
-				WorkflowIdReusePolicy:        WorkflowIdReusePolicy(attr.WorkflowIdReusePolicy),
+				WorkflowIdReusePolicy:        WorkflowIDReusePolicy(attr.WorkflowIdReusePolicy),
 				RetryPolicy:                  RetryPolicy(attr.RetryPolicy),
 				CronSchedule:                 attr.GetCronSchedule(),
 				Header:                       Header(attr.Header),
 				Memo:                         Memo(attr.Memo),
 				SearchAttributes:             SearchAttributes(attr.SearchAttributes),
+				CronOverlapPolicy:            CronOverlapPolicy(attr.CronOverlapPolicy),
+				ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy(attr.ActiveClusterSelectionPolicy),
 			},
 		}
 	case shared.DecisionTypeSignalExternalWorkflowExecution:

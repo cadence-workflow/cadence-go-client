@@ -21,6 +21,8 @@
 package cadence
 
 import (
+	"time"
+
 	"go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal"
 	"go.uber.org/cadence/workflow"
@@ -29,6 +31,8 @@ import (
 type (
 	// CustomError returned from workflow and activity implementations with reason and optional details.
 	CustomError = internal.CustomError
+
+	CustomErrorOption = internal.CustomErrorOption
 
 	// CanceledError returned when operation was canceled.
 	CanceledError = internal.CanceledError
@@ -44,6 +48,21 @@ var ErrNoData = internal.ErrNoData
 // Use CustomError for any use case specific errors that cross activity and child workflow boundaries.
 func NewCustomError(reason string, details ...interface{}) *CustomError {
 	return internal.NewCustomError(reason, details...)
+}
+
+// WithFailureCategory sets the failure category on a CustomError. The FailureCategory can influence retry and logging
+// behavior independently of the RetryPolicy. By default, the FailureCategory is shared.FailureCategoryStandard.
+// The result of this function should be passed to NewCustomError in order to include it.
+// This is currently only supported for Activity results
+func WithFailureCategory(failureCategory shared.FailureCategory) CustomErrorOption {
+	return internal.WithFailureCategory(failureCategory)
+}
+
+// WithNextRetryDelay overrides the delay until the next attempt of the activity returning this error. This does not
+// influence whether the activity itself will be retried, which is still determined by the RetryPolicy and FailureCategory.
+// The result of this function should be passed to NewCustomError in order to include it.
+func WithNextRetryDelay(delay time.Duration) CustomErrorOption {
+	return internal.WithNextRetryDelay(delay)
 }
 
 // NewCanceledError creates CanceledError instance.

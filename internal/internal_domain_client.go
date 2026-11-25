@@ -104,3 +104,20 @@ func (dc *domainClient) Update(ctx context.Context, request *s.UpdateDomainReque
 		},
 	)
 }
+
+// Failover a domain to another cluster.
+// The errors it can throw:
+//   - EntityNotExistsError
+//   - BadRequestError
+//   - InternalServiceError
+func (dc *domainClient) Failover(ctx context.Context, request *s.FailoverDomainRequest) error {
+	return retryWhileTransientError(
+		ctx,
+		func() error {
+			tchCtx, cancel, opt := newChannelContext(ctx, dc.featureFlags)
+			defer cancel()
+			_, err := dc.workflowService.FailoverDomain(tchCtx, request, opt...)
+			return err
+		},
+	)
+}

@@ -520,7 +520,7 @@ func (s *workflowRunSuite) TestExecuteWorkflowWorkflowExecutionAlreadyStartedErr
 	}
 	getHistory := s.workflowServiceClient.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).
 		Return(getResponse, nil).Times(1)
-	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opt1 interface{}, opt2 interface{}, opt3 interface{}, opt4 interface{}) {
+	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) {
 		workflowID := getRequest.Execution.WorkflowId
 		s.NotNil(workflowID)
 		s.NotEmpty(*workflowID)
@@ -576,7 +576,7 @@ func (s *workflowRunSuite) TestExecuteWorkflowWorkflowExecutionAlreadyStartedErr
 	}
 	getHistory := s.workflowServiceClient.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).
 		Return(getResponse, nil).Times(1)
-	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opt1 interface{}, opt2 interface{}, opt3 interface{}, opt4 interface{}) {
+	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) {
 		workflowID := getRequest.Execution.WorkflowId
 		s.NotNil(workflowID)
 		s.NotEmpty(*workflowID)
@@ -627,7 +627,7 @@ func (s *workflowRunSuite) TestExecuteWorkflow_NoIdInOptions() {
 	}
 	var wid *string
 	getHistory := s.workflowServiceClient.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).Return(getResponse, nil).Times(1)
-	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opt1 interface{}, opt2 interface{}, opt3 interface{}, opt4 interface{}) {
+	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) {
 		wid = getRequest.Execution.WorkflowId
 		s.NotNil(wid)
 		s.NotEmpty(*wid)
@@ -680,7 +680,7 @@ func (s *workflowRunSuite) TestExecuteWorkflow_NoIdInOptions_RawHistory() {
 	}
 	var wid *string
 	getHistory := s.workflowServiceClient.EXPECT().GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), callOptions()...).Return(getResponse, nil).Times(1)
-	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opt1 interface{}, opt2 interface{}, opt3 interface{}, opt4 interface{}) {
+	getHistory.Do(func(ctx interface{}, getRequest *shared.GetWorkflowExecutionHistoryRequest, opts ...yarpc.CallOption) {
 		wid = getRequest.Execution.WorkflowId
 		s.NotNil(wid)
 		s.NotEmpty(*wid)
@@ -1047,6 +1047,31 @@ func (s *workflowClientTestSuite) TearDownSubTest() {
 	s.TearDownTest()
 }
 
+func (s *workflowClientTestSuite) TestSignalWorkflow() {
+	signalName := "my signal"
+	signalInput := []byte("my signal input")
+
+	s.service.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, request *shared.SignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.SignalWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			SignalName: common.StringPtr(signalName),
+			Input:      signalInput,
+			Identity:   common.StringPtr(identity),
+			RequestId:  nil,
+		}, request)
+		return nil
+	}).Times(1)
+
+	err := s.client.SignalWorkflow(context.Background(), workflowID, runID, signalName, signalInput)
+	s.NoError(err)
+}
+
 func (s *workflowClientTestSuite) TestSignalWithStartWorkflow() {
 	signalName := "my signal"
 	signalInput := []byte("my signal input")
@@ -1308,7 +1333,7 @@ func (s *workflowClientTestSuite) TestSignalWithStartWorkflow_WithMemoAndSearchA
 	startResp := &shared.StartWorkflowExecutionResponse{}
 
 	s.service.EXPECT().SignalWithStartWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any(),
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(startResp, nil).
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(startResp, nil).
 		Do(func(_ interface{}, req *shared.SignalWithStartWorkflowExecutionRequest, _ ...interface{}) {
 			// trailing newline is added by the dataconverter
 			s.Equal([]byte("\"memo value\"\n"), req.Memo.Fields["testMemo"], "memos use the dataconverter because they are user data")
@@ -1339,7 +1364,7 @@ func (s *workflowClientTestSuite) TestSignalWithStartWorkflowAsync_WithMemoAndSe
 	}
 
 	s.service.EXPECT().SignalWithStartWorkflowExecutionAsync(gomock.Any(), gomock.Any(), gomock.Any(),
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).
 		Do(func(_ interface{}, asyncReq *shared.SignalWithStartWorkflowExecutionAsyncRequest, _ ...interface{}) {
 			req := asyncReq.Request
 			// trailing newline is added by the dataconverter
@@ -1393,7 +1418,7 @@ func (s *workflowClientTestSuite) TestSignalWithStartWorkflowAsync_RPCError() {
 	}
 
 	s.service.EXPECT().SignalWithStartWorkflowExecutionAsync(gomock.Any(), gomock.Any(), gomock.Any(),
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("failed")).MinTimes(1)
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("failed")).MinTimes(1)
 
 	// Pass a context with a deadline so error retry doesn't take forever
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -1707,44 +1732,48 @@ func serializeEvents(events []*shared.HistoryEvent) *shared.DataBlob {
 }
 
 func (s *workflowClientTestSuite) TestCancelWorkflow() {
-	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), newPartialCancelRequestMatcher(common.StringPtr("testWf"), common.StringPtr("test reason")), gomock.All(gomock.Any())).Return(nil)
+	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), gomock.Any(), gomock.All(gomock.Any())).DoAndReturn(func(_ context.Context, request *shared.RequestCancelWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.RequestCancelWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			Identity:            common.StringPtr(identity),
+			RequestId:           nil,
+			Cause:               common.StringPtr("test reason"),
+			FirstExecutionRunID: nil,
+		}, request)
+		return nil
+	}).Times(1)
 
-	err := s.client.CancelWorkflow(context.Background(), "testWf", "testRun", WithCancelReason("test reason"))
+	err := s.client.CancelWorkflow(context.Background(), workflowID, runID, WithCancelReason("test reason"))
 
 	s.NoError(err)
 }
 
 func (s *workflowClientTestSuite) TestCancelWorkflowBackwardsCompatible() {
-	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), newPartialCancelRequestMatcher(common.StringPtr("testWf"), nil), gomock.All(gomock.Any())).Return(nil)
-
-	err := s.client.CancelWorkflow(context.Background(), "testWf", "testRun")
+	s.service.EXPECT().RequestCancelWorkflowExecution(gomock.Any(), gomock.Any(), gomock.All(gomock.Any())).DoAndReturn(func(_ context.Context, request *shared.RequestCancelWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+		s.NotNil(request.RequestId)
+		request.RequestId = nil
+		s.Equal(&shared.RequestCancelWorkflowExecutionRequest{
+			Domain: common.StringPtr(domain),
+			WorkflowExecution: &shared.WorkflowExecution{
+				WorkflowId: common.StringPtr(workflowID),
+				RunId:      common.StringPtr(runID),
+			},
+			Identity:            common.StringPtr(identity),
+			RequestId:           nil,
+			Cause:               nil,
+			FirstExecutionRunID: nil,
+		}, request)
+		return nil
+	}).Times(1)
+	err := s.client.CancelWorkflow(context.Background(), workflowID, runID)
 
 	s.NoError(err)
-}
-
-type PartialCancelRequestMatcher struct {
-	wfId  *string
-	cause *string
-}
-
-func newPartialCancelRequestMatcher(wfId *string, cause *string) gomock.Matcher {
-	return &PartialCancelRequestMatcher{
-		wfId:  wfId,
-		cause: cause,
-	}
-}
-
-func (m *PartialCancelRequestMatcher) Matches(a interface{}) bool {
-	aEx, ok := a.(*shared.RequestCancelWorkflowExecutionRequest)
-	if !ok {
-		return false
-	}
-
-	return (aEx.Cause == m.cause || *aEx.Cause == *m.cause) && *aEx.WorkflowExecution.WorkflowId == *m.wfId
-}
-
-func (m *PartialCancelRequestMatcher) String() string {
-	return "partial cancellation request matcher matches cause and wfId fields"
 }
 
 func (s *workflowClientTestSuite) TestTerminateWorkflow() {
@@ -2023,6 +2052,107 @@ func (s *workflowClientTestSuite) TestDescribeWorkflowExecution() {
 	}
 }
 
+func (s *workflowClientTestSuite) TestDescribeWorkflowExecutionWithOptions() {
+	testcases := []struct {
+		name              string
+		request           *DescribeWorkflowExecutionWithOptionsRequest
+		requestValidator  func(req *shared.DescribeWorkflowExecutionRequest)
+		rpcError          error
+		response          *shared.DescribeWorkflowExecutionResponse
+		responseValidator func(resp *shared.DescribeWorkflowExecutionResponse, err error)
+	}{
+		{
+			name: "success without query consistency level",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Nil(req.QueryConsistencyLevel, "should be nil when not specified")
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "success with query consistency level eventual",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelEventual, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "success with query consistency level strong",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.DescribeWorkflowExecutionResponse{},
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.NoError(err)
+				s.NotNil(resp)
+			},
+		},
+		{
+			name: "RPC failure",
+			request: &DescribeWorkflowExecutionWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+			},
+			requestValidator: func(req *shared.DescribeWorkflowExecutionRequest) {},
+			rpcError:         &shared.AccessDeniedError{},
+			response:         nil,
+			responseValidator: func(resp *shared.DescribeWorkflowExecutionResponse, err error) {
+				s.Equal(&shared.AccessDeniedError{}, err)
+				s.Nil(resp)
+			},
+		},
+	}
+
+	for _, tt := range testcases {
+		s.Run(tt.name, func() {
+			s.service.EXPECT().
+				DescribeWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *shared.DescribeWorkflowExecutionRequest, _ ...interface{}) {
+					tt.requestValidator(req)
+				}).
+				Return(tt.response, tt.rpcError)
+
+			resp, err := s.client.DescribeWorkflowExecutionWithOptions(context.Background(), tt.request)
+			tt.responseValidator(resp, err)
+		})
+	}
+}
+
 func (s *workflowClientTestSuite) TestCompleteActivity() {
 	testcases := []struct {
 		name           string
@@ -2137,10 +2267,11 @@ func (s *workflowClientTestSuite) TestCompleteActivity() {
 
 			mockRPC: func() {
 				request := &shared.RespondActivityTaskFailedRequest{
-					TaskToken: []byte(taskToken),
-					Reason:    common.StringPtr("some reason"),
-					Details:   []byte("\"some details\"\n"),
-					Identity:  common.StringPtr(identity),
+					TaskToken:      []byte(taskToken),
+					Reason:         common.StringPtr("some reason"),
+					Details:        []byte("\"some details\"\n"),
+					Identity:       common.StringPtr(identity),
+					FailureOptions: &shared.FailureOptions{FailureCategory: shared.FailureCategoryStandard.Ptr()},
 				}
 				s.service.EXPECT().
 					RespondActivityTaskFailed(gomock.Any(), request, gomock.Any()).
@@ -2296,13 +2427,14 @@ func (s *workflowClientTestSuite) TestCompleteActivityByID() {
 
 			mockRPC: func() {
 				request := &shared.RespondActivityTaskFailedByIDRequest{
-					Domain:     common.StringPtr(domain),
-					WorkflowID: common.StringPtr(workflowID),
-					RunID:      common.StringPtr(runID),
-					ActivityID: common.StringPtr(activityID),
-					Reason:     common.StringPtr("some reason"),
-					Details:    []byte("\"some details\"\n"),
-					Identity:   common.StringPtr(identity),
+					Domain:         common.StringPtr(domain),
+					WorkflowID:     common.StringPtr(workflowID),
+					RunID:          common.StringPtr(runID),
+					ActivityID:     common.StringPtr(activityID),
+					Reason:         common.StringPtr("some reason"),
+					Details:        []byte("\"some details\"\n"),
+					Identity:       common.StringPtr(identity),
+					FailureOptions: &shared.FailureOptions{FailureCategory: shared.FailureCategoryStandard.Ptr()},
 				}
 				s.service.EXPECT().
 					RespondActivityTaskFailedByID(gomock.Any(), request, gomock.Any()).
@@ -2521,6 +2653,202 @@ func (s *workflowClientTestSuite) TestGetWorkflowHistory() {
 	}
 }
 
+func (s *workflowClientTestSuite) TestGetWorkflowHistoryWithOptions() {
+	testcases := []struct {
+		name              string
+		request           *GetWorkflowHistoryWithOptionsRequest
+		requestValidator  func(req *shared.GetWorkflowExecutionHistoryRequest)
+		rpcError          error
+		response          *shared.GetWorkflowExecutionHistoryResponse
+		responseValidator func(iter HistoryEventIterator)
+	}{
+		{
+			name: "success without query consistency level",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+				IsLongPoll: false,
+				FilterType: shared.HistoryEventFilterTypeAllEvent,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.Nil(req.QueryConsistencyLevel, "should be nil when not specified")
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(1)},
+						{EventId: common.Int64Ptr(2)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(1), event.GetEventId())
+			},
+		},
+		{
+			name: "success with query consistency level eventual",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            true,
+				FilterType:            shared.HistoryEventFilterTypeCloseEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelEventual,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(true, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeCloseEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelEventual, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(10)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(10), event.GetEventId())
+			},
+		},
+		{
+			name: "success with query consistency level strong",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            false,
+				FilterType:            shared.HistoryEventFilterTypeAllEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(5)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+				s.True(iter.HasNext())
+				event, nextErr := iter.Next()
+				s.NoError(nextErr)
+				s.Equal(int64(5), event.GetEventId())
+			},
+		},
+		{
+			name: "success with multiple events and pagination",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID:            workflowID,
+				RunID:                 runID,
+				IsLongPoll:            false,
+				FilterType:            shared.HistoryEventFilterTypeAllEvent,
+				QueryConsistencyLevel: QueryConsistencyLevelStrong,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {
+				s.Equal(domain, req.GetDomain())
+				s.Equal(workflowID, req.GetExecution().GetWorkflowId())
+				s.Equal(runID, req.GetExecution().GetRunId())
+				s.Equal(false, req.GetWaitForNewEvent())
+				s.Equal(shared.HistoryEventFilterTypeAllEvent, req.GetHistoryEventFilterType())
+				s.NotNil(req.QueryConsistencyLevel)
+				s.Equal(shared.QueryConsistencyLevelStrong, *req.QueryConsistencyLevel)
+			},
+			rpcError: nil,
+			response: &shared.GetWorkflowExecutionHistoryResponse{
+				History: &shared.History{
+					Events: []*shared.HistoryEvent{
+						{EventId: common.Int64Ptr(1)},
+						{EventId: common.Int64Ptr(2)},
+						{EventId: common.Int64Ptr(3)},
+						{EventId: common.Int64Ptr(4)},
+					},
+				},
+				NextPageToken: nil,
+			},
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter)
+
+				// Check that the iterator returns all events in order
+				for i := 1; i <= 4; i++ {
+					s.True(iter.HasNext(), "should have event %d", i)
+					event, nextErr := iter.Next()
+					s.NoError(nextErr)
+					s.Equal(int64(i), event.GetEventId())
+				}
+
+				// Verify no more events
+				s.False(iter.HasNext(), "should not have more events")
+			},
+		},
+		{
+			name: "RPC failure",
+			request: &GetWorkflowHistoryWithOptionsRequest{
+				WorkflowID: workflowID,
+				RunID:      runID,
+				IsLongPoll: false,
+				FilterType: shared.HistoryEventFilterTypeAllEvent,
+			},
+			requestValidator: func(req *shared.GetWorkflowExecutionHistoryRequest) {},
+			rpcError:         &shared.AccessDeniedError{},
+			response:         nil,
+			responseValidator: func(iter HistoryEventIterator) {
+				s.NotNil(iter, "iterator should be returned")
+
+				// Error should be returned when iterator is used
+				s.True(iter.HasNext(), "should have next to trigger error")
+				event, iterErr := iter.Next()
+				s.Equal(&shared.AccessDeniedError{}, iterErr)
+				s.Nil(event)
+			},
+		},
+	}
+
+	for _, tt := range testcases {
+		s.Run(tt.name, func() {
+			s.service.EXPECT().
+				GetWorkflowExecutionHistory(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *shared.GetWorkflowExecutionHistoryRequest, _ ...interface{}) {
+					tt.requestValidator(req)
+				}).
+				Return(tt.response, tt.rpcError)
+
+			iter := s.client.GetWorkflowHistoryWithOptions(context.Background(), tt.request)
+			tt.responseValidator(iter)
+		})
+	}
+}
+
 func TestGetWorkflowStartRequest(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -2539,6 +2867,13 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				DecisionTaskStartToCloseTimeout: 5 * time.Second,
 				DelayStart:                      0 * time.Second,
 				JitterStart:                     0 * time.Second,
+				CronOverlapPolicy:               shared.CronOverlapPolicyBufferone,
+				ActiveClusterSelectionPolicy: &ActiveClusterSelectionPolicy{
+					ClusterAttribute: &ClusterAttribute{
+						Scope: "region",
+						Name:  "us-east-1",
+					},
+				},
 			},
 			workflowFunc: func(ctx Context) {},
 			wantRequest: &shared.StartWorkflowExecutionRequest{
@@ -2554,10 +2889,61 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 				TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(5),
 				DelayStartSeconds:                   common.Int32Ptr(0),
 				JitterStartSeconds:                  common.Int32Ptr(0),
+				FirstRunAtTimestamp:                 common.Int64Ptr(0),
 				CronSchedule:                        common.StringPtr(""),
 				Header:                              &shared.Header{Fields: map[string][]byte{}},
 				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
+				CronOverlapPolicy:                   shared.CronOverlapPolicyBufferone.Ptr(),
+				ActiveClusterSelectionPolicy: &shared.ActiveClusterSelectionPolicy{
+					ClusterAttribute: &shared.ClusterAttribute{
+						Scope: common.StringPtr("region"),
+						Name:  common.StringPtr("us-east-1"),
+					},
+				},
 			},
+		},
+		{
+			name: "with RequestID",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantRequest: &shared.StartWorkflowExecutionRequest{
+				Domain:     common.StringPtr(domain),
+				RequestId:  common.StringPtr("550e8400-e29b-41d4-a716-446655440000"),
+				WorkflowId: common.StringPtr(workflowID),
+				WorkflowType: &shared.WorkflowType{
+					Name: common.StringPtr("go.uber.org/cadence/internal.TestGetWorkflowStartRequest.func2"),
+				},
+				TaskList: &shared.TaskList{
+					Name: common.StringPtr(tasklist),
+				},
+				ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(10),
+				TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(5),
+				DelayStartSeconds:                   common.Int32Ptr(0),
+				JitterStartSeconds:                  common.Int32Ptr(0),
+				FirstRunAtTimestamp:                 common.Int64Ptr(0),
+				CronSchedule:                        common.StringPtr(""),
+				Header:                              &shared.Header{Fields: map[string][]byte{}},
+				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
+				CronOverlapPolicy:                   shared.CronOverlapPolicySkipped.Ptr(),
+			},
+		},
+		{
+			name: "invalid RequestID",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "not-a-uuid",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
 		},
 		{
 			name: "missing TaskList",
@@ -2625,6 +3011,19 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 			wantErr:      "Invalid JitterStart option",
 		},
 		{
+			name: "negative firstRunAtTimestamp",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+				DelayStart:                      0 * time.Second,
+				FirstRunAt:                      time.Unix(-12, 0), // this causes error
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "Invalid FirstRunAt option",
+		},
+		{
 			name: "invalid workflow func",
 			options: StartWorkflowOptions{
 				ID:                              workflowID,
@@ -2662,7 +3061,116 @@ func TestGetWorkflowStartRequest(t *testing.T) {
 
 			// set the randomized fields in the expected request before comparison
 			tc.wantRequest.Identity = &wc.identity
-			tc.wantRequest.RequestId = gotReq.RequestId
+			if tc.wantRequest.RequestId == nil {
+				tc.wantRequest.RequestId = gotReq.RequestId
+			}
+
+			assert.Equal(t, tc.wantRequest, gotReq)
+		})
+	}
+}
+
+func TestGetSignalWithStartRequest(t *testing.T) {
+	tests := []struct {
+		name         string
+		workflowID   string
+		signalName   string
+		signalArg    interface{}
+		options      StartWorkflowOptions
+		workflowFunc interface{}
+		args         []interface{}
+		wantRequest  *shared.SignalWithStartWorkflowExecutionRequest
+		wantErr      string
+	}{
+		{
+			name:       "with RequestID",
+			workflowID: workflowID,
+			signalName: "signal",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "550e8400-e29b-41d4-a716-446655440000",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantRequest: &shared.SignalWithStartWorkflowExecutionRequest{
+				Domain:     common.StringPtr(domain),
+				RequestId:  common.StringPtr("550e8400-e29b-41d4-a716-446655440000"),
+				WorkflowId: common.StringPtr(workflowID),
+				WorkflowType: &shared.WorkflowType{
+					Name: common.StringPtr("go.uber.org/cadence/internal.TestGetSignalWithStartRequest.func1"),
+				},
+				TaskList: &shared.TaskList{
+					Name: common.StringPtr(tasklist),
+				},
+				ExecutionStartToCloseTimeoutSeconds: common.Int32Ptr(10),
+				TaskStartToCloseTimeoutSeconds:      common.Int32Ptr(5),
+				SignalName:                          common.StringPtr("signal"),
+				SignalInput:                         []byte("null\n"),
+				DelayStartSeconds:                   common.Int32Ptr(0),
+				JitterStartSeconds:                  common.Int32Ptr(0),
+				FirstRunAtTimestamp:                 common.Int64Ptr(0),
+				CronSchedule:                        common.StringPtr(""),
+				Header:                              &shared.Header{Fields: map[string][]byte{}},
+				WorkflowIdReusePolicy:               shared.WorkflowIdReusePolicyAllowDuplicateFailedOnly.Ptr(),
+				CronOverlapPolicy:                   shared.CronOverlapPolicySkipped.Ptr(),
+			},
+		},
+		{
+			name:       "invalid RequestID",
+			workflowID: workflowID,
+			signalName: "signal",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				RequestID:                       "not-a-uuid",
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "invalid RequestID",
+		},
+		{
+			name: "first run at negative",
+			options: StartWorkflowOptions{
+				ID:                              workflowID,
+				TaskList:                        tasklist,
+				ExecutionStartToCloseTimeout:    10 * time.Second,
+				DecisionTaskStartToCloseTimeout: 5 * time.Second,
+				DelayStart:                      0 * time.Second,
+				JitterStart:                     0 * time.Second,
+				FirstRunAt:                      time.Unix(-12, 0),
+			},
+			workflowFunc: func(ctx Context) {},
+			wantErr:      "Invalid FirstRunAt option",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			service := workflowservicetest.NewMockClient(mockCtrl)
+			wc, ok := NewClient(service, domain, &ClientOptions{
+				Identity: "test-identity",
+			}).(*workflowClient)
+
+			if !ok {
+				t.Fatalf("expected NewClient to return a *workflowClient, but got %T", wc)
+			}
+
+			gotReq, err := wc.getSignalWithStartRequest(context.Background(), "", tc.workflowID, tc.signalName, tc.signalArg, tc.options, tc.workflowFunc, tc.args...)
+			if tc.wantErr != "" {
+				assert.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+
+			assert.NoError(t, err)
+
+			// set the randomized fields in the expected request before comparison
+			tc.wantRequest.Identity = &wc.identity
+			if tc.wantRequest.RequestId == nil {
+				tc.wantRequest.RequestId = gotReq.RequestId
+			}
 
 			assert.Equal(t, tc.wantRequest, gotReq)
 		})

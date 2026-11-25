@@ -23,16 +23,22 @@ package internal
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"go.uber.org/cadence/internal/common/testlogger"
+
+	"github.com/gogo/protobuf/jsonpb"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	apiv1 "github.com/uber/cadence-idl/go/proto/api/v1"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 
 	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
 	m "go.uber.org/cadence/.gen/go/shared"
@@ -86,16 +92,34 @@ func (s *WorkersTestSuite) TestWorkflowWorker() {
 	domain := "testDomain"
 	logger, _ := zap.NewDevelopment()
 
-	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil)
-	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).Return(&m.PollForDecisionTaskResponse{}, nil).AnyTimes()
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.DescribeDomainRequest, opts ...yarpc.CallOption) (*m.DescribeDomainResponse, error) {
+		call := yarpc.CallFromContext(ctx) // DescribeDomain does not have yarpc call options
+		require.Nil(s.T(), call)
+		return &m.DescribeDomainResponse{}, nil
+	})
+	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForDecisionTaskRequest, opts ...yarpc.CallOption) (*m.PollForDecisionTaskResponse, error) {
+		call := yarpc.CallFromContext(ctx)
+		require.NotNil(s.T(), call)
+		featureFlagsStr := call.Header(clientFeatureFlagsHeaderName)
+		var unmarshaler jsonpb.Unmarshaler
+		var featureFlags apiv1.FeatureFlags
+		err := unmarshaler.Unmarshal(strings.NewReader(featureFlagsStr), &featureFlags)
+		require.NoError(s.T(), err)
+		s.True(featureFlags.AutoforwardingEnabled)
+		return &m.PollForDecisionTaskResponse{}, nil
+	}).AnyTimes()
 	s.service.EXPECT().RespondDecisionTaskCompleted(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentDecisionTaskPollers: 5,
-			Logger:                           logger},
+			Logger:                           logger,
+			FeatureFlags: FeatureFlags{
+				AutoforwardingEnabled: true,
+			},
+		},
 		UserContext:       ctx,
 		UserContextCancel: cancel,
 	}
@@ -124,10 +148,10 @@ func (s *WorkersTestSuite) testActivityWorker(useLocallyDispatched bool) {
 	s.service.EXPECT().RespondActivityTaskCompleted(gomock.Any(), gomock.Any(), callOptions()...).Return(nil).AnyTimes()
 
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentActivityTaskPollers: 5,
-			Logger:                           zaptest.NewLogger(s.T())},
+			Logger:                           testlogger.NewZap(s.T())},
 	}
 	overrides := &workerOverrides{activityTaskHandler: newSampleActivityTaskHandler(), useLocallyDispatchedActivityPoller: useLocallyDispatched}
 	a := &greeterActivity{}
@@ -155,6 +179,7 @@ func (s *WorkersTestSuite) TestActivityWorkerStop() {
 		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
 		StartedTimestamp:                common.Int64Ptr(time.Now().UnixNano()),
 		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
 		WorkflowType: &m.WorkflowType{
 			Name: common.StringPtr("wType"),
 		},
@@ -168,12 +193,12 @@ func (s *WorkersTestSuite) TestActivityWorkerStop() {
 	stopC := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	executionParameters := workerExecutionParameters{
-		TaskList: "testTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: AugmentWorkerOptions(
 			WorkerOptions{
 				MaxConcurrentActivityTaskPollers:   5,
 				MaxConcurrentActivityExecutionSize: 2,
-				Logger:                             zaptest.NewLogger(s.T()),
+				Logger:                             testlogger.NewZap(s.T()),
 			},
 		),
 		UserContext:       ctx,
@@ -209,10 +234,10 @@ func (s *WorkersTestSuite) TestPollForDecisionTask_InternalServiceError() {
 	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).Return(&m.PollForDecisionTaskResponse{}, &m.InternalServiceError{}).AnyTimes()
 
 	executionParameters := workerExecutionParameters{
-		TaskList: "testDecisionTaskList",
+		TaskList: &m.TaskList{Name: common.StringPtr("testDecisionTaskList"), Kind: m.TaskListKindNormal.Ptr()},
 		WorkerOptions: WorkerOptions{
 			MaxConcurrentDecisionTaskPollers: 5,
-			Logger:                           zaptest.NewLogger(s.T())},
+			Logger:                           testlogger.NewZap(s.T())},
 	}
 	overrides := &workerOverrides{workflowTaskHandler: newSampleWorkflowTaskHandler()}
 	workflowWorker := newWorkflowWorkerInternal(
@@ -336,11 +361,12 @@ func (s *WorkersTestSuite) TestLongRunningDecisionTask() {
 	}).Times(2)
 
 	options := WorkerOptions{
-		Logger:                zaptest.NewLogger(s.T()),
+		Logger:                testlogger.NewZap(s.T()),
 		DisableActivityWorker: true,
 		Identity:              "test-worker-identity",
 	}
-	worker := newAggregatedWorker(s.service, domain, taskList, options)
+	worker, err := newAggregatedWorker(s.service, domain, taskList, options)
+	s.Require().NoError(err)
 	worker.RegisterWorkflowWithOptions(
 		longDecisionWorkflowFn,
 		RegisterWorkflowOptions{Name: "long-running-decision-workflow-type"},
@@ -501,7 +527,7 @@ func (s *WorkersTestSuite) TestQueryTask_WorkflowCacheEvicted() {
 	s.service.EXPECT().PollForDecisionTask(gomock.Any(), gomock.Any(), callOptions()...).Return(&m.PollForDecisionTaskResponse{}, &m.InternalServiceError{}).AnyTimes()
 
 	options := WorkerOptions{
-		Logger:                zaptest.NewLogger(s.T()),
+		Logger:                testlogger.NewZap(s.T()),
 		DisableActivityWorker: true,
 		Identity:              "test-worker-identity",
 		DataConverter:         dc,
@@ -515,7 +541,8 @@ func (s *WorkersTestSuite) TestQueryTask_WorkflowCacheEvicted() {
 		// See the mock function for the second PollForDecisionTask call above.
 		MaxConcurrentDecisionTaskExecutionSize: 1,
 	}
-	worker := newAggregatedWorker(s.service, domain, taskList, options)
+	worker, err := newAggregatedWorker(s.service, domain, taskList, options)
+	s.Require().NoError(err)
 	worker.RegisterWorkflowWithOptions(
 		queryWorkflowFn,
 		RegisterWorkflowOptions{Name: workflowType},
@@ -634,11 +661,12 @@ func (s *WorkersTestSuite) TestMultipleLocalActivities() {
 	}).Times(1)
 
 	options := WorkerOptions{
-		Logger:                zaptest.NewLogger(s.T()),
+		Logger:                testlogger.NewZap(s.T()),
 		DisableActivityWorker: true,
 		Identity:              "test-worker-identity",
 	}
-	worker := newAggregatedWorker(s.service, domain, taskList, options)
+	worker, err := newAggregatedWorker(s.service, domain, taskList, options)
+	s.Require().NoError(err)
 	worker.RegisterWorkflowWithOptions(
 		longDecisionWorkflowFn,
 		RegisterWorkflowOptions{Name: "multiple-local-activities-workflow-type"},
@@ -745,10 +773,11 @@ func (s *WorkersTestSuite) TestLocallyDispatchedActivity() {
 	}).Times(1)
 
 	options := WorkerOptions{
-		Logger:   zaptest.NewLogger(s.T()),
+		Logger:   testlogger.NewZap(s.T()),
 		Identity: "test-worker-identity",
 	}
-	worker := newAggregatedWorker(s.service, domain, taskList, options)
+	worker, err := newAggregatedWorker(s.service, domain, taskList, options)
+	s.Require().NoError(err)
 	worker.RegisterWorkflowWithOptions(
 		workflowFn,
 		RegisterWorkflowOptions{Name: workflowType},
@@ -810,7 +839,7 @@ func (s *WorkersTestSuite) TestMultipleLocallyDispatchedActivity() {
 	}
 
 	options := WorkerOptions{
-		Logger:   zaptest.NewLogger(s.T()),
+		Logger:   testlogger.NewZap(s.T()),
 		Identity: "test-worker-identity",
 	}
 
@@ -859,14 +888,15 @@ func (s *WorkersTestSuite) TestMultipleLocallyDispatchedActivity() {
 		return nil
 	}).MinTimes(1)
 
-	worker := newAggregatedWorker(s.service, domain, taskList, options)
+	worker, err := newAggregatedWorker(s.service, domain, taskList, options)
+	s.Require().NoError(err)
 	worker.RegisterWorkflowWithOptions(
 		workflowFn,
 		RegisterWorkflowOptions{Name: workflowType},
 	)
 	worker.RegisterActivityWithOptions(activitySleep, RegisterActivityOptions{Name: "activitySleep"})
 	s.NotNil(worker.locallyDispatchedActivityWorker)
-	err := worker.Start()
+	err = worker.Start()
 	s.NoError(err, "worker failed to start")
 
 	// wait for test to complete
@@ -883,6 +913,105 @@ func (s *WorkersTestSuite) TestMultipleLocallyDispatchedActivity() {
 	// for currently unbuffered channel at least one activity should be sent
 	s.True(activityResponseCompletedCount.Load() > 0)
 	s.True(activityCalledCount.Load() > 0)
+}
+
+func (s *WorkersTestSuite) TestSessionWorker() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	pollCount := atomic.NewInt32(0)
+	done := make(chan struct{})
+	var hostSpecificTl sync.Once
+	var commonTl sync.Once
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
+	s.service.EXPECT().PollForActivityTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForActivityTaskRequest, opts ...yarpc.CallOption) (*m.PollForActivityTaskResponse, error) {
+		// The host-specific TL
+		if strings.Contains(request.TaskList.GetName(), "@") && request.TaskList.GetKind() == m.TaskListKindNormal {
+			hostSpecificTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		// The common creation TL
+		if request.TaskList.GetName() == "test-tl__internal_session_creation" && request.TaskList.GetKind() == m.TaskListKindNormal {
+			commonTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		return &m.PollForActivityTaskResponse{}, nil
+	}).AnyTimes()
+	options := WorkerOptions{
+		Logger:                testlogger.NewZap(s.T()),
+		DisableActivityWorker: true,
+		DisableWorkflowWorker: true,
+		EnableSessionWorker:   true,
+		Identity:              "test-worker-identity",
+	}
+	worker, err := newAggregatedWorker(s.service, domain, "test-tl", options)
+	s.NoError(err, "worked to create worker")
+
+	err = worker.Start()
+	s.NoError(err, "worker failed to start")
+	defer worker.Stop()
+
+	// Wait for both to complete
+	select {
+	case <-ctx.Done():
+		s.Fail("Timed out")
+	case <-done:
+	}
+}
+
+func (s *WorkersTestSuite) TestSessionWorker_Ephemeral() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	pollCount := atomic.NewInt32(0)
+	done := make(chan struct{})
+	var hostSpecificTl sync.Once
+	var commonTl sync.Once
+	s.service.EXPECT().DescribeDomain(gomock.Any(), gomock.Any(), callOptions()...).Return(nil, nil).AnyTimes()
+	s.service.EXPECT().PollForActivityTask(gomock.Any(), gomock.Any(), callOptions()...).DoAndReturn(func(ctx context.Context, request *m.PollForActivityTaskRequest, opts ...yarpc.CallOption) (*m.PollForActivityTaskResponse, error) {
+		// The host-specific TL is a random UUID and the
+		if strings.Contains(request.TaskList.GetName(), "@") && request.TaskList.GetKind() == m.TaskListKindEphemeral {
+			hostSpecificTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		// The common creation TL
+		if request.TaskList.GetName() == "test-tl__internal_session_creation" && request.TaskList.GetKind() == m.TaskListKindNormal {
+			commonTl.Do(func() {
+				if pollCount.Add(1) == 2 {
+					close(done)
+				}
+			})
+		}
+		return &m.PollForActivityTaskResponse{}, nil
+	}).AnyTimes()
+	options := WorkerOptions{
+		Logger:                testlogger.NewZap(s.T()),
+		DisableActivityWorker: true,
+		DisableWorkflowWorker: true,
+		EnableSessionWorker:   true,
+		Identity:              "test-worker-identity",
+		FeatureFlags:          FeatureFlags{EphemeralTaskListsEnabled: true},
+	}
+	worker, err := newAggregatedWorker(s.service, domain, "test-tl", options)
+	s.NoError(err, "worked to create worker")
+
+	err = worker.Start()
+	s.NoError(err, "worker failed to start")
+	defer worker.Stop()
+
+	// Wait for both to complete
+	select {
+	case <-ctx.Done():
+		s.Fail("Timed out")
+	case <-done:
+	}
 }
 
 // wait for test to complete - timeout and fail after 10 seconds to not block execution of other tests

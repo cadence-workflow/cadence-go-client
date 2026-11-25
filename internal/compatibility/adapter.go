@@ -38,6 +38,7 @@ type thrift2protoAdapter struct {
 	workflow   apiv1.WorkflowAPIYARPCClient
 	worker     apiv1.WorkerAPIYARPCClient
 	visibility apiv1.VisibilityAPIYARPCClient
+	schedule   apiv1.ScheduleAPIYARPCClient
 }
 
 func NewThrift2ProtoAdapter(
@@ -45,8 +46,9 @@ func NewThrift2ProtoAdapter(
 	workflow apiv1.WorkflowAPIYARPCClient,
 	worker apiv1.WorkerAPIYARPCClient,
 	visibility apiv1.VisibilityAPIYARPCClient,
+	schedule apiv1.ScheduleAPIYARPCClient,
 ) workflowserviceclient.Interface {
-	return thrift2protoAdapter{domain, workflow, worker, visibility}
+	return thrift2protoAdapter{domain, workflow, worker, visibility, schedule}
 }
 
 func (a thrift2protoAdapter) CountWorkflowExecutions(ctx context.Context, request *shared.CountWorkflowExecutionsRequest, opts ...yarpc.CallOption) (*shared.CountWorkflowExecutionsResponse, error) {
@@ -72,6 +74,11 @@ func (a thrift2protoAdapter) DescribeTaskList(ctx context.Context, request *shar
 func (a thrift2protoAdapter) DescribeWorkflowExecution(ctx context.Context, request *shared.DescribeWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DescribeWorkflowExecutionResponse, error) {
 	response, err := a.workflow.DescribeWorkflowExecution(ctx, proto.DescribeWorkflowExecutionRequest(request), opts...)
 	return thrift.DescribeWorkflowExecutionResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *shared.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.workflow.DiagnoseWorkflowExecution(ctx, proto.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return thrift.DiagnoseWorkflowExecutionResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) GetClusterInfo(ctx context.Context, opts ...yarpc.CallOption) (*shared.ClusterInfo, error) {
@@ -140,8 +147,8 @@ func (a thrift2protoAdapter) RecordActivityTaskHeartbeat(ctx context.Context, re
 }
 
 func (a thrift2protoAdapter) RecordActivityTaskHeartbeatByID(ctx context.Context, request *shared.RecordActivityTaskHeartbeatByIDRequest, opts ...yarpc.CallOption) (*shared.RecordActivityTaskHeartbeatResponse, error) {
-	response, err := a.worker.RecordActivityTaskHeartbeatByID(ctx, proto.RecordActivityTaskHeartbeatByIdRequest(request), opts...)
-	return thrift.RecordActivityTaskHeartbeatByIdResponse(response), thrift.Error(err)
+	response, err := a.worker.RecordActivityTaskHeartbeatByID(ctx, proto.RecordActivityTaskHeartbeatByIDRequest(request), opts...)
+	return thrift.RecordActivityTaskHeartbeatByIDResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) RegisterDomain(ctx context.Context, request *shared.RegisterDomainRequest, opts ...yarpc.CallOption) error {
@@ -170,7 +177,7 @@ func (a thrift2protoAdapter) RespondActivityTaskCanceled(ctx context.Context, re
 }
 
 func (a thrift2protoAdapter) RespondActivityTaskCanceledByID(ctx context.Context, request *shared.RespondActivityTaskCanceledByIDRequest, opts ...yarpc.CallOption) error {
-	_, err := a.worker.RespondActivityTaskCanceledByID(ctx, proto.RespondActivityTaskCanceledByIdRequest(request), opts...)
+	_, err := a.worker.RespondActivityTaskCanceledByID(ctx, proto.RespondActivityTaskCanceledByIDRequest(request), opts...)
 	return thrift.Error(err)
 }
 
@@ -180,7 +187,7 @@ func (a thrift2protoAdapter) RespondActivityTaskCompleted(ctx context.Context, r
 }
 
 func (a thrift2protoAdapter) RespondActivityTaskCompletedByID(ctx context.Context, request *shared.RespondActivityTaskCompletedByIDRequest, opts ...yarpc.CallOption) error {
-	_, err := a.worker.RespondActivityTaskCompletedByID(ctx, proto.RespondActivityTaskCompletedByIdRequest(request), opts...)
+	_, err := a.worker.RespondActivityTaskCompletedByID(ctx, proto.RespondActivityTaskCompletedByIDRequest(request), opts...)
 	return thrift.Error(err)
 }
 
@@ -190,7 +197,7 @@ func (a thrift2protoAdapter) RespondActivityTaskFailed(ctx context.Context, requ
 }
 
 func (a thrift2protoAdapter) RespondActivityTaskFailedByID(ctx context.Context, request *shared.RespondActivityTaskFailedByIDRequest, opts ...yarpc.CallOption) error {
-	_, err := a.worker.RespondActivityTaskFailedByID(ctx, proto.RespondActivityTaskFailedByIdRequest(request), opts...)
+	_, err := a.worker.RespondActivityTaskFailedByID(ctx, proto.RespondActivityTaskFailedByIDRequest(request), opts...)
 	return thrift.Error(err)
 }
 
@@ -250,7 +257,8 @@ func (a thrift2protoAdapter) UpdateDomain(ctx context.Context, request *shared.U
 }
 
 func (a thrift2protoAdapter) GetTaskListsByDomain(ctx context.Context, Request *shared.GetTaskListsByDomainRequest, opts ...yarpc.CallOption) (*shared.GetTaskListsByDomainResponse, error) {
-	panic("implement me")
+	response, err := a.workflow.GetTaskListsByDomain(ctx, proto.GetTaskListsByDomainRequest(Request), opts...)
+	return thrift.GetTaskListsByDomainResponse(response), thrift.Error(err)
 }
 
 func (a thrift2protoAdapter) RefreshWorkflowTasks(ctx context.Context, request *shared.RefreshWorkflowTasksRequest, opts ...yarpc.CallOption) error {
@@ -263,11 +271,94 @@ func (a thrift2protoAdapter) RestartWorkflowExecution(ctx context.Context, reque
 	return thrift.RestartWorkflowExecutionResponse(response), proto.Error(err)
 }
 
+func (a thrift2protoAdapter) DeleteDomain(ctx context.Context, DeleteRequest *shared.DeleteDomainRequest, opts ...yarpc.CallOption) error {
+	_, err := a.domain.DeleteDomain(ctx, proto.DeleteDomainRequest(DeleteRequest), opts...)
+	return err
+}
+
+func (a thrift2protoAdapter) FailoverDomain(ctx context.Context, request *shared.FailoverDomainRequest, opts ...yarpc.CallOption) (*shared.FailoverDomainResponse, error) {
+	response, err := a.domain.FailoverDomain(ctx, proto.FailoverDomainRequest(request), opts...)
+	return thrift.FailoverDomainResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) ListFailoverHistory(ctx context.Context, request *shared.ListFailoverHistoryRequest, opts ...yarpc.CallOption) (*shared.ListFailoverHistoryResponse, error) {
+	response, err := a.domain.ListFailoverHistory(ctx, proto.ListFailoverHistoryRequest(request), opts...)
+	return thrift.ListFailoverHistoryResponse(response), thrift.Error(err)
+}
+
+var errScheduleClientNotConfigured = &shared.BadRequestError{
+	Message: "schedule API not configured: provide a ScheduleAPIYARPCClient when constructing the adapter",
+}
+
+func (a thrift2protoAdapter) BackfillSchedule(ctx context.Context, Request *shared.BackfillScheduleRequest, opts ...yarpc.CallOption) (*shared.BackfillScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.BackfillSchedule(ctx, proto.BackfillScheduleRequest(Request), opts...)
+	return thrift.BackfillScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) CreateSchedule(ctx context.Context, Request *shared.CreateScheduleRequest, opts ...yarpc.CallOption) (*shared.CreateScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.CreateSchedule(ctx, proto.CreateScheduleRequest(Request), opts...)
+	return thrift.CreateScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) DeleteSchedule(ctx context.Context, Request *shared.DeleteScheduleRequest, opts ...yarpc.CallOption) (*shared.DeleteScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.DeleteSchedule(ctx, proto.DeleteScheduleRequest(Request), opts...)
+	return thrift.DeleteScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) DescribeSchedule(ctx context.Context, Request *shared.DescribeScheduleRequest, opts ...yarpc.CallOption) (*shared.DescribeScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.DescribeSchedule(ctx, proto.DescribeScheduleRequest(Request), opts...)
+	return thrift.DescribeScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) ListSchedules(ctx context.Context, Request *shared.ListSchedulesRequest, opts ...yarpc.CallOption) (*shared.ListSchedulesResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.ListSchedules(ctx, proto.ListSchedulesRequest(Request), opts...)
+	return thrift.ListSchedulesResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) PauseSchedule(ctx context.Context, Request *shared.PauseScheduleRequest, opts ...yarpc.CallOption) (*shared.PauseScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.PauseSchedule(ctx, proto.PauseScheduleRequest(Request), opts...)
+	return thrift.PauseScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) UnpauseSchedule(ctx context.Context, Request *shared.UnpauseScheduleRequest, opts ...yarpc.CallOption) (*shared.UnpauseScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.UnpauseSchedule(ctx, proto.UnpauseScheduleRequest(Request), opts...)
+	return thrift.UnpauseScheduleResponse(response), thrift.Error(err)
+}
+
+func (a thrift2protoAdapter) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
+	if a.schedule == nil {
+		return nil, errScheduleClientNotConfigured
+	}
+	response, err := a.schedule.UpdateSchedule(ctx, proto.UpdateScheduleRequest(Request), opts...)
+	return thrift.UpdateScheduleResponse(response), thrift.Error(err)
+}
+
 type domainAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }
 
-func NewDomainAPITriftAdapter(thrift workflowserviceclient.Interface) domainAPIthriftAdapter {
+func NewDomainAPITriftAdapter(thrift workflowserviceclient.Interface) domainAPIthriftAdapter { //revive:disable-line:unexported-return this is not used at all, consider removing
 	return domainAPIthriftAdapter{thrift}
 }
 
@@ -296,7 +387,7 @@ type workflowAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }
 
-func NewWorkflowAPITriftAdapter(thrift workflowserviceclient.Interface) workflowAPIthriftAdapter {
+func NewWorkflowAPITriftAdapter(thrift workflowserviceclient.Interface) workflowAPIthriftAdapter { //revive:disable-line:unexported-return this is not used at all, consider removing
 	return workflowAPIthriftAdapter{thrift}
 }
 
@@ -328,6 +419,10 @@ func (a workflowAPIthriftAdapter) DescribeWorkflowExecution(ctx context.Context,
 	response, err := a.service.DescribeWorkflowExecution(ctx, thrift.DescribeWorkflowExecutionRequest(request), opts...)
 	return proto.DescribeWorkflowExecutionResponse(response), proto.Error(err)
 }
+func (a workflowAPIthriftAdapter) DiagnoseWorkflowExecution(ctx context.Context, request *apiv1.DiagnoseWorkflowExecutionRequest, opts ...yarpc.CallOption) (*apiv1.DiagnoseWorkflowExecutionResponse, error) {
+	response, err := a.service.DiagnoseWorkflowExecution(ctx, thrift.DiagnoseWorkflowExecutionRequest(request), opts...)
+	return proto.DiagnoseWorkflowExecutionResponse(response), proto.Error(err)
+}
 func (a workflowAPIthriftAdapter) QueryWorkflow(ctx context.Context, request *apiv1.QueryWorkflowRequest, opts ...yarpc.CallOption) (*apiv1.QueryWorkflowResponse, error) {
 	response, err := a.service.QueryWorkflow(ctx, thrift.QueryWorkflowRequest(request), opts...)
 	return proto.QueryWorkflowResponse(response), proto.Error(err)
@@ -353,7 +448,7 @@ type workerAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }
 
-func NewWorkerAPITriftAdapter(thrift workflowserviceclient.Interface) workerAPIthriftAdapter {
+func NewWorkerAPITriftAdapter(thrift workflowserviceclient.Interface) workerAPIthriftAdapter { //revive:disable-line:unexported-return this is not used at all, consider removing
 	return workerAPIthriftAdapter{thrift}
 }
 
@@ -378,7 +473,7 @@ func (a workerAPIthriftAdapter) RespondActivityTaskCompleted(ctx context.Context
 	return &apiv1.RespondActivityTaskCompletedResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondActivityTaskCompletedByID(ctx context.Context, request *apiv1.RespondActivityTaskCompletedByIDRequest, opts ...yarpc.CallOption) (*apiv1.RespondActivityTaskCompletedByIDResponse, error) {
-	err := a.service.RespondActivityTaskCompletedByID(ctx, thrift.RespondActivityTaskCompletedByIdRequest(request), opts...)
+	err := a.service.RespondActivityTaskCompletedByID(ctx, thrift.RespondActivityTaskCompletedByIDRequest(request), opts...)
 	return &apiv1.RespondActivityTaskCompletedByIDResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondActivityTaskFailed(ctx context.Context, request *apiv1.RespondActivityTaskFailedRequest, opts ...yarpc.CallOption) (*apiv1.RespondActivityTaskFailedResponse, error) {
@@ -386,7 +481,7 @@ func (a workerAPIthriftAdapter) RespondActivityTaskFailed(ctx context.Context, r
 	return &apiv1.RespondActivityTaskFailedResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondActivityTaskFailedByID(ctx context.Context, request *apiv1.RespondActivityTaskFailedByIDRequest, opts ...yarpc.CallOption) (*apiv1.RespondActivityTaskFailedByIDResponse, error) {
-	err := a.service.RespondActivityTaskFailedByID(ctx, thrift.RespondActivityTaskFailedByIdRequest(request), opts...)
+	err := a.service.RespondActivityTaskFailedByID(ctx, thrift.RespondActivityTaskFailedByIDRequest(request), opts...)
 	return &apiv1.RespondActivityTaskFailedByIDResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondActivityTaskCanceled(ctx context.Context, request *apiv1.RespondActivityTaskCanceledRequest, opts ...yarpc.CallOption) (*apiv1.RespondActivityTaskCanceledResponse, error) {
@@ -394,7 +489,7 @@ func (a workerAPIthriftAdapter) RespondActivityTaskCanceled(ctx context.Context,
 	return &apiv1.RespondActivityTaskCanceledResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondActivityTaskCanceledByID(ctx context.Context, request *apiv1.RespondActivityTaskCanceledByIDRequest, opts ...yarpc.CallOption) (*apiv1.RespondActivityTaskCanceledByIDResponse, error) {
-	err := a.service.RespondActivityTaskCanceledByID(ctx, thrift.RespondActivityTaskCanceledByIdRequest(request), opts...)
+	err := a.service.RespondActivityTaskCanceledByID(ctx, thrift.RespondActivityTaskCanceledByIDRequest(request), opts...)
 	return &apiv1.RespondActivityTaskCanceledByIDResponse{}, proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RecordActivityTaskHeartbeat(ctx context.Context, request *apiv1.RecordActivityTaskHeartbeatRequest, opts ...yarpc.CallOption) (*apiv1.RecordActivityTaskHeartbeatResponse, error) {
@@ -402,8 +497,8 @@ func (a workerAPIthriftAdapter) RecordActivityTaskHeartbeat(ctx context.Context,
 	return proto.RecordActivityTaskHeartbeatResponse(response), proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RecordActivityTaskHeartbeatByID(ctx context.Context, request *apiv1.RecordActivityTaskHeartbeatByIDRequest, opts ...yarpc.CallOption) (*apiv1.RecordActivityTaskHeartbeatByIDResponse, error) {
-	response, err := a.service.RecordActivityTaskHeartbeatByID(ctx, thrift.RecordActivityTaskHeartbeatByIdRequest(request), opts...)
-	return proto.RecordActivityTaskHeartbeatByIdResponse(response), proto.Error(err)
+	response, err := a.service.RecordActivityTaskHeartbeatByID(ctx, thrift.RecordActivityTaskHeartbeatByIDRequest(request), opts...)
+	return proto.RecordActivityTaskHeartbeatByIDResponse(response), proto.Error(err)
 }
 func (a workerAPIthriftAdapter) RespondQueryTaskCompleted(ctx context.Context, request *apiv1.RespondQueryTaskCompletedRequest, opts ...yarpc.CallOption) (*apiv1.RespondQueryTaskCompletedResponse, error) {
 	err := a.service.RespondQueryTaskCompleted(ctx, thrift.RespondQueryTaskCompletedRequest(request), opts...)
@@ -418,7 +513,7 @@ type visibilityAPIthriftAdapter struct {
 	service workflowserviceclient.Interface
 }
 
-func NewVisibilityAPITriftAdapter(thrift workflowserviceclient.Interface) visibilityAPIthriftAdapter {
+func NewVisibilityAPITriftAdapter(thrift workflowserviceclient.Interface) visibilityAPIthriftAdapter { //revive:disable-line:unexported-return this is not used at all, consider removing
 	return visibilityAPIthriftAdapter{thrift}
 }
 

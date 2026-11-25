@@ -173,7 +173,7 @@ func replayWorkflowActivity(
 			continue
 		}
 
-		sw := scope.Timer(metrics.ReplayLatency).Start()
+		sw := metrics.StartLatency(scope, metrics.ReplayLatency, metrics.Default1ms100s)
 		success, err := replayWorkflowExecutionHelper(ctx, replayer, service, logger, params.GetDomain(), WorkflowExecution{
 			ID:    execution.GetWorkflowId(),
 			RunID: execution.GetRunId(),

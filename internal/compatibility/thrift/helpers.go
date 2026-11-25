@@ -21,6 +21,7 @@
 package thrift
 
 import (
+	"math"
 	"time"
 
 	gogo "github.com/gogo/protobuf/types"
@@ -77,6 +78,21 @@ func durationToSeconds(d *gogo.Duration) *int32 {
 		panic(err)
 	}
 	return common.Int32Ptr(int32(duration / time.Second))
+}
+
+// durationToSecondsCeil converts a proto Duration to an int32 second count using ceiling rounding.
+// Used on the DescribeSchedule response path for JitterInSeconds: the server always returns
+// whole-second jitter (since the write path already rounded up), but ceiling is used defensively
+// so that any sub-second value from the server is preserved as 1s rather than silently zeroed.
+func durationToSecondsCeil(d *gogo.Duration) *int32 {
+	if d == nil {
+		return nil
+	}
+	duration, err := gogo.DurationFromProto(d)
+	if err != nil {
+		panic(err)
+	}
+	return common.Int32Ptr(int32(math.Ceil(duration.Seconds())))
 }
 
 func int32To64(v *int32) *int64 {

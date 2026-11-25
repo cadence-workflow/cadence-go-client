@@ -1,0 +1,344 @@
+// Copyright (c) 2017-2021 Uber Technologies Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+package internal
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"go.uber.org/cadence/internal/common/testlogger"
+
+	"github.com/jonboulle/clockwork"
+
+	"github.com/golang/mock/gomock"
+	"github.com/opentracing/opentracing-go"
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"go.uber.org/cadence/.gen/go/cadence/workflowservicetest"
+	s "go.uber.org/cadence/.gen/go/shared"
+	"go.uber.org/cadence/internal/common"
+)
+
+func TestActivityTaskHandler_Execute_deadline(t *testing.T) {
+	now := time.Now()
+	deadlineTests := []struct {
+		actWaitDuration  time.Duration
+		ScheduleTS       time.Time
+		ScheduleDuration int32
+		StartTS          time.Time
+		StartDuration    int32
+		err              error
+	}{
+		{time.Duration(0), now, 3, now, 3, nil},
+		{time.Duration(0), now, 4, now, 3, nil},
+		{time.Duration(0), now, 3, now, 4, nil},
+		{time.Duration(0), now.Add(-1 * time.Second), 1, now, 1, context.DeadlineExceeded},
+		{time.Duration(0), now, 1, now.Add(-1 * time.Second), 1, context.DeadlineExceeded},
+		{time.Duration(0), now.Add(-1 * time.Second), 1, now.Add(-1 * time.Second), 1, context.DeadlineExceeded},
+		{1 * time.Second, now, 1, now, 1, context.DeadlineExceeded},
+		{1 * time.Second, now, 2, now, 1, context.DeadlineExceeded},
+		{1 * time.Second, now, 1, now, 2, context.DeadlineExceeded},
+	}
+
+	for i, d := range deadlineTests {
+		t.Run(fmt.Sprintf("testIndex: %v, testDetails: %v", i, d), func(t *testing.T) {
+			activityDefn := func(ctx context.Context) error {
+				if deadline, _ := ctx.Deadline(); deadline.IsZero() {
+					panic("invalid deadline provided")
+				}
+				if d.actWaitDuration != 0 {
+					// Wait till deadline expires.
+					<-ctx.Done()
+					return ctx.Err()
+				}
+				return nil
+			}
+			activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityDefn)
+			pats := &s.PollForActivityTaskResponse{
+				TaskToken: []byte("token"),
+				WorkflowExecution: &s.WorkflowExecution{
+					WorkflowId: common.StringPtr("wID"),
+					RunId:      common.StringPtr("rID")},
+				ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityType")},
+				ActivityId:                      common.StringPtr(uuid.New()),
+				ScheduledTimestamp:              common.Int64Ptr(d.ScheduleTS.UnixNano()),
+				ScheduledTimestampOfThisAttempt: common.Int64Ptr(d.ScheduleTS.UnixNano()),
+				ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(d.ScheduleDuration),
+				StartedTimestamp:                common.Int64Ptr(d.StartTS.UnixNano()),
+				StartToCloseTimeoutSeconds:      common.Int32Ptr(d.StartDuration),
+				Attempt:                         common.Int32Ptr(0),
+				WorkflowType: &s.WorkflowType{
+					Name: common.StringPtr("wType"),
+				},
+				WorkflowDomain: common.StringPtr("domain"),
+			}
+			r, err := activityHandler.Execute(tasklist, pats)
+			assert.Equal(t, d.err, err)
+			if err != nil {
+				assert.Nil(t, r)
+			}
+		})
+	}
+}
+
+func TestActivityTaskHandler_Execute_worker_stop(t *testing.T) {
+	workerStopCh := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	activityDefn := func(ctx context.Context) error {
+		workerStopCh := GetWorkerStopChannel(ctx)
+
+		select {
+		case <-workerStopCh:
+			return nil
+		case <-time.NewTimer(time.Second * 5).C:
+			return fmt.Errorf("Activity failed to handle worker stop event")
+		}
+	}
+
+	wep := workerExecutionParameters{
+		WorkerOptions: WorkerOptions{
+			DataConverter: getDefaultDataConverter(),
+		},
+		UserContext:       ctx,
+		UserContextCancel: cancel,
+		WorkerStopChannel: workerStopCh,
+	}
+	activityHandler := newHandlerForTest(t, wep, activityDefn)
+	pats := createBasicPollForActivityTaskResponse()
+
+	close(workerStopCh)
+	r, err := activityHandler.Execute(tasklist, pats)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, r)
+}
+
+func TestActivityTaskHandler_Execute_with_propagators(t *testing.T) {
+	testKey, testValue := testHeader, "test_value"
+
+	// inline activity using value passing through user context.
+	activityWithUserContext := func(ctx context.Context) (string, error) {
+		value := ctx.Value(contextKey(testKey))
+		if value != nil {
+			return value.(string), nil
+		}
+		return "", errors.New("value not found from ctx")
+	}
+	wep := workerExecutionParameters{
+		WorkerOptions: WorkerOptions{
+			ContextPropagators: []ContextPropagator{NewStringMapPropagator([]string{testHeader})},
+		},
+	}
+	activityHandler := newHandlerForTest(t, wep, activityWithUserContext)
+
+	pats := createBasicPollForActivityTaskResponse()
+	pats.Header = &s.Header{
+		Fields: map[string][]byte{testHeader: []byte(testValue)},
+	}
+
+	res, err := activityHandler.Execute(tasklist, pats)
+
+	require.NoError(t, err)
+	response, ok := res.(*s.RespondActivityTaskCompletedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest")
+	assert.Equal(t, fmt.Sprintf("\"%s\"\n", testValue), string(response.Result))
+}
+
+func TestActivityTaskHandler_Execute_with_propagator_failure(t *testing.T) {
+	// inline activity using value passing through user context.
+	activityWithUserContext := func(ctx context.Context) (string, error) {
+		return "", nil
+	}
+	wep := workerExecutionParameters{
+		WorkerOptions: WorkerOptions{
+			DataConverter:      getDefaultDataConverter(),
+			Tracer:             opentracing.NoopTracer{},
+			ContextPropagators: []ContextPropagator{failingContextPropagator{err: assert.AnError}},
+		},
+	}
+	activityHandler := newHandlerForTest(t, wep, activityWithUserContext)
+
+	pats := createBasicPollForActivityTaskResponse()
+
+	_, err := activityHandler.Execute(tasklist, pats)
+	assert.ErrorIs(t, err, assert.AnError)
+}
+
+func TestActivityTaskHandler_Execute_with_auto_heartbeat(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+
+	// inline activity using value passing through user context.
+	activityWithUserContext := func(ctx context.Context) error {
+		// heartbeat once
+		clock.Advance(time.Second / 2)
+		return nil
+	}
+
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityWithUserContext)
+	activityHandlerImpl := activityHandler.(*activityTaskHandlerImpl)
+	activityHandlerImpl.clock = clock
+
+	pats := createBasicPollForActivityTaskResponse()
+	pats.HeartbeatTimeoutSeconds = common.Int32Ptr(1)
+
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+	_, ok := res.(*s.RespondActivityTaskCompletedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskCompletedRequest but of type %T", res)
+}
+
+func TestActivityTaskHandler_Execute_CustomError(t *testing.T) {
+	activityWithCustomError := func(ctx context.Context) error {
+		testFailureCategory := s.FailureCategoryFatal
+		testNextRetryDelay := 30 * time.Second
+		return NewCustomError(
+			"test-error",
+			WithFailureCategory(testFailureCategory),
+			WithNextRetryDelay(testNextRetryDelay),
+			"details",
+		)
+	}
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, activityWithCustomError)
+
+	pats := createBasicPollForActivityTaskResponse()
+
+	// Execute
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+
+	failedRequest, ok := res.(*s.RespondActivityTaskFailedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskFailedRequest but of type %T", res)
+	require.Equal(t, s.FailureCategoryFatal, failedRequest.GetFailureOptions().GetFailureCategory())
+	require.Equal(t, int32(30), failedRequest.GetFailureOptions().GetNextRetryIntervalSeconds())
+}
+
+func TestActivityTaskHandler_Execute_UnregisteredActivity(t *testing.T) {
+	activityHandler := newHandlerForTest(t, workerExecutionParameters{}, func(ctx context.Context) error { return nil })
+
+	pats := createBasicPollForActivityTaskResponse()
+	pats.ActivityType = &s.ActivityType{Name: common.StringPtr("notRegistered")}
+
+	res, err := activityHandler.Execute(tasklist, pats)
+	require.NoError(t, err)
+
+	failedRequest, ok := res.(*s.RespondActivityTaskFailedRequest)
+	require.True(t, ok, "response is not of type *s.RespondActivityTaskFailedRequest but of type %T", res)
+	require.Equal(t, pats.TaskToken, failedRequest.GetTaskToken())
+	require.Equal(t, errReasonGeneric, failedRequest.GetReason())
+	require.Contains(t, string(failedRequest.GetDetails()), "unable to find activityType=notRegistered")
+	require.Contains(t, string(failedRequest.GetDetails()), "activityType")
+}
+
+func newHandlerForTest(t *testing.T, params workerExecutionParameters, activityFunction any) ActivityTaskHandler {
+	registry := newRegistry()
+	err := registry.registerActivityFunction(activityFunction, RegisterActivityOptions{Name: "activityType"})
+	require.NoError(t, err)
+
+	params.WorkerOptions.Logger = testlogger.NewZap(t)
+	ensureRequiredParams(&params)
+	mockCtrl := gomock.NewController(t)
+	mockService := workflowservicetest.NewMockClient(mockCtrl)
+	return newActivityTaskHandler(mockService, params, registry)
+}
+
+func createBasicPollForActivityTaskResponse() *s.PollForActivityTaskResponse {
+	now := time.Now()
+	return &s.PollForActivityTaskResponse{
+		TaskToken: []byte("token"),
+		WorkflowExecution: &s.WorkflowExecution{
+			WorkflowId: common.StringPtr("wID"),
+			RunId:      common.StringPtr("rID"),
+		},
+		ActivityType:                    &s.ActivityType{Name: common.StringPtr("activityType")},
+		ActivityId:                      common.StringPtr(uuid.New()),
+		ScheduledTimestamp:              common.Int64Ptr(now.UnixNano()),
+		ScheduledTimestampOfThisAttempt: common.Int64Ptr(now.UnixNano()),
+		ScheduleToCloseTimeoutSeconds:   common.Int32Ptr(1),
+		StartedTimestamp:                common.Int64Ptr(now.UnixNano()),
+		StartToCloseTimeoutSeconds:      common.Int32Ptr(1),
+		Attempt:                         common.Int32Ptr(0),
+		WorkflowType: &s.WorkflowType{
+			Name: common.StringPtr("wType"),
+		},
+		WorkflowDomain: common.StringPtr("domain"),
+	}
+}
+
+func TestActivityOutcome(t *testing.T) {
+	tests := []struct {
+		name   string
+		result interface{}
+		err    error
+		want   string
+	}{
+		{"classifies error", &s.RespondActivityTaskCompletedRequest{}, assert.AnError, "failed_to_report"},
+		{"classifies deadline exceeded as timeout", nil, context.DeadlineExceeded, "timeout"},
+		{"classifies wrapped deadline exceeded as failed_to_report", nil, fmt.Errorf("wrapped: %w", context.DeadlineExceeded), "failed_to_report"},
+		{"classifies pending", ErrActivityResultPending, nil, "pending"},
+		{"classifies completed", &s.RespondActivityTaskCompletedRequest{}, nil, "succeeded"},
+		{"classifies canceled", &s.RespondActivityTaskCanceledRequest{}, nil, "canceled"},
+		{"classifies failed", &s.RespondActivityTaskFailedRequest{}, nil, "failed"},
+		{"classifies unrecognized result as unknown", "surprise", nil, "unknown"},
+		{"classifies nil result as unknown", nil, nil, "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, activityOutcome(tt.result, tt.err))
+		})
+	}
+}
+
+func activityWithWorkerStop(ctx context.Context) error {
+	fmt.Println("Executing Activity with worker stop")
+	workerStopCh := GetWorkerStopChannel(ctx)
+
+	select {
+	case <-workerStopCh:
+		return nil
+	case <-time.NewTimer(time.Second * 5).C:
+		return fmt.Errorf("Activity failed to handle worker stop event")
+	}
+}
+
+type failingContextPropagator struct {
+	err error
+}
+
+func (f failingContextPropagator) Inject(ctx context.Context, writer HeaderWriter) error {
+	return f.err
+}
+
+func (f failingContextPropagator) Extract(ctx context.Context, reader HeaderReader) (context.Context, error) {
+	return nil, f.err
+}
+
+func (f failingContextPropagator) InjectFromWorkflow(ctx Context, writer HeaderWriter) error {
+	return f.err
+}
+
+func (f failingContextPropagator) ExtractToWorkflow(ctx Context, reader HeaderReader) (Context, error) {
+	return nil, f.err
+}

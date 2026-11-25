@@ -33,7 +33,6 @@ import (
 
 	s "go.uber.org/cadence/.gen/go/shared"
 	"go.uber.org/cadence/internal/common"
-	"go.uber.org/cadence/internal/common/backoff"
 )
 
 var (
@@ -773,8 +772,12 @@ func (wc *workflowEnvironmentInterceptor) ExecuteActivity(ctx Context, typeName 
 			// Use session tasklist
 			oldTaskListName := options.TaskListName
 			options.TaskListName = sessionInfo.tasklist
+			if wc.env.GetFeatureFlags().EphemeralTaskListsEnabled {
+				options.TaskListKind = s.TaskListKindEphemeral
+			}
 			defer func() {
 				options.TaskListName = oldTaskListName
+				options.TaskListKind = s.TaskListKindNormal
 			}()
 		}
 	}
@@ -1105,8 +1108,10 @@ func getWorkflowHeader(ctx Context, ctxProps []ContextPropagator) *s.Header {
 
 // WorkflowInfo information about currently executing workflow
 type WorkflowInfo struct {
-	WorkflowExecution                   WorkflowExecution
-	OriginalRunId                       string // The original runID before resetting. Using it instead of current runID can make workflow decision determinstic after reset
+	WorkflowExecution WorkflowExecution
+	// The original runID before resetting. Using it instead of current runID can make workflow decision determinstic after reset
+	// revive:disable-next-line this is an public field that is already exposed
+	OriginalRunId                       string
 	WorkflowType                        WorkflowType
 	TaskListName                        string
 	ExecutionStartToCloseTimeoutSeconds int32
@@ -1406,6 +1411,11 @@ func (wc *workflowEnvironmentInterceptor) UpsertSearchAttributes(ctx Context, at
 // WithChildWorkflowOptions adds all workflow options to the context.
 // The current timeout resolution implementation is in seconds and uses math.Ceil(d.Seconds()) as the duration. But is
 // subjected to change in the future.
+//
+// CronSchedule is applied only when non-empty so a prior WithCronSchedule is not
+// cleared by typical child options (timeouts, task list, and so on). Pass a
+// non-empty CronSchedule here to set or replace it, or WithCronSchedule(ctx, "")
+// to clear it.
 func WithChildWorkflowOptions(ctx Context, cwo ChildWorkflowOptions) Context {
 	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
 	wfOptions := getWorkflowEnvOptions(ctx1)
@@ -1417,7 +1427,9 @@ func WithChildWorkflowOptions(ctx Context, cwo ChildWorkflowOptions) Context {
 	wfOptions.waitForCancellation = cwo.WaitForCancellation
 	wfOptions.workflowIDReusePolicy = cwo.WorkflowIDReusePolicy
 	wfOptions.retryPolicy = convertRetryPolicy(cwo.RetryPolicy)
-	wfOptions.cronSchedule = cwo.CronSchedule
+	if cwo.CronSchedule != "" {
+		wfOptions.cronSchedule = cwo.CronSchedule
+	}
 	wfOptions.memo = cwo.Memo
 	wfOptions.searchAttributes = cwo.SearchAttributes
 	wfOptions.parentClosePolicy = cwo.ParentClosePolicy
@@ -1437,6 +1449,24 @@ func WithWorkflowDomain(ctx Context, name string) Context {
 func WithWorkflowTaskList(ctx Context, name string) Context {
 	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
 	getWorkflowEnvOptions(ctx1).taskListName = common.StringPtr(name)
+	return ctx1
+}
+
+// WithCronSchedule sets a cron schedule on the context.
+//
+// The same workflow options are used for ContinueAsNew (via NewContinueAsNewError)
+// and for child workflows (via ExecuteChildWorkflow). Cron is not copied from the
+// current run automatically; pass it explicitly when the next run or child should
+// keep a schedule.
+//
+// ChildWorkflowOptions.CronSchedule is applied only when non-empty, so
+// WithCronSchedule then WithChildWorkflowOptions still keeps the schedule.
+// A non-empty ChildWorkflowOptions.CronSchedule replaces it. Pass "" here to
+// clear a previously set value. Invalid specs are rejected when ContinueAsNew
+// or child workflow options are validated.
+func WithCronSchedule(ctx Context, cronSchedule string) Context {
+	ctx1 := setWorkflowEnvOptionsIfNotExist(ctx)
+	getWorkflowEnvOptions(ctx1).cronSchedule = cronSchedule
 	return ctx1
 }
 
@@ -1522,45 +1552,7 @@ func (b EncodedValue) HasValue() bool {
 	return b.value != nil
 }
 
-// SideEffect executes the provided function once, records its result into the workflow history. The recorded result on
-// history will be returned without executing the provided function during replay. This guarantees the deterministic
-// requirement for workflow as the exact same result will be returned in replay.
-// Common use case is to run some short non-deterministic code in workflow, like getting random number or new UUID.
-// The only way to fail SideEffect is to panic which causes decision task failure. The decision task after timeout is
-// rescheduled and re-executed giving SideEffect another chance to succeed.
-//
-// Caution: do not use SideEffect to modify closures. Always retrieve result from SideEffect's encoded return value.
-// For example this code is BROKEN:
-//
-//	// Bad example:
-//	var random int
-//	workflow.SideEffect(func(ctx workflow.Context) interface{} {
-//	       random = rand.Intn(100)
-//	       return nil
-//	})
-//	// random will always be 0 in replay, thus this code is non-deterministic
-//	if random < 50 {
-//	       ....
-//	} else {
-//	       ....
-//	}
-//
-// On replay the provided function is not executed, the random will always be 0, and the workflow could takes a
-// different path breaking the determinism.
-//
-// Here is the correct way to use SideEffect:
-//
-//	// Good example:
-//	encodedRandom := SideEffect(func(ctx workflow.Context) interface{} {
-//	      return rand.Intn(100)
-//	})
-//	var random int
-//	encodedRandom.Get(&random)
-//	if random < 50 {
-//	       ....
-//	} else {
-//	       ....
-//	}
+// SideEffect docs are in the public API to prevent duplication: [go.uber.org/cadence/workflow.SideEffect]
 func SideEffect(ctx Context, f func(ctx Context) interface{}) Value {
 	i := getWorkflowInterceptor(ctx)
 	return i.SideEffect(ctx, f)
@@ -1584,22 +1576,7 @@ func (wc *workflowEnvironmentInterceptor) SideEffect(ctx Context, f func(ctx Con
 	return encoded
 }
 
-// MutableSideEffect executes the provided function once, then it looks up the history for the value with the given id.
-// If there is no existing value, then it records the function result as a value with the given id on history;
-// otherwise, it compares whether the existing value from history has changed from the new function result by calling the
-// provided equals function. If they are equal, it returns the value without recording a new one in history;
-//
-//	otherwise, it records the new value with the same id on history.
-//
-// Caution: do not use MutableSideEffect to modify closures. Always retrieve result from MutableSideEffect's encoded
-// return value.
-//
-// The difference between MutableSideEffect() and SideEffect() is that every new SideEffect() call in non-replay will
-// result in a new marker being recorded on history. However, MutableSideEffect() only records a new marker if the value
-// changed. During replay, MutableSideEffect() will not execute the function again, but it will return the exact same
-// value as it was returning during the non-replay run.
-//
-// One good use case of MutableSideEffect() is to access dynamically changing config without breaking determinism.
+// MutableSideEffect docs are in the public API to prevent duplication: [go.uber.org/cadence/workflow.MutableSideEffect]
 func MutableSideEffect(ctx Context, id string, f func(ctx Context) interface{}, equals func(a, b interface{}) bool) Value {
 	i := getWorkflowInterceptor(ctx)
 	return i.MutableSideEffect(ctx, id, f, equals)
@@ -1618,6 +1595,49 @@ const DefaultVersion Version = -1
 // CadenceChangeVersion is used as search attributes key to find workflows with specific change version.
 const CadenceChangeVersion = "CadenceChangeVersion"
 
+// GetVersionOption is an interface for functional options that can be applied to GetVersion
+type GetVersionOption interface {
+	apply(*getVersionConfig)
+}
+
+// getVersionConfig holds the configuration for GetVersion
+type getVersionConfig struct {
+	// CustomVersion is used to force GetVersion to return a specific version
+	// instead of maxSupported version. Set up via ExecuteWithVersion option.
+	CustomVersion *Version
+
+	// UseMinVersion is used to force GetVersion to return minSupported version
+	// instead of maxSupported version. Set up via ExecuteWithMinVersion option.
+	UseMinVersion bool
+}
+
+// customVersionOption forces GetVersion to return a specific version
+type customVersionOption Version
+
+func (c customVersionOption) apply(config *getVersionConfig) {
+	version := Version(c)
+	config.CustomVersion = &version
+}
+
+// ExecuteWithVersion forces a specific version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. Check public documentation of workflow.ExecuteWithVersion
+func ExecuteWithVersion(version Version) GetVersionOption {
+	return customVersionOption(version)
+}
+
+// useMinVersionOption forces GetVersion to return minSupported version
+type useMinVersionOption struct{}
+
+func (useMinVersionOption) apply(config *getVersionConfig) {
+	config.UseMinVersion = true
+}
+
+// ExecuteWithMinVersion forces minSupported version to be returned when GetVersion is executed for the first time,
+// instead of returning maxSupported version. Check public documentation of workflow.ExecuteWithMinVersion
+func ExecuteWithMinVersion() GetVersionOption {
+	return useMinVersionOption{}
+}
+
 // GetVersion is used to safely perform backwards incompatible changes to workflow definitions.
 // It is not allowed to update workflow code while there are workflows running as it is going to break
 // determinism. The solution is to have both old code that is used to replay existing workflows
@@ -1625,6 +1645,8 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 // GetVersion returns maxSupported version when is executed for the first time. This version is recorded into the
 // workflow history as a marker event. Even if maxSupported version is changed the version that was recorded is
 // returned on replay. DefaultVersion constant contains version of code that wasn't versioned before.
+// Check documentation for ExecuteWithVersion and ExecuteWithMinVersion to make your changes forward and backward compatible.
+//
 // For example initially workflow has the following code:
 //
 //	err = workflow.ExecuteActivity(ctx, foo).Get(ctx, nil)
@@ -1668,14 +1690,14 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 //	err = workflow.ExecuteActivity(ctx, baz).Get(ctx, nil)
 //
 // The reason to keep it is: 1) it ensures that if there is older version execution still running, it will fail here
-// and not proceed; 2) if you ever need to make more changes for “fooChange”, for example change activity from baz to qux,
+// and not proceed; 2) if you ever need to make more changes for "fooChange", for example change activity from baz to qux,
 // you just need to update the maxVersion from 2 to 3.
 //
 // Note that, you only need to preserve the first call to GetVersion() for each changeID. All subsequent call to GetVersion()
 // with same changeID are safe to remove. However, if you really want to get rid of the first GetVersion() call as well,
-// you can do so, but you need to make sure: 1) all older version executions are completed; 2) you can no longer use “fooChange”
+// you can do so, but you need to make sure: 1) all older version executions are completed; 2) you can no longer use "fooChange"
 // as changeID. If you ever need to make changes to that same part like change from baz to qux, you would need to use a
-// different changeID like “fooChange-fix2”, and start minVersion from DefaultVersion again. The code would looks like:
+// different changeID like "fooChange-fix2", and start minVersion from DefaultVersion again. The code would looks like:
 //
 //	v := workflow.GetVersion(ctx, "fooChange-fix2", workflow.DefaultVersion, 1)
 //	if v == workflow.DefaultVersion {
@@ -1683,13 +1705,13 @@ const CadenceChangeVersion = "CadenceChangeVersion"
 //	} else {
 //	  err = workflow.ExecuteActivity(ctx, qux, data).Get(ctx, nil)
 //	}
-func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
+func GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
 	i := getWorkflowInterceptor(ctx)
-	return i.GetVersion(ctx, changeID, minSupported, maxSupported)
+	return i.GetVersion(ctx, changeID, minSupported, maxSupported, opts...)
 }
 
-func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version) Version {
-	return wc.env.GetVersion(changeID, minSupported, maxSupported)
+func (wc *workflowEnvironmentInterceptor) GetVersion(ctx Context, changeID string, minSupported, maxSupported Version, opts ...GetVersionOption) Version {
+	return wc.env.GetVersion(changeID, minSupported, maxSupported, opts...)
 }
 
 // SetQueryHandler sets the query handler to handle workflow query. The queryType specify which query type this handler
@@ -1848,6 +1870,30 @@ func GetActivityTaskList(ctx Context) *string {
 	return &tl
 }
 
+// GetActivityOptions retrieves ActivityOptions from the context.
+// Returns nil if no activity options have been set on the context.
+func GetActivityOptions(ctx Context) *ActivityOptions {
+	ao := getActivityOptions(ctx)
+	if ao == nil {
+		return nil
+	}
+	opts := ActivityOptions{
+		TaskList:               ao.TaskListName,
+		ScheduleToCloseTimeout: time.Duration(ao.ScheduleToCloseTimeoutSeconds) * time.Second,
+		ScheduleToStartTimeout: time.Duration(ao.ScheduleToStartTimeoutSeconds) * time.Second,
+		StartToCloseTimeout:    time.Duration(ao.StartToCloseTimeoutSeconds) * time.Second,
+		HeartbeatTimeout:       time.Duration(ao.HeartbeatTimeoutSeconds) * time.Second,
+		WaitForCancellation:    ao.WaitForCancellation,
+	}
+	if ao.ActivityID != nil {
+		opts.ActivityID = *ao.ActivityID
+	}
+	if ao.RetryPolicy != nil {
+		opts.RetryPolicy = convertFromThriftRetryPolicy(ao.RetryPolicy)
+	}
+	return &opts
+}
+
 // WithScheduleToCloseTimeout adds a timeout to the copy of the context.
 // The current timeout resolution implementation is in seconds and uses math.Ceil(d.Seconds()) as the duration. But is
 // subjected to change in the future.
@@ -1896,22 +1942,4 @@ func WithRetryPolicy(ctx Context, retryPolicy RetryPolicy) Context {
 	ctx1 := setActivityParametersIfNotExist(ctx)
 	getActivityOptions(ctx1).RetryPolicy = convertRetryPolicy(&retryPolicy)
 	return ctx1
-}
-
-func convertRetryPolicy(retryPolicy *RetryPolicy) *s.RetryPolicy {
-	if retryPolicy == nil {
-		return nil
-	}
-	if retryPolicy.BackoffCoefficient == 0 {
-		retryPolicy.BackoffCoefficient = backoff.DefaultBackoffCoefficient
-	}
-	thriftRetryPolicy := s.RetryPolicy{
-		InitialIntervalInSeconds:    common.Int32Ptr(common.Int32Ceil(retryPolicy.InitialInterval.Seconds())),
-		MaximumIntervalInSeconds:    common.Int32Ptr(common.Int32Ceil(retryPolicy.MaximumInterval.Seconds())),
-		BackoffCoefficient:          &retryPolicy.BackoffCoefficient,
-		MaximumAttempts:             &retryPolicy.MaximumAttempts,
-		NonRetriableErrorReasons:    retryPolicy.NonRetriableErrorReasons,
-		ExpirationIntervalInSeconds: common.Int32Ptr(common.Int32Ceil(retryPolicy.ExpirationInterval.Seconds())),
-	}
-	return &thriftRetryPolicy
 }

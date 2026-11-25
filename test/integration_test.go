@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -65,6 +66,7 @@ type IntegrationTestSuite struct {
 const (
 	ctxTimeout                 = 15 * time.Second
 	domainName                 = "integration-test-domain"
+	domainToFailover           = "integration-test-xdc-domain"
 	domainCacheRefreshInterval = 20 * time.Second
 	testContextKey             = "test-context-key"
 )
@@ -98,7 +100,7 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 	ts.Assertions = require.New(ts.T())
 	ts.config = newConfig()
 	ts.activities = newActivities()
-	ts.workflows = &Workflows{}
+	ts.workflows = &Workflows{tracer: mocktracer.New()}
 	ts.Nil(waitForTCP(time.Minute, ts.config.ServiceAddr))
 	var err error
 	if ts.config.EnableGrpcAdapter {
@@ -109,10 +111,12 @@ func (ts *IntegrationTestSuite) SetupSuite() {
 	ts.NoError(err)
 	ts.libClient = client.NewClient(ts.rpcClient.Interface, domainName,
 		&client.Options{
+			Tracer:             ts.workflows.tracer,
 			ContextPropagators: []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
 		})
 	ts.domainClient = client.NewDomainClient(ts.rpcClient.Interface, &client.Options{})
-	ts.registerDomain()
+	ts.registerDomain(domainName, false /* isGlobalDomain */)
+	ts.registerDomain(domainToFailover, true /* isGlobalDomain */)
 	internal.StartVersionMetrics(tally.NoopScope)
 }
 
@@ -154,10 +158,12 @@ func (ts *IntegrationTestSuite) SetupTest() {
 
 func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 	options := worker.Options{
+		Tracer:                            ts.workflows.tracer,
 		DisableStickyExecution:            ts.config.IsStickyOff,
 		Logger:                            zaptest.NewLogger(ts.T()),
 		WorkflowInterceptorChainFactories: []interceptors.WorkflowInterceptorFactory{ts.tracer},
 		ContextPropagators:                []workflow.ContextPropagator{NewStringMapPropagator([]string{testContextKey})},
+		EnableSessionWorker:               true,
 	}
 
 	if testName == "TestNonDeterministicWorkflowQuery" || testName == "TestNonDeterministicWorkflowFailPolicy" {
@@ -165,6 +171,11 @@ func (ts *IntegrationTestSuite) BeforeTest(suiteName, testName string) {
 
 		// disable sticky executon so each workflow yield will require rerunning it from beginning
 		options.DisableStickyExecution = true
+	}
+	if testName == "TestSession_Ephemeral" {
+		options.FeatureFlags = internal.FeatureFlags{
+			EphemeralTaskListsEnabled: true,
+		}
 	}
 
 	ts.worker = worker.New(ts.rpcClient.Interface, domainName, ts.taskListName, options)
@@ -178,7 +189,7 @@ func (ts *IntegrationTestSuite) TearDownTest() {
 
 func (ts *IntegrationTestSuite) TestBasic() {
 	var expected []string
-	err := ts.executeWorkflow("test-basic", ts.workflows.Basic, &expected)
+	_, err := ts.executeWorkflow("test-basic", ts.workflows.Basic, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 	ts.Equal([]string{"ExecuteWorkflow begin", "ExecuteActivity", "ExecuteActivity", "ExecuteWorkflow end"},
@@ -187,27 +198,27 @@ func (ts *IntegrationTestSuite) TestBasic() {
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnError() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-error", ts.workflows.ActivityRetryOnError, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-error", ts.workflows.ActivityRetryOnError, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnTimeoutStableError() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-timeout-stable-error", ts.workflows.RetryTimeoutStableErrorWorkflow, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-timeout-stable-error", ts.workflows.RetryTimeoutStableErrorWorkflow, &expected)
 	ts.Nil(err)
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOptionsChange() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-options-change", ts.workflows.ActivityRetryOptionsChange, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-options-change", ts.workflows.ActivityRetryOptionsChange, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnStartToCloseTimeout() {
 	var expected []string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-activity-retry-on-start2close-timeout",
 		ts.workflows.ActivityRetryOnTimeout,
 		&expected,
@@ -219,21 +230,21 @@ func (ts *IntegrationTestSuite) TestActivityRetryOnStartToCloseTimeout() {
 
 func (ts *IntegrationTestSuite) TestActivityRetryOnHBTimeout() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-retry-on-hbtimeout", ts.workflows.ActivityRetryOnHBTimeout, &expected)
+	_, err := ts.executeWorkflow("test-activity-retry-on-hbtimeout", ts.workflows.ActivityRetryOnHBTimeout, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestActivityAutoHeartbeat() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-auto-heartbeat", ts.workflows.ActivityAutoHeartbeat, &expected)
+	_, err := ts.executeWorkflow("test-activity-auto-heartbeat", ts.workflows.ActivityAutoHeartbeat, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestContinueAsNew() {
 	var result int
-	err := ts.executeWorkflow("test-continueasnew", ts.workflows.ContinueAsNew, &result, 4, ts.taskListName)
+	_, err := ts.executeWorkflow("test-continueasnew", ts.workflows.ContinueAsNew, &result, 4, ts.taskListName)
 	ts.NoError(err)
 	ts.Equal(999, result)
 }
@@ -247,9 +258,52 @@ func (ts *IntegrationTestSuite) TestContinueAsNewCarryOver() {
 	startOptions.SearchAttributes = map[string]interface{}{
 		"CustomKeywordField": "searchAttr",
 	}
-	err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithOptions, &result, 4, ts.taskListName)
+	_, err := ts.executeWorkflowWithOption(startOptions, ts.workflows.ContinueAsNewWithOptions, &result, 4, ts.taskListName)
 	ts.NoError(err)
 	ts.Equal("memoVal,searchAttr", result)
+}
+
+func (ts *IntegrationTestSuite) TestContinueAsNewWithCronSchedule() {
+	wfID := "test-continueasnew-cronschedule-" + uuid.New()
+	defer ts.terminateWorkflows(wfID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	// The workflow is started on a schedule that fires within seconds and passes on a
+	// different one, so the schedule on the next run can only come from WithCronSchedule.
+	startOptions := ts.startWorkflowOptions(wfID)
+	startOptions.CronSchedule = frequentCronSchedule
+
+	// The workflow continues as new indefinitely, so assert on history rather than a result.
+	execution, err := ts.libClient.StartWorkflow(ctx, startOptions, ts.workflows.ContinueAsNewWithCronSchedule)
+	ts.NoError(err)
+
+	secondRunID := ts.continuedAsNewRunID(ctx, wfID, execution.RunID)
+	started := ts.waitForHistoryEvent(ctx, wfID, secondRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+}
+
+func (ts *IntegrationTestSuite) TestContinueAsNewInCronWithoutWithCronSchedule() {
+	wfID := "test-continueasnew-cron-without-withcronschedule-" + uuid.New()
+	defer ts.terminateWorkflows(wfID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	startOptions := ts.startWorkflowOptions(wfID)
+	startOptions.CronSchedule = frequentCronSchedule
+
+	// The workflow continues as new indefinitely, so assert on history rather than a result.
+	execution, err := ts.libClient.StartWorkflow(ctx, startOptions, ts.workflows.ContinueAsNewWithoutCronSchedule)
+	ts.NoError(err)
+
+	started := ts.waitForHistoryEvent(ctx, wfID, execution.RunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(frequentCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+
+	nextRunID := ts.continuedAsNewRunID(ctx, wfID, execution.RunID)
+	started = ts.waitForHistoryEvent(ctx, wfID, nextRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Empty(started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
 }
 
 func (ts *IntegrationTestSuite) TestCancellation() {
@@ -312,11 +366,39 @@ func (ts *IntegrationTestSuite) TestConsistentQuery() {
 	var queryResult string
 	ts.NoError(value.QueryResult.Get(&queryResult))
 	ts.Equal("signal-input", queryResult)
+
+	// Test DescribeWorkflowExecutionWithOptions with QueryConsistencyLevel
+	descResp, err := ts.libClient.DescribeWorkflowExecutionWithOptions(ctx, &client.DescribeWorkflowExecutionWithOptionsRequest{
+		WorkflowID:            "test-consistent-query",
+		RunID:                 run.GetRunID(),
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
+	})
+	ts.Nil(err)
+	ts.NotNil(descResp)
+	ts.NotNil(descResp.WorkflowExecutionInfo)
+	ts.Equal("test-consistent-query", descResp.WorkflowExecutionInfo.GetExecution().GetWorkflowId())
+	ts.Equal(run.GetRunID(), descResp.WorkflowExecutionInfo.GetExecution().GetRunId())
+
+	// Test GetWorkflowHistoryWithOptions with QueryConsistencyLevel
+	histIter := ts.libClient.GetWorkflowHistoryWithOptions(ctx, &client.GetWorkflowHistoryWithOptionsRequest{
+		WorkflowID:            "test-consistent-query",
+		RunID:                 run.GetRunID(),
+		IsLongPoll:            false,
+		FilterType:            shared.HistoryEventFilterTypeAllEvent,
+		QueryConsistencyLevel: client.QueryConsistencyLevelStrong,
+	})
+	ts.Nil(err)
+	ts.NotNil(histIter)
+	ts.True(histIter.HasNext())
+	firstEvent, err := histIter.Next()
+	ts.Nil(err)
+	ts.NotNil(firstEvent)
+	ts.Equal(shared.EventTypeWorkflowExecutionStarted, firstEvent.GetEventType())
 }
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseRejectDuplicate() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -334,7 +416,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseRejectDuplicate() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly1() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate-failed-only1",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -352,7 +434,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly1() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly2() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-reject-duplicate-failed-only2",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -367,7 +449,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicateFailedOnly2() {
 
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicate() {
 	var result string
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		"test-workflowidreuse-allow-duplicate",
 		ts.workflows.IDReusePolicy,
 		&result,
@@ -383,7 +465,7 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseAllowDuplicate() {
 func (ts *IntegrationTestSuite) TestWorkflowIDReuseErrorViaStartWorkflow() {
 	duplicatedWID := "test-workflowidreuse-duplicate-start-error"
 	// setup: run any workflow once to consume the ID
-	err := ts.executeWorkflow(
+	_, err := ts.executeWorkflow(
 		duplicatedWID,
 		ts.workflows.SimplestWorkflow,
 		nil,
@@ -403,14 +485,14 @@ func (ts *IntegrationTestSuite) TestWorkflowIDReuseErrorViaStartWorkflow() {
 }
 
 func (ts *IntegrationTestSuite) TestChildWFRetryOnError() {
-	err := ts.executeWorkflow("test-childwf-retry-on-error", ts.workflows.ChildWorkflowRetryOnError, nil)
+	_, err := ts.executeWorkflow("test-childwf-retry-on-error", ts.workflows.ChildWorkflowRetryOnError, nil)
 	ts.Error(err)
 	ts.Truef(client.IsWorkflowError(err), "child error should be a workflow error: %#v", err)
 	ts.EqualValues([]string{"toUpper", "toUpper", "toUpper"}, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestChildWFRetryOnTimeout() {
-	err := ts.executeWorkflow("test-childwf-retry-on-timeout", ts.workflows.ChildWorkflowRetryOnTimeout, nil)
+	_, err := ts.executeWorkflow("test-childwf-retry-on-timeout", ts.workflows.ChildWorkflowRetryOnTimeout, nil)
 	ts.Error(err)
 	ts.Truef(client.IsWorkflowError(err), "child-timeout error should be a workflow error: %#v", err)
 	ts.EqualValues([]string{"sleep", "sleep", "sleep"}, ts.activities.invoked())
@@ -418,7 +500,7 @@ func (ts *IntegrationTestSuite) TestChildWFRetryOnTimeout() {
 
 func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 	var result string
-	err := ts.executeWorkflow("test-childwf-success-memo-searchAttr", ts.workflows.ChildWorkflowSuccess, &result)
+	_, err := ts.executeWorkflow("test-childwf-success-memo-searchAttr", ts.workflows.ChildWorkflowSuccess, &result)
 	ts.NoError(err)
 	ts.EqualValues([]string{"getMemoAndSearchAttr"}, ts.activities.invoked())
 	ts.Equal("memoVal, searchAttrVal", result)
@@ -426,9 +508,60 @@ func (ts *IntegrationTestSuite) TestChildWFWithMemoAndSearchAttributes() {
 		ts.tracer.GetTrace("go.uber.org/cadence/test.(*Workflows).ChildWorkflowSuccess"))
 }
 
+func (ts *IntegrationTestSuite) TestChildWorkflowsWithCronSchedule() {
+	parentID := "test-childwf-with-cronschedule-" + uuid.New()
+	childID := parentID + "-child"
+	defer ts.terminateWorkflows(parentID, childID)
+
+	// The parent returns as soon as the cron child has started, so the child itself never runs.
+	var childRunID string
+	execution, err := ts.executeWorkflow(parentID, ts.workflows.ChildWorkflowsWithCronSchedule, &childRunID, childID)
+	ts.NoError(err)
+	ts.NotEmpty(childRunID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	initiated := ts.waitForHistoryEvent(ctx, parentID, execution.RunID, shared.EventTypeStartChildWorkflowExecutionInitiated)
+	ts.Equal(childID, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetWorkflowId())
+	ts.Equal(rareCronSchedule, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
+
+	started := ts.waitForHistoryEvent(ctx, childID, childRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+}
+
+func (ts *IntegrationTestSuite) TestChildWorkflowsWithoutWithCronSchedule() {
+	parentID := "test-childwf-without-withcronschedule-" + uuid.New()
+	childID := parentID + "-child"
+	defer ts.terminateWorkflows(parentID, childID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	// The run that starts the child has a cron schedule, so its own completion continues the
+	// chain as new rather than closing the workflow. Assert on history instead of the result.
+	execution, err := ts.libClient.StartWorkflow(ctx, ts.startWorkflowOptions(parentID), ts.workflows.ChildWorkflowsWithoutWithCronSchedule, childID)
+	ts.NoError(err)
+
+	cronRunID := ts.continuedAsNewRunID(ctx, parentID, execution.RunID)
+	started := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Equal(rareCronSchedule, started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+
+	initiated := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeStartChildWorkflowExecutionInitiated)
+	ts.Equal(childID, initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetWorkflowId())
+	ts.Empty(initiated.StartChildWorkflowExecutionInitiatedEventAttributes.GetCronSchedule())
+
+	childStarted := ts.waitForHistoryEvent(ctx, parentID, cronRunID, shared.EventTypeChildWorkflowExecutionStarted)
+	childRunID := childStarted.ChildWorkflowExecutionStartedEventAttributes.GetWorkflowExecution().GetRunId()
+	ts.NotEmpty(childRunID)
+
+	started = ts.waitForHistoryEvent(ctx, childID, childRunID, shared.EventTypeWorkflowExecutionStarted)
+	ts.Empty(started.WorkflowExecutionStartedEventAttributes.GetCronSchedule())
+}
+
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyTerminate, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyTerminate, &childWorkflowID)
 	ts.NoError(err)
 	// Need to wait for child workflow to finish as well otherwise test becomes flaky
 	ts.waitForWorkflowFinish(childWorkflowID, "")
@@ -439,7 +572,7 @@ func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyTerminate() {
 
 func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyAbandon() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyAbandon, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-parent-close-policy", ts.workflows.ChildWorkflowSuccessWithParentClosePolicyAbandon, &childWorkflowID)
 	ts.NoError(err)
 	resp, err := ts.libClient.DescribeWorkflowExecution(context.Background(), childWorkflowID, "")
 	ts.NoError(err)
@@ -448,7 +581,7 @@ func (ts *IntegrationTestSuite) TestChildWFWithParentClosePolicyAbandon() {
 
 func (ts *IntegrationTestSuite) TestChildWFCancel() {
 	var childWorkflowID string
-	err := ts.executeWorkflow("test-childwf-cancel", ts.workflows.ChildWorkflowCancel, &childWorkflowID)
+	_, err := ts.executeWorkflow("test-childwf-cancel", ts.workflows.ChildWorkflowCancel, &childWorkflowID)
 	ts.NoError(err)
 	resp, err := ts.libClient.DescribeWorkflowExecution(context.Background(), childWorkflowID, "")
 	ts.NoError(err)
@@ -464,14 +597,14 @@ func (ts *IntegrationTestSuite) TestActivityCancelUsingReplay() {
 
 func (ts *IntegrationTestSuite) TestActivityCancelRepro() {
 	var expected []string
-	err := ts.executeWorkflow("test-activity-cancel-sm", ts.workflows.ActivityCancelRepro, &expected)
+	_, err := ts.executeWorkflow("test-activity-cancel-sm", ts.workflows.ActivityCancelRepro, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, ts.activities.invoked())
 }
 
 func (ts *IntegrationTestSuite) TestWorkflowWithLocalActivityCtxPropagation() {
 	var expected string
-	err := ts.executeWorkflow("test-wf-local-activity-ctx-prop", ts.workflows.WorkflowWithLocalActivityCtxPropagation, &expected)
+	_, err := ts.executeWorkflow("test-wf-local-activity-ctx-prop", ts.workflows.WorkflowWithLocalActivityCtxPropagation, &expected)
 	ts.NoError(err)
 	ts.EqualValues(expected, "test-data-in-contexttest-data-in-context")
 }
@@ -493,12 +626,12 @@ func (ts *IntegrationTestSuite) TestLargeQueryResultError() {
 }
 
 func (ts *IntegrationTestSuite) TestInspectActivityInfo() {
-	err := ts.executeWorkflow("test-activity-info", ts.workflows.InspectActivityInfo, nil)
+	_, err := ts.executeWorkflow("test-activity-info", ts.workflows.InspectActivityInfo, nil)
 	ts.Nil(err)
 }
 
 func (ts *IntegrationTestSuite) TestInspectLocalActivityInfo() {
-	err := ts.executeWorkflow("test-local-activity-info", ts.workflows.InspectLocalActivityInfo, nil)
+	_, err := ts.executeWorkflow("test-local-activity-info", ts.workflows.InspectLocalActivityInfo, nil)
 	ts.Nil(err)
 }
 
@@ -518,8 +651,24 @@ func (ts *IntegrationTestSuite) TestDomainUpdate() {
 	ts.Equal(description, *domain.DomainInfo.Description)
 }
 
+func (ts *IntegrationTestSuite) TestFailoverDomain() {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	name := domainToFailover
+	activeClusterName := "cluster0"
+	err := ts.domainClient.Failover(ctx, &shared.FailoverDomainRequest{
+		DomainName:              &name,
+		DomainActiveClusterName: &activeClusterName,
+	})
+	ts.NoError(err)
+
+	domain, err := ts.domainClient.Describe(ctx, name)
+	ts.NoError(err)
+	ts.Equal(activeClusterName, *domain.ReplicationConfiguration.ActiveClusterName)
+}
+
 func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowFailPolicy() {
-	err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
+	_, err := ts.executeWorkflow("test-nondeterminism-failpolicy", ts.workflows.NonDeterminismSimulatorWorkflow, nil)
 	var customErr *internal.CustomError
 	ok := errors.As(err, &customErr)
 	ts.Truef(ok, "expected CustomError but got %T", err)
@@ -545,14 +694,195 @@ func (ts *IntegrationTestSuite) TestNonDeterministicWorkflowQuery() {
 	ts.NoError(value.Get(&trace))
 }
 
-func (ts *IntegrationTestSuite) registerDomain() {
+func (ts *IntegrationTestSuite) TestOverrideSpanContext() {
+	var result map[string]string
+	_, err := ts.executeWorkflow("test-override-span-context", ts.workflows.OverrideSpanContext, &result)
+	ts.NoError(err)
+	ts.Equal("some-value", result["mockpfx-baggage-some-key"])
+}
+
+func (ts *IntegrationTestSuite) TestSession() {
+	var result string
+	_, err := ts.executeWorkflow("test-session", ts.workflows.Session, &result)
+	ts.NoError(err)
+	tl := ts.describeTaskList(result)
+	ts.NotNil(tl)
+	ts.Equal(shared.TaskListKindNormal.Ptr(), tl.Kind)
+}
+
+func (ts *IntegrationTestSuite) TestSession_Ephemeral() {
+	// Ephemeral TaskList is enabled by the test name
+	var result string
+	_, err := ts.executeWorkflow("test-session-ephemeral", ts.workflows.Session, &result)
+	ts.NoError(err)
+	tl := ts.describeTaskList(result)
+	ts.NotNil(tl)
+	ts.Equal(shared.TaskListKindEphemeral.Ptr(), tl.Kind)
+}
+
+func (ts *IntegrationTestSuite) describeTaskList(taskListName string) *shared.TaskList {
+	descResp, err := ts.libClient.DescribeTaskList(context.Background(), taskListName, shared.TaskListTypeActivity)
+	ts.Require().NoError(err)
+	return descResp.GetTaskList()
+}
+
+// TestVersionedWorkflowV1 tests that a workflow started on the worker with VersionedWorkflowV1
+// can be replayed on worker with VersionedWorkflowV2 and VersionedWorkflowV3,
+// but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV1() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV1,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+	})
+}
+
+// TestVersionedWorkflowV2 tests that a workflow started on the worker with VersionedWorkflowV2
+// can be replayed on worker with VersionedWorkflowV1 and VersionedWorkflowV3,
+// but not on VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV2() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV2,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV3,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+	})
+}
+
+// TestVersionedWorkflowV3 tests that a workflow started on the worker with VersionedWorkflowV3
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV4, VersionedWorkflowV5, VersionedWorkflowV6
+// but not on VersionedWorkflowV1
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV3() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV3,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV4 tests that a workflow started on the worker with VersionedWorkflowV4
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV5, VersionedWorkflowV6
+// but not on VersionedWorkflowV1
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV4() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV4,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV5,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV5 tests that a workflow started on the worker with VersionedWorkflowV5
+// can be replayed on worker with VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4, VersionedWorkflowV6,
+// but not on VersionedWorkflowV1.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV5() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV5,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
+			VersionedWorkflowVersionV6,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+		},
+	})
+}
+
+// TestVersionedWorkflowV6 tests that a workflow started on the worker with VersionedWorkflowV6
+// can be replayed on worker with VersionedWorkflowV5
+// but not on VersionedWorkflowV1, VersionedWorkflowV2, VersionedWorkflowV3, VersionedWorkflowV4.
+func (ts *IntegrationTestSuite) TestVersionedWorkflowV6() {
+	ts.testVersionedWorkflow(testVersionedWorkflowTestCase{
+		version: VersionedWorkflowVersionV6,
+		compatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV5,
+		},
+		inCompatibleVersions: []VersionedWorkflowVersion{
+			VersionedWorkflowVersionV1,
+			VersionedWorkflowVersionV2,
+			VersionedWorkflowVersionV3,
+			VersionedWorkflowVersionV4,
+		},
+	})
+}
+
+type testVersionedWorkflowTestCase struct {
+	version              VersionedWorkflowVersion
+	compatibleVersions   []VersionedWorkflowVersion
+	inCompatibleVersions []VersionedWorkflowVersion
+}
+
+// testVersionedWorkflow tests that a workflow started on the worker with version
+// can be replayed on worker with compatibleVersions
+// but not on worker with inCompatibleVersions
+func (ts *IntegrationTestSuite) testVersionedWorkflow(c testVersionedWorkflowTestCase) {
+	SetupWorkerForVersionedWorkflow(c.version, ts.worker)
+	wfID := fmt.Sprintf("test-versioned-workflow-v%d", c.version)
+	execution, err := ts.executeWorkflow(wfID, VersionedWorkflowName, nil, "arg")
+	ts.NoError(err)
+
+	c.compatibleVersions = append(c.compatibleVersions, c.version)
+
+	ts.Require().Equalf(len(c.compatibleVersions)+len(c.inCompatibleVersions), int(MaxVersionedWorkflowVersion),
+		"Test case should cover all versions, but got %d compatible (one of them the testing version itself) and %d incompatible versions, that not equal to %d",
+		len(c.compatibleVersions),
+		len(c.inCompatibleVersions),
+		MaxVersionedWorkflowVersion)
+
+	for _, replayedVersion := range c.compatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.NoErrorf(err, "Failed to replay on the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+
+	for _, replayedVersion := range c.inCompatibleVersions {
+		err := ts.replayVersionedWorkflow(replayedVersion, execution)
+		ts.Errorf(err, "Expected to fail replaying the replayer with VersionedWorkflowV%d", replayedVersion)
+	}
+}
+
+func (ts *IntegrationTestSuite) replayVersionedWorkflow(version VersionedWorkflowVersion, execution *workflow.Execution) error {
+	replayer := worker.NewWorkflowReplayer()
+	SetupWorkerForVersionedWorkflow(version, replayer)
+	return replayer.ReplayWorkflowExecution(context.Background(), ts.rpcClient, zaptest.NewLogger(ts.T()), domainName, *execution)
+}
+
+func (ts *IntegrationTestSuite) registerDomain(domainName string, isGlobalDomain bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
-	name := domainName
+
 	retention := int32(1)
 	err := ts.domainClient.Register(ctx, &shared.RegisterDomainRequest{
-		Name:                                   &name,
+		Name:                                   &domainName,
 		WorkflowExecutionRetentionPeriodInDays: &retention,
+		IsGlobalDomain:                         &isGlobalDomain,
 	})
 	if err != nil {
 		if _, ok := err.(*shared.DomainAlreadyExistsError); ok {
@@ -563,12 +893,12 @@ func (ts *IntegrationTestSuite) registerDomain() {
 	time.Sleep(domainCacheRefreshInterval) // wait for domain cache refresh on cadence-server
 	// bellow is used to guarantee domain is ready
 	var dummyReturn string
-	err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
+	_, err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
 	numOfRetry := 20
 	for err != nil && numOfRetry >= 0 {
 		if _, ok := err.(*shared.EntityNotExistsError); ok {
 			time.Sleep(domainCacheRefreshInterval)
-			err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
+			_, err = ts.executeWorkflow("test-domain-exist", ts.workflows.SimplestWorkflow, &dummyReturn)
 		} else {
 			break
 		}
@@ -577,20 +907,21 @@ func (ts *IntegrationTestSuite) registerDomain() {
 }
 
 // executeWorkflow executes a given workflow and waits for the result
-func (ts *IntegrationTestSuite) executeWorkflow(
-	wfID string, wfFunc interface{}, retValPtr interface{}, args ...interface{}) error {
+func (ts *IntegrationTestSuite) executeWorkflow(wfID string, wfFunc interface{}, retValPtr interface{}, args ...interface{}) (*workflow.Execution, error) {
 	options := ts.startWorkflowOptions(wfID)
 	return ts.executeWorkflowWithOption(options, wfFunc, retValPtr, args...)
 }
 
-func (ts *IntegrationTestSuite) executeWorkflowWithOption(
-	options client.StartWorkflowOptions, wfFunc interface{}, retValPtr interface{}, args ...interface{}) error {
+func (ts *IntegrationTestSuite) executeWorkflowWithOption(options client.StartWorkflowOptions, wfFunc interface{}, retValPtr interface{}, args ...interface{}) (*workflow.Execution, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
-	run, err := ts.libClient.ExecuteWorkflow(ctx, options, wfFunc, args...)
+	span := ts.workflows.tracer.StartSpan("test-workflow")
+	defer span.Finish()
+	execution, err := ts.libClient.StartWorkflow(ctx, options, wfFunc, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	run := ts.libClient.GetWorkflow(ctx, execution.ID, execution.RunID)
 	err = run.Get(ctx, retValPtr)
 	logger := zaptest.NewLogger(ts.T())
 	if ts.config.Debug {
@@ -603,7 +934,7 @@ func (ts *IntegrationTestSuite) executeWorkflowWithOption(
 			logger.Info(event.String())
 		}
 	}
-	return err
+	return execution, err
 }
 
 func (ts *IntegrationTestSuite) startWorkflowOptions(wfID string) client.StartWorkflowOptions {
@@ -621,10 +952,52 @@ func (ts *IntegrationTestSuite) registerWorkflowsAndActivities(w worker.Worker) 
 	ts.activities.register(w)
 }
 
-func (ts *IntegrationTestSuite) waitForWorkflowFinish(wid string, runId string) error {
+// waitForHistoryEvent polls a single run's history until it contains an event of the given
+// type. Runs with a cron schedule never close on their own, so cron tests assert on the
+// events of a specific run rather than waiting for a result.
+func (ts *IntegrationTestSuite) waitForHistoryEvent(ctx context.Context, wfID, runID string, eventType shared.EventType) *shared.HistoryEvent {
+	for {
+		iter := ts.libClient.GetWorkflowHistory(ctx, wfID, runID, false, shared.HistoryEventFilterTypeAllEvent)
+		for iter.HasNext() {
+			event, err := iter.Next()
+			ts.NoError(err)
+			if event.GetEventType() == eventType {
+				return event
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			ts.FailNowf("history event not found",
+				"%v never appeared in run %v of workflow %v", eventType, runID, wfID)
+			return nil
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// continuedAsNewRunID returns the run ID that the given run continued as new into.
+func (ts *IntegrationTestSuite) continuedAsNewRunID(ctx context.Context, wfID, runID string) string {
+	event := ts.waitForHistoryEvent(ctx, wfID, runID, shared.EventTypeWorkflowExecutionContinuedAsNew)
+	newRunID := event.WorkflowExecutionContinuedAsNewEventAttributes.GetNewExecutionRunId()
+	ts.NotEmpty(newRunID)
+	return newRunID
+}
+
+// terminateWorkflows closes out workflows that outlive a test, such as cron chains that
+// would otherwise keep scheduling runs.
+func (ts *IntegrationTestSuite) terminateWorkflows(wfIDs ...string) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
-	wfRun := ts.libClient.GetWorkflow(ctx, wid, runId)
+	for _, wfID := range wfIDs {
+		_ = ts.libClient.TerminateWorkflow(ctx, wfID, "", "integration test cleanup", nil)
+	}
+}
+
+func (ts *IntegrationTestSuite) waitForWorkflowFinish(wid string, runID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+	wfRun := ts.libClient.GetWorkflow(ctx, wid, runID)
 	return wfRun.Get(ctx, nil)
 }
 

@@ -34,6 +34,8 @@ func TaskListKind(t apiv1.TaskListKind) *shared.TaskListKind {
 		return shared.TaskListKindNormal.Ptr()
 	case apiv1.TaskListKind_TASK_LIST_KIND_STICKY:
 		return shared.TaskListKindSticky.Ptr()
+	case apiv1.TaskListKind_TASK_LIST_KIND_EPHEMERAL:
+		return shared.TaskListKindEphemeral.Ptr()
 	}
 	panic("unexpected enum value")
 }
@@ -104,7 +106,7 @@ func ContinueAsNewInitiator(t apiv1.ContinueAsNewInitiator) *shared.ContinueAsNe
 	panic("unexpected enum value")
 }
 
-func WorkflowIdReusePolicy(t apiv1.WorkflowIdReusePolicy) *shared.WorkflowIdReusePolicy {
+func WorkflowIDReusePolicy(t apiv1.WorkflowIdReusePolicy) *shared.WorkflowIdReusePolicy {
 	switch t {
 	case apiv1.WorkflowIdReusePolicy_WORKFLOW_ID_REUSE_POLICY_INVALID:
 		return nil
@@ -380,4 +382,43 @@ func ChildWorkflowExecutionFailedCause(t apiv1.ChildWorkflowExecutionFailedCause
 		return shared.ChildWorkflowExecutionFailedCauseWorkflowAlreadyRunning.Ptr()
 	}
 	panic("unexpected enum value")
+}
+
+func CronOverlapPolicy(t apiv1.CronOverlapPolicy) *shared.CronOverlapPolicy {
+	switch t {
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_INVALID:
+		return nil
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED:
+		return shared.CronOverlapPolicySkipped.Ptr()
+	case apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE:
+		return shared.CronOverlapPolicyBufferone.Ptr()
+	}
+	// we treat any unknown value as invalid
+	return nil
+}
+
+func FailoverType(t apiv1.FailoverType) *shared.FailoverType {
+	switch t {
+	case apiv1.FailoverType_FAILOVER_TYPE_INVALID:
+		return shared.FailoverTypeInvalid.Ptr()
+	case apiv1.FailoverType_FAILOVER_TYPE_FORCE:
+		return shared.FailoverTypeForce.Ptr()
+	case apiv1.FailoverType_FAILOVER_TYPE_GRACEFUL:
+		return shared.FailoverTypeGraceful.Ptr()
+	}
+	return shared.FailoverTypeInvalid.Ptr()
+}
+
+func FailureCategory(t apiv1.FailureCategory) *shared.FailureCategory {
+	switch t {
+	case apiv1.FailureCategory_FAILURE_CATEGORY_INVALID:
+		return nil
+	case apiv1.FailureCategory_FAILURE_CATEGORY_POLL:
+		return shared.FailureCategoryPoll.Ptr()
+	case apiv1.FailureCategory_FAILURE_CATEGORY_STANDARD:
+		return shared.FailureCategoryStandard.Ptr()
+	case apiv1.FailureCategory_FAILURE_CATEGORY_FATAL:
+		return shared.FailureCategoryFatal.Ptr()
+	}
+	return nil
 }

@@ -81,11 +81,32 @@ var (
 		VisibilityArchivalUri:            VisibilityArchivalURI,
 		ActiveClusterName:                ClusterName1,
 		Clusters:                         ClusterReplicationConfigurationArray,
+		ActiveClusters:                   ActiveClusters,
 	}
 	ClusterReplicationConfiguration = apiv1.ClusterReplicationConfiguration{
 		ClusterName: ClusterName1,
 	}
 	ClusterReplicationConfigurationArray = []*apiv1.ClusterReplicationConfiguration{
 		&ClusterReplicationConfiguration,
+	}
+	ActiveClusters = &apiv1.ActiveClusters{
+		ActiveClustersByClusterAttribute: map[string]*apiv1.ClusterAttributeScope{
+			"region": &apiv1.ClusterAttributeScope{
+				ClusterAttributes: map[string]*apiv1.ActiveClusterInfo{
+					"us-east-1": &apiv1.ActiveClusterInfo{
+						ActiveClusterName: ClusterName1,
+						FailoverVersion:   0,
+					},
+				},
+			},
+			"city": &apiv1.ClusterAttributeScope{
+				ClusterAttributes: map[string]*apiv1.ActiveClusterInfo{
+					"london": &apiv1.ActiveClusterInfo{
+						ActiveClusterName: ClusterName2,
+						FailoverVersion:   0,
+					},
+				},
+			},
+		},
 	}
 )

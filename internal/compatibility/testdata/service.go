@@ -34,6 +34,7 @@ var (
 		WorkflowExecutionRetentionPeriod: DomainRetention,
 		Clusters:                         ClusterReplicationConfigurationArray,
 		ActiveClusterName:                ClusterName1,
+		ActiveClusters:                   ActiveClusters,
 		Data:                             DomainData,
 		SecurityToken:                    SecurityToken,
 		IsGlobalDomain:                   true,
@@ -41,6 +42,10 @@ var (
 		HistoryArchivalUri:               HistoryArchivalURI,
 		VisibilityArchivalStatus:         ArchivalStatus,
 		VisibilityArchivalUri:            VisibilityArchivalURI,
+	}
+	ListFailoverHistoryRequest = apiv1.ListFailoverHistoryRequest{
+		Filters:    &ListFailoverHistoryRequestFilters,
+		Pagination: &PaginationOptions,
 	}
 	DescribeDomainRequest_ID = apiv1.DescribeDomainRequest{
 		DescribeBy: &apiv1.DescribeDomainRequest_Id{Id: DomainID},
@@ -71,11 +76,29 @@ var (
 		VisibilityArchivalStatus:         ArchivalStatus,
 		VisibilityArchivalUri:            VisibilityArchivalURI,
 		ActiveClusterName:                ClusterName1,
+		ActiveClusters:                   ActiveClusters,
 		Clusters:                         ClusterReplicationConfigurationArray,
 		SecurityToken:                    SecurityToken,
 		DeleteBadBinary:                  DeleteBadBinary,
 		FailoverTimeout:                  Duration1,
-		UpdateMask:                       &gogo.FieldMask{Paths: []string{"description", "owner_email", "data", "workflow_execution_retention_period", "bad_binaries", "history_archival_status", "history_archival_uri", "visibility_archival_status", "visibility_archival_uri", "active_cluster_name", "clusters", "delete_bad_binary", "failover_timeout"}},
+		UpdateMask: &gogo.FieldMask{
+			Paths: []string{
+				"description",
+				"owner_email",
+				"data",
+				"workflow_execution_retention_period",
+				"bad_binaries",
+				"history_archival_status",
+				"history_archival_uri",
+				"visibility_archival_status",
+				"visibility_archival_uri",
+				"active_cluster_name",
+				"clusters",
+				"active_clusters",
+				"delete_bad_binary",
+				"failover_timeout",
+			},
+		},
 	}
 	UpdateDomainResponse = apiv1.UpdateDomainResponse{
 		Domain: &Domain,
@@ -83,6 +106,16 @@ var (
 	DeprecateDomainRequest = apiv1.DeprecateDomainRequest{
 		Name:          DomainName,
 		SecurityToken: SecurityToken,
+	}
+	FailoverDomainRequest = apiv1.FailoverDomainRequest{
+		DomainName:                  DomainName,
+		DomainActiveClusterName:     ClusterName1,
+		ActiveClusters:              ActiveClusters,
+		FailoverTimeout:             Duration1,
+		SkipDestinationClusterCheck: true,
+	}
+	FailoverDomainResponse = apiv1.FailoverDomainResponse{
+		Domain: &Domain,
 	}
 	ListWorkflowExecutionsRequest = apiv1.ListWorkflowExecutionsRequest{
 		Domain:        DomainName,
@@ -199,6 +232,7 @@ var (
 		StartedTime:               Timestamp2,
 		Queries:                   WorkflowQueryMap,
 		NextEventId:               EventID3,
+		AutoConfigHint:            &AutoConfigHint,
 	}
 	RespondDecisionTaskCompletedRequest = apiv1.RespondDecisionTaskCompletedRequest{
 		TaskToken:                  TaskToken,
@@ -245,6 +279,7 @@ var (
 		WorkflowType:               &WorkflowType,
 		WorkflowDomain:             DomainName,
 		Header:                     &Header,
+		AutoConfigHint:             &AutoConfigHint,
 	}
 	RespondActivityTaskCompletedRequest = apiv1.RespondActivityTaskCompletedRequest{
 		TaskToken: TaskToken,
@@ -332,6 +367,44 @@ var (
 		SearchAttributes:             &SearchAttributes,
 		Header:                       &Header,
 	}
+	StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy1 = apiv1.StartWorkflowExecutionRequest{
+		Domain:                       DomainName,
+		WorkflowId:                   WorkflowID,
+		WorkflowType:                 &WorkflowType,
+		TaskList:                     &TaskList,
+		Input:                        &Payload1,
+		ExecutionStartToCloseTimeout: Duration1,
+		TaskStartToCloseTimeout:      Duration2,
+		Identity:                     Identity,
+		RequestId:                    RequestID,
+		WorkflowIdReusePolicy:        WorkflowIDReusePolicy,
+		RetryPolicy:                  &RetryPolicy,
+		CronSchedule:                 CronSchedule,
+		Memo:                         &Memo,
+		SearchAttributes:             &SearchAttributes,
+		Header:                       &Header,
+		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_SKIPPED,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy,
+	}
+	StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2 = apiv1.StartWorkflowExecutionRequest{
+		Domain:                       DomainName,
+		WorkflowId:                   WorkflowID,
+		WorkflowType:                 &WorkflowType,
+		TaskList:                     &TaskList,
+		Input:                        &Payload1,
+		ExecutionStartToCloseTimeout: Duration1,
+		TaskStartToCloseTimeout:      Duration2,
+		Identity:                     Identity,
+		RequestId:                    RequestID,
+		WorkflowIdReusePolicy:        WorkflowIDReusePolicy,
+		RetryPolicy:                  &RetryPolicy,
+		CronSchedule:                 CronSchedule,
+		Memo:                         &Memo,
+		SearchAttributes:             &SearchAttributes,
+		Header:                       &Header,
+		CronOverlapPolicy:            apiv1.CronOverlapPolicy_CRON_OVERLAP_POLICY_BUFFER_ONE,
+		ActiveClusterSelectionPolicy: ActiveClusterSelectionPolicy2,
+	}
 	StartWorkflowExecutionResponse = apiv1.StartWorkflowExecutionResponse{
 		RunId: RunID,
 	}
@@ -346,6 +419,18 @@ var (
 	}
 	SignalWithStartWorkflowExecutionRequest = apiv1.SignalWithStartWorkflowExecutionRequest{
 		StartRequest: &StartWorkflowExecutionRequest,
+		SignalName:   SignalName,
+		SignalInput:  &Payload2,
+		Control:      Control,
+	}
+	SignalWithStartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy1 = apiv1.SignalWithStartWorkflowExecutionRequest{
+		StartRequest: &StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy1,
+		SignalName:   SignalName,
+		SignalInput:  &Payload2,
+		Control:      Control,
+	}
+	SignalWithStartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2 = apiv1.SignalWithStartWorkflowExecutionRequest{
+		StartRequest: &StartWorkflowExecutionRequestWithCronAndActiveClusterSelectionPolicy2,
 		SignalName:   SignalName,
 		SignalInput:  &Payload2,
 		Control:      Control,
@@ -372,8 +457,9 @@ var (
 		Identity:          Identity,
 	}
 	DescribeWorkflowExecutionRequest = apiv1.DescribeWorkflowExecutionRequest{
-		Domain:            DomainName,
-		WorkflowExecution: &WorkflowExecution,
+		Domain:                DomainName,
+		WorkflowExecution:     &WorkflowExecution,
+		QueryConsistencyLevel: QueryConsistencyLevel,
 	}
 	DescribeWorkflowExecutionResponse = apiv1.DescribeWorkflowExecutionResponse{
 		ExecutionConfiguration: &WorkflowExecutionConfiguration,
@@ -381,6 +467,15 @@ var (
 		PendingActivities:      PendingActivityInfoArray,
 		PendingChildren:        PendingChildExecutionInfoArray,
 		PendingDecision:        &PendingDecisionInfo,
+	}
+	DiagnoseWorkflowExecutionRequest = apiv1.DiagnoseWorkflowExecutionRequest{
+		Domain:            DomainName,
+		WorkflowExecution: &WorkflowExecution,
+		Identity:          Identity,
+	}
+	DiagnoseWorkflowExecutionResponse = apiv1.DiagnoseWorkflowExecutionResponse{
+		Domain:                      DomainName,
+		DiagnosticWorkflowExecution: &WorkflowExecution,
 	}
 	QueryWorkflowRequest = apiv1.QueryWorkflowRequest{
 		Domain:                DomainName,
@@ -403,6 +498,17 @@ var (
 		Pollers:        PollerInfoArray,
 		TaskListStatus: &TaskListStatus,
 	}
+	GetTaskListsByDomainRequest = apiv1.GetTaskListsByDomainRequest{
+		Domain: DomainName,
+	}
+	GetTaskListsByDomainResponse = apiv1.GetTaskListsByDomainResponse{
+		DecisionTaskListMap: map[string]*apiv1.DescribeTaskListResponse{
+			"decision-tl": &DescribeTaskListResponse,
+		},
+		ActivityTaskListMap: map[string]*apiv1.DescribeTaskListResponse{
+			"activity-tl": &DescribeTaskListResponse,
+		},
+	}
 	ListTaskListPartitionsRequest = apiv1.ListTaskListPartitionsRequest{
 		Domain:   DomainName,
 		TaskList: &TaskList,
@@ -424,6 +530,7 @@ var (
 		WaitForNewEvent:        true,
 		HistoryEventFilterType: HistoryEventFilterType,
 		SkipArchival:           true,
+		QueryConsistencyLevel:  QueryConsistencyLevel,
 	}
 	GetWorkflowExecutionHistoryResponse = apiv1.GetWorkflowExecutionHistoryResponse{
 		History:       &History,

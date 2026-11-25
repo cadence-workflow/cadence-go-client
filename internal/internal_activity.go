@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"time"
 
@@ -59,6 +60,7 @@ type (
 	activityOptions struct {
 		ActivityID                    *string // Users can choose IDs but our framework makes it optional to decrease the crust.
 		TaskListName                  string
+		TaskListKind                  shared.TaskListKind
 		ScheduleToCloseTimeoutSeconds int32
 		ScheduleToStartTimeoutSeconds int32
 		StartToCloseTimeoutSeconds    int32
@@ -155,6 +157,11 @@ func getActivityEnv(ctx context.Context) *activityEnvironment {
 	return env.(*activityEnvironment)
 }
 
+func hasActivityEnv(ctx context.Context) bool {
+	env := ctx.Value(activityEnvContextKey)
+	return env != nil
+}
+
 func getActivityOptions(ctx Context) *activityOptions {
 	eap := ctx.Value(activityOptionsContextKey)
 	if eap == nil {
@@ -239,6 +246,9 @@ func validateRetryPolicy(p *shared.RetryPolicy) error {
 	}
 	if p.GetBackoffCoefficient() < 1 {
 		return errors.New("BackoffCoefficient on retry policy cannot be less than 1.0")
+	}
+	if jitter := p.GetJitterCoefficient(); math.IsNaN(jitter) || jitter < 0 || jitter > 1 {
+		return errors.New("JitterCoefficient on retry policy must be between 0 and 1")
 	}
 	if p.GetMaximumAttempts() == 0 && p.GetExpirationIntervalInSeconds() == 0 {
 		return errors.New("both MaximumAttempts and ExpirationIntervalInSeconds on retry policy are not set, at least one of them must be set")

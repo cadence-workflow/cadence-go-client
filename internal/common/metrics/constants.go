@@ -51,6 +51,9 @@ const (
 	DecisionResponseFailedCounter      = CadenceMetricsPrefix + "decision-response-failed"
 	DecisionResponseLatency            = CadenceMetricsPrefix + "decision-response-latency"
 	DecisionTaskPanicCounter           = CadenceMetricsPrefix + "decision-task-panic"
+	// DecisionTaskVersionMismatchCounter counts decision tasks that failed because GetVersion found a
+	// version outside the range the workflow code supports. Tagged with VersionMismatchType.
+	DecisionTaskVersionMismatchCounter = CadenceMetricsPrefix + "decision-task-version-mismatch"
 	DecisionTaskCompletedCounter       = CadenceMetricsPrefix + "decision-task-completed"
 	DecisionTaskForceCompleted         = CadenceMetricsPrefix + "decision-task-force-completed"
 
@@ -110,15 +113,11 @@ const (
 	ReplaySkippedCounter = CadenceMetricsPrefix + "replay-skipped"
 	ReplayLatency        = CadenceMetricsPrefix + "replay-latency"
 
-	NumCPUCores     = CadenceMetricsPrefix + "num-cpu-cores"
-	CPUPercentage   = CadenceMetricsPrefix + "cpu-percentage"
-	TotalMemory     = CadenceMetricsPrefix + "total-memory"
-	MemoryUsedHeap  = CadenceMetricsPrefix + "memory-used-heap"
-	MemoryUsedStack = CadenceMetricsPrefix + "memory-used-stack"
-	NumGoRoutines   = CadenceMetricsPrefix + "num-go-routines"
-
 	EstimatedHistorySize     = CadenceMetricsPrefix + "estimated-history-size"
 	ServerSideHistorySize    = CadenceMetricsPrefix + "server-side-history-size"
 	ConcurrentTaskQuota      = CadenceMetricsPrefix + "concurrent-task-quota"
 	PollerRequestBufferUsage = CadenceMetricsPrefix + "poller-request-buffer-usage"
+
+	// Concurrency Auto Scaler
+	ConcurrencyAutoScalerScope = CadenceMetricsPrefix + "concurrency-auto-scaler"
 )

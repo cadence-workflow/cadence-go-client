@@ -28,13 +28,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
 
@@ -60,6 +61,11 @@ const (
 	defaultMediumLivedWorkflowTimeoutUpperLimitInSec = 8 * 3600
 )
 
+var (
+	_ autoConfigHintAwareTask = (*workflowTask)(nil)
+	_ autoConfigHintAwareTask = (*activityTask)(nil)
+)
+
 type (
 	// workflowExecutionEventHandler process a single event.
 	workflowExecutionEventHandler interface {
@@ -73,9 +79,15 @@ type (
 		Close()
 	}
 
+	// autoConfigHintAwareTask is a task that can provide auto config hint
+	autoConfigHintAwareTask interface {
+		getAutoConfigHint() *s.AutoConfigHint
+	}
+
 	// workflowTask wraps a decision task.
 	workflowTask struct {
 		task            *s.PollForDecisionTaskResponse
+		autoConfigHint  *s.AutoConfigHint
 		historyIterator HistoryIterator
 		doneCh          chan struct{}
 		laResultCh      chan *localActivityResult
@@ -83,8 +95,9 @@ type (
 
 	// activityTask wraps a activity task.
 	activityTask struct {
-		task          *s.PollForActivityTaskResponse
-		pollStartTime time.Time
+		task           *s.PollForActivityTaskResponse
+		autoConfigHint *s.AutoConfigHint
+		pollStartTime  time.Time
 	}
 
 	// resetStickinessTask wraps a ResetStickyTaskListRequest.
@@ -133,26 +146,10 @@ type (
 		tracer                         opentracing.Tracer
 		workflowInterceptorFactories   []WorkflowInterceptorFactory
 		disableStrictNonDeterminism    bool
+		featureFlags                   FeatureFlags
 	}
 
 	activityProvider func(name string) activity
-
-	// activityTaskHandlerImpl is the implementation of ActivityTaskHandler
-	activityTaskHandlerImpl struct {
-		taskListName       string
-		identity           string
-		service            workflowserviceclient.Interface
-		metricsScope       *metrics.TaggedScope
-		logger             *zap.Logger
-		userContext        context.Context
-		registry           *registry
-		activityProvider   activityProvider
-		dataConverter      DataConverter
-		workerStopCh       <-chan struct{}
-		contextPropagators []ContextPropagator
-		tracer             opentracing.Tracer
-		featureFlags       FeatureFlags
-	}
 
 	// history wrapper method to help information about events.
 	history struct {
@@ -170,6 +167,26 @@ type (
 		Message string
 	}
 )
+
+func (t *workflowTask) getAutoConfigHint() *s.AutoConfigHint {
+	if t.autoConfigHint != nil {
+		return t.autoConfigHint
+	}
+	if t.task != nil {
+		return t.task.AutoConfigHint
+	}
+	return nil
+}
+
+func (t *activityTask) getAutoConfigHint() *s.AutoConfigHint {
+	if t.autoConfigHint != nil {
+		return t.autoConfigHint
+	}
+	if t.task != nil {
+		return t.task.AutoConfigHint
+	}
+	return nil
+}
 
 func newHistory(task *workflowTask, eventsHandler *workflowExecutionEventHandlerImpl) *history {
 	result := &history{
@@ -255,7 +272,9 @@ func isDecisionEvent(eventType s.EventType) bool {
 		s.EventTypeStartChildWorkflowExecutionInitiated,
 		s.EventTypeRequestCancelExternalWorkflowExecutionInitiated,
 		s.EventTypeSignalExternalWorkflowExecutionInitiated,
-		s.EventTypeUpsertWorkflowSearchAttributes:
+		s.EventTypeUpsertWorkflowSearchAttributes,
+		s.EventTypeSemaphoreAcquireInitiated,
+		s.EventTypeSemaphoreReleased:
 		return true
 	default:
 		return false
@@ -405,6 +424,7 @@ func newWorkflowTaskHandler(
 		tracer:                         params.Tracer,
 		workflowInterceptorFactories:   params.WorkflowInterceptorChainFactories,
 		disableStrictNonDeterminism:    params.WorkerBugPorts.DisableStrictNonDeterminismCheck,
+		featureFlags:                   params.FeatureFlags,
 	}
 
 	traceLog(func() {
@@ -608,6 +628,7 @@ func (w *workflowExecutionContextImpl) createEventHandler() {
 		w.wth.contextPropagators,
 		w.wth.tracer,
 		w.wth.workflowInterceptorFactories,
+		w.wth.featureFlags,
 	)
 	w.eventHandler.Store(eventHandler)
 }
@@ -798,6 +819,18 @@ func (wth *workflowTaskHandlerImpl) ProcessWorkflowTask(
 		workflowContext.Unlock(errRet)
 	}()
 
+	// laStopCh is closed when the worker starts shutting down. At that point the
+	// local activity pool stops accepting tasks, so a pending local activity (and
+	// any retry) can no longer be dispatched and its result will never arrive.
+	// Without this signal the loop below would keep heartbeating the decision task
+	// until the server's decisionHeartbeatTimeout (default 30m). laTunnel is nil
+	// during history replay (no worker); a nil channel never selects, leaving the
+	// replay path unchanged.
+	var laStopCh <-chan struct{}
+	if workflowContext.laTunnel != nil {
+		laStopCh = workflowContext.laTunnel.stopCh
+	}
+
 	var response interface{}
 process_Workflow_Loop:
 	for {
@@ -809,6 +842,13 @@ process_Workflow_Loop:
 				deadlineToTrigger := time.Duration(float32(ratioToForceCompleteDecisionTaskComplete) * float32(workflowContext.GetDecisionTimeout()))
 				delayDuration := startTime.Add(deadlineToTrigger).Sub(time.Now())
 				select {
+				case <-laStopCh:
+					// Worker is shutting down and the pending local activity can no
+					// longer be dispatched. Abandon this decision task so the server
+					// reschedules it on a healthy worker, instead of holding it open
+					// until decisionHeartbeatTimeout.
+					return nil, &decisionHeartbeatError{Message: "worker is shutting down with a pending local activity; abandoning decision task for reschedule"}
+
 				case <-time.After(delayDuration):
 					// force complete, call the decision heartbeat function
 					workflowTask, err = heartbeatFunc(
@@ -1094,6 +1134,10 @@ func getRetryBackoffWithNowTime(p *RetryPolicy, attempt int32, errReason string,
 		backoffInterval = p.MaximumInterval
 	}
 
+	if p.JitterCoefficient > 0 && p.JitterCoefficient <= 1 {
+		backoffInterval = time.Duration(float64(backoffInterval) * (1 - p.JitterCoefficient*rand.Float64()))
+	}
+
 	nextScheduleTime := now.Add(backoffInterval)
 	if !expireTime.IsZero() && nextScheduleTime.After(expireTime) {
 		return noRetryBackoff
@@ -1270,6 +1314,14 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 
 	// fail decision task on decider panic
 	if panicErr, ok := workflowContext.err.(*workflowPanicError); ok {
+		if mismatch, ok := panicErr.value.(versionMismatchPanic); ok {
+			// GetVersion found a version this code does not support. Report it apart from
+			// other panics so that rolling deployments do not look like workflow crashes.
+			// The decision task still fails and is retried, same as any other panic.
+			wth.reportVersionMismatch(metricsScope, task, panicErr, mismatch)
+			return errorToFailDecisionTask(task.TaskToken, panicErr, wth.identity)
+		}
+
 		// Workflow panic
 		metricsScope.Counter(metrics.DecisionTaskPanicCounter).Inc(1)
 		wth.logger.Error("Workflow panic.",
@@ -1295,7 +1347,7 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 		// Continue as new error.
 		metricsScope.Counter(metrics.WorkflowContinueAsNewCounter).Inc(1)
 		closeDecision = createNewDecision(s.DecisionTypeContinueAsNewWorkflowExecution)
-		closeDecision.ContinueAsNewWorkflowExecutionDecisionAttributes = &s.ContinueAsNewWorkflowExecutionDecisionAttributes{
+		continueAsNewAttr := &s.ContinueAsNewWorkflowExecutionDecisionAttributes{
 			WorkflowType:                        workflowTypePtr(*contErr.params.workflowType),
 			Input:                               contErr.params.input,
 			TaskList:                            common.TaskListPtr(s.TaskList{Name: contErr.params.taskListName}),
@@ -1306,6 +1358,10 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 			SearchAttributes:                    workflowContext.workflowInfo.SearchAttributes,
 			RetryPolicy:                         workflowContext.workflowInfo.RetryPolicy,
 		}
+		if len(contErr.params.cronSchedule) > 0 {
+			continueAsNewAttr.CronSchedule = common.StringPtr(contErr.params.cronSchedule)
+		}
+		closeDecision.ContinueAsNewWorkflowExecutionDecisionAttributes = continueAsNewAttr
 	} else if workflowContext.err != nil {
 		// Workflow failures
 		metricsScope.Counter(metrics.WorkflowFailedCounter).Inc(1)
@@ -1327,7 +1383,12 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 	if closeDecision != nil {
 		decisions = append(decisions, closeDecision)
 		elapsed := time.Since(workflowContext.workflowStartTime)
-		metricsScope.Timer(metrics.WorkflowEndToEndLatency).Record(elapsed)
+		metrics.EmitLatency(
+			metricsScope,
+			metrics.WorkflowEndToEndLatency,
+			elapsed,
+			metrics.High1ms24h,
+		)
 		forceNewDecision = false
 	}
 
@@ -1361,6 +1422,32 @@ func (wth *workflowTaskHandlerImpl) completeWorkflow(
 	}
 }
 
+// reportVersionMismatch records a GetVersion mismatch. A version that is too new is expected while
+// a rolling deployment is in progress and clears up once an upgraded worker takes the task, so it is
+// logged as a warning. A version that is too old means the workflow code dropped support for a
+// version that is still in use, which needs a code fix, so it is logged as an error.
+func (wth *workflowTaskHandlerImpl) reportVersionMismatch(
+	metricsScope tally.Scope,
+	task *s.PollForDecisionTaskResponse,
+	panicErr *workflowPanicError,
+	mismatch versionMismatchPanic,
+) {
+	metricsScope.Tagged(map[string]string{tagVersionMismatchType: string(mismatch.mismatchType)}).
+		Counter(metrics.DecisionTaskVersionMismatchCounter).Inc(1)
+
+	log := wth.logger.Error
+	if mismatch.mismatchType == versionMismatchTypeTooNew {
+		log = wth.logger.Warn
+	}
+	log("Workflow version mismatch.",
+		zap.String(tagWorkflowType, task.WorkflowType.GetName()),
+		zap.String(tagWorkflowID, task.WorkflowExecution.GetWorkflowId()),
+		zap.String(tagRunID, task.WorkflowExecution.GetRunId()),
+		zap.String(tagVersionMismatchType, string(mismatch.mismatchType)),
+		zap.String(tagPanicError, panicErr.Error()),
+		zap.String(tagPanicStack, panicErr.StackTrace()))
+}
+
 func errorToFailDecisionTask(taskToken []byte, err error, identity string) *s.RespondDecisionTaskFailedRequest {
 	failedCause := s.DecisionTaskFailedCauseWorkflowWorkerUnhandledFailure
 	_, details := getErrorDetails(err, nil)
@@ -1387,37 +1474,6 @@ func (wth *workflowTaskHandlerImpl) executeAnyPressurePoints(event *s.HistoryEve
 		}
 	}
 	return nil
-}
-
-func newActivityTaskHandler(
-	service workflowserviceclient.Interface,
-	params workerExecutionParameters,
-	registry *registry,
-) ActivityTaskHandler {
-	return newActivityTaskHandlerWithCustomProvider(service, params, registry, nil)
-}
-
-func newActivityTaskHandlerWithCustomProvider(
-	service workflowserviceclient.Interface,
-	params workerExecutionParameters,
-	registry *registry,
-	activityProvider activityProvider,
-) ActivityTaskHandler {
-	return &activityTaskHandlerImpl{
-		taskListName:       params.TaskList,
-		identity:           params.Identity,
-		service:            service,
-		logger:             params.Logger,
-		metricsScope:       metrics.NewTaggedScope(params.MetricsScope),
-		userContext:        params.UserContext,
-		registry:           registry,
-		activityProvider:   activityProvider,
-		dataConverter:      params.DataConverter,
-		workerStopCh:       params.WorkerStopChannel,
-		contextPropagators: params.ContextPropagators,
-		tracer:             params.Tracer,
-		featureFlags:       params.FeatureFlags,
-	}
 }
 
 type cadenceInvoker struct {
@@ -1619,139 +1675,6 @@ func newServiceInvoker(
 	}
 }
 
-// Execute executes an implementation of the activity.
-func (ath *activityTaskHandlerImpl) Execute(taskList string, t *s.PollForActivityTaskResponse) (result interface{}, err error) {
-	traceLog(func() {
-		ath.logger.Debug("Processing new activity task",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, t.ActivityType.GetName()))
-	})
-
-	rootCtx := ath.userContext
-	if rootCtx == nil {
-		rootCtx = context.Background()
-	}
-	canCtx, cancel := context.WithCancel(rootCtx)
-	defer cancel()
-
-	workflowType := t.WorkflowType.GetName()
-	activityType := t.ActivityType.GetName()
-	invoker := newServiceInvoker(t.TaskToken, ath.identity, ath.service, cancel, t.GetHeartbeatTimeoutSeconds(), ath.workerStopCh, ath.featureFlags, ath.logger, workflowType, activityType)
-	defer func() {
-		_, activityCompleted := result.(*s.RespondActivityTaskCompletedRequest)
-		invoker.Close(!activityCompleted) // flush buffered heartbeat if activity was not successfully completed.
-	}()
-
-	metricsScope := getMetricsScopeForActivity(ath.metricsScope, workflowType, activityType)
-	ctx := WithActivityTask(canCtx, t, taskList, invoker, ath.logger, metricsScope, ath.dataConverter, ath.workerStopCh, ath.contextPropagators, ath.tracer)
-
-	activityImplementation := ath.getActivity(activityType)
-	if activityImplementation == nil {
-		// Couldn't find the activity implementation.
-		supported := strings.Join(ath.getRegisteredActivityNames(), ", ")
-		return nil, fmt.Errorf("unable to find activityType=%v. Supported types: [%v]", activityType, supported)
-	}
-
-	// panic handler
-	defer func() {
-		if p := recover(); p != nil {
-			topLine := fmt.Sprintf("activity for %s [panic]:", ath.taskListName)
-			st := getStackTraceRaw(topLine, 7, 0)
-			ath.logger.Error("Activity panic.",
-				zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-				zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-				zap.String(tagActivityType, activityType),
-				zap.String(tagPanicError, fmt.Sprintf("%v", p)),
-				zap.String(tagPanicStack, st))
-			metricsScope.Counter(metrics.ActivityTaskPanicCounter).Inc(1)
-			panicErr := newPanicError(p, st)
-			result, err = convertActivityResultToRespondRequest(ath.identity, t.TaskToken, nil, panicErr, ath.dataConverter), nil
-		}
-	}()
-
-	// propagate context information into the activity context from the headers
-	for _, ctxProp := range ath.contextPropagators {
-		var err error
-		if ctx, err = ctxProp.Extract(ctx, NewHeaderReader(t.Header)); err != nil {
-			return nil, fmt.Errorf("unable to propagate context %v", err)
-		}
-	}
-
-	info := ctx.Value(activityEnvContextKey).(*activityEnvironment)
-	ctx, dlCancelFunc := context.WithDeadline(ctx, info.deadline)
-	defer dlCancelFunc()
-
-	ctx, span := createOpenTracingActivitySpan(ctx, ath.tracer, time.Now(), activityType, t.WorkflowExecution.GetWorkflowId(), t.WorkflowExecution.GetRunId())
-	defer span.Finish()
-
-	if activityImplementation.GetOptions().EnableAutoHeartbeat && t.HeartbeatTimeoutSeconds != nil && *t.HeartbeatTimeoutSeconds > 0 {
-		go func() {
-			autoHbInterval := time.Duration(*t.HeartbeatTimeoutSeconds) * time.Second / 2
-			ticker := time.NewTicker(autoHbInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ath.workerStopCh:
-					return
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					hbErr := invoker.BackgroundHeartbeat()
-					if hbErr != nil && !IsCanceledError(hbErr) {
-						ath.logger.Error("Activity auto heartbeat error.",
-							zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-							zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-							zap.String(tagActivityType, activityType),
-							zap.Error(hbErr),
-						)
-					}
-				}
-			}
-		}()
-	}
-
-	output, err := activityImplementation.Execute(ctx, t.Input)
-
-	dlCancelFunc()
-	if <-ctx.Done(); ctx.Err() == context.DeadlineExceeded {
-		ath.logger.Warn("Activity timeout.",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, activityType),
-		)
-		return nil, ctx.Err()
-	}
-	if err != nil && err != ErrActivityResultPending {
-		ath.logger.Error("Activity error.",
-			zap.String(tagWorkflowID, t.WorkflowExecution.GetWorkflowId()),
-			zap.String(tagRunID, t.WorkflowExecution.GetRunId()),
-			zap.String(tagActivityType, activityType),
-			zap.Error(err),
-		)
-	}
-	return convertActivityResultToRespondRequest(ath.identity, t.TaskToken, output, err, ath.dataConverter), nil
-}
-
-func (ath *activityTaskHandlerImpl) getActivity(name string) activity {
-	if ath.activityProvider != nil {
-		return ath.activityProvider(name)
-	}
-
-	if a, ok := ath.registry.GetActivity(name); ok {
-		return a
-	}
-
-	return nil
-}
-
-func (ath *activityTaskHandlerImpl) getRegisteredActivityNames() (activityNames []string) {
-	for _, a := range ath.registry.getRegisteredActivities() {
-		activityNames = append(activityNames, a.ActivityType().Name)
-	}
-	return
-}
-
 func createNewDecision(decisionType s.DecisionType) *s.Decision {
 	return &s.Decision{
 		DecisionType: common.DecisionTypePtr(decisionType),
@@ -1777,6 +1700,7 @@ func signalWorkflow(
 		SignalName: common.StringPtr(signalName),
 		Input:      signalInput,
 		Identity:   common.StringPtr(identity),
+		RequestId:  common.StringPtr(uuid.New()),
 	}
 
 	return backoff.Retry(ctx,

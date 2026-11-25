@@ -33,7 +33,7 @@ BIN := $(BUILD)/bin
 #
 # this can _likely_ remain a major version, as fmt output does not tend to change in minor versions,
 # which will allow findstring to match any minor version.
-EXPECTED_GO_VERSION := go1.19
+EXPECTED_GO_VERSION := go1.26
 CURRENT_GO_VERSION := $(shell go version)
 ifeq (,$(findstring $(EXPECTED_GO_VERSION),$(CURRENT_GO_VERSION)))
 # if you are seeing this warning: consider using https://github.com/travis-ci/gimme to pin your version
@@ -51,8 +51,7 @@ endif
 
 # note that vars that do not yet exist are empty, so stick to BUILD/BIN and probably nothing else.
 $(BUILD)/lint: $(BUILD)/fmt # lint will fail if fmt (more generally, build) fails, so run it first
-$(BUILD)/fmt: $(BUILD)/copyright # formatting must occur only after all other go-file-modifications are done
-$(BUILD)/copyright: $(BUILD)/codegen # must add copyright to generated code
+$(BUILD)/fmt: $(BUILD)/codegen # formatting must occur only after all other go-file-modifications are done
 $(BUILD)/codegen: $(BUILD)/thrift $(BUILD)/generate
 $(BUILD)/generate: $(BUILD)/thrift # go generate broadly requires compile-able code, which needs thrift
 $(BUILD)/thrift: $(BUILD)/go_mod_check
@@ -160,15 +159,35 @@ $(BIN)/goveralls: internal/tools/go.mod
 $(BIN)/mockery: internal/tools/go.mod
 	$(call go_build_tool,github.com/vektra/mockery/v2,mockery)
 
-# copyright header checker/writer.  only requires stdlib, so no other dependencies are needed.
-$(BIN)/copyright: internal/cmd/tools/copyright/licensegen.go
-	go build -mod=readonly -o $@ ./internal/cmd/tools/copyright/licensegen.go
-
 # ensures mod files are in sync for critical packages
 $(BUILD)/go_mod_check: go.mod internal/tools/go.mod
 	$Q # ensure both have the same apache/thrift replacement
 	$Q ./scripts/check-gomod-version.sh go.uber.org/thriftrw $(if $(verbose),-v)
 	$Q touch $@
+
+# checks that the idl submodule points to a commit on master, and that it matches the go module (which must be a pseudo version).
+# this is only used in an explicit CI step, because it's expected to fail when developing.
+#
+# `git ls-tree HEAD idls` is selected because this only cares about the committed/checked-out target,
+# not whatever the current status is, because only the committed value will exist for others.
+#
+# and last but not least: this avoids using `go` to make this check take only a couple seconds in CI,
+# so the whole docker container doesn't have to be prepared.
+.idl-status:
+	$(Q) cd idls && \
+		SUBMODULE_COMMIT=$$(git rev-parse HEAD) && \
+		BRANCH_INFO=$$(git branch -r --contains "$$SUBMODULE_COMMIT" | head -n1) && \
+		if ! git branch -r --contains "$$SUBMODULE_COMMIT" | grep -q "origin/master"; then \
+			echo "Error: Submodule commit $$SUBMODULE_COMMIT belongs to $$BRANCH_INFO, not to master branch" && \
+			exit 1; \
+		fi
+	$(Q) idlsha=$$(git ls-tree HEAD idls | awk '{print substr($$3,0,12)}') && \
+		gosha=$$(grep github.com/uber/cadence-idl go.mod | tr '-' '\n' | tail -n1) && \
+		if [[ "$$idlsha" != "$$gosha" ]]; then \
+			echo "IDL submodule sha ($$idlsha) does not match go module sha ($$gosha)." >&2 && \
+			echo "Make sure the IDL PR has been merged, and this PR is updated, before merging here." >&2 && \
+			exit 1; \
+		fi
 
 # ====================================
 # Codegen targets
@@ -216,8 +235,9 @@ $(THRIFT_GEN): $(THRIFT_FILES) $(BIN)/thriftrw $(BIN)/thriftrw-plugin-yarpc
 	$Q touch $@
 
 # mockery is quite noisy so it's worth being kinda precise with the files.
-# this needs to be both the files defining the generate command, AND the files that define the interfaces.
-$(BUILD)/generate: client/client.go encoded/encoded.go internal/internal_workflow_client.go $(BIN)/mockery
+# as long as the //go:generate line is in the file that defines the thing to mock, this will auto-discover it.
+# if we build any fancier generators, like the server's wrappers, this might need adjusting / switch to completely manual.
+$(BUILD)/generate: $(shell grep --files-with-matches -E '^//go:generate' $(ALL_SRC)) $(BIN)/mockery
 	$Q $(BIN_PATH) go generate ./...
 	$Q touch $@
 
@@ -231,18 +251,6 @@ $(BUILD)/lint: $(LINT_SRC) $(BIN)/revive | $(BUILD)
 	$Q $(BIN)/revive -config revive.toml -exclude './vendor/...' -exclude './.gen/...' -formatter stylish ./...
 	$Q touch $@
 
-# fmt and copyright are mutually cyclic with their inputs, so if a copyright header is modified:
-# - copyright -> makes changes
-# - fmt sees changes -> makes changes
-# - now copyright thinks it needs to run again (but does nothing)
-# - which means fmt needs to run again (but does nothing)
-# and now after two passes it's finally stable, because they stopped making changes.
-#
-# this is not fatal, we can just run 2x.
-# to be fancier though, we can detect when *both* are run, and re-touch the book-keeping files to prevent the second run.
-# this STRICTLY REQUIRES that `copyright` and `fmt` are mutually stable, and that copyright runs before fmt.
-# if either changes, this will need to change.
-MAYBE_TOUCH_COPYRIGHT=
 
 # TODO: switch to goimports, so we can pin the version
 $(BUILD)/fmt: $(ALL_SRC) $(BIN)/goimports
@@ -250,12 +258,7 @@ $(BUILD)/fmt: $(ALL_SRC) $(BIN)/goimports
 	$Q # use FRESH_ALL_SRC so it won't miss any generated files produced earlier
 	$Q $(BIN)/goimports -local "go.uber.org/cadence" -w $(FRESH_ALL_SRC)
 	$Q touch $@
-	$Q $(MAYBE_TOUCH_COPYRIGHT)
 
-$(BUILD)/copyright: $(ALL_SRC) $(BIN)/copyright
-	$(BIN)/copyright --verifyOnly
-	$Q $(eval MAYBE_TOUCH_COPYRIGHT=touch $@)
-	$Q touch $@
 
 # ====================================
 # developer-oriented targets
@@ -273,10 +276,18 @@ $Q +$(MAKE) --no-print-directory $(addprefix $(BUILD)/,$(1))
 endef
 
 .PHONY: build
-build: $(BUILD)/fmt ## ensure all packages build
+build: $(BUILD)/lint ## ensure all packages build
 	go build ./...
 	$Q # caution: some errors are reported on stdout for some reason
 	go test -exec true ./... >/dev/null
+	$Q # compare the current go version with what is in go.mod, and get `{gomod_version}.1` or similar and ensure it builds.
+	$Q GOVERSION="$(shell go env GOVERSION | cut -d. -f1-2)" \
+		MODVERSION="go$(shell grep '^go 1' go.mod | cut -d' ' -f2 | cut -d. -f1-2)"; \
+		if [ "$$GOVERSION" != "$$MODVERSION" ]; then \
+		echo "go.mod version \"$$MODVERSION\" is not the same as current go version \"$$GOVERSION\", making sure it builds..."; \
+		echo GOTOOLCHAIN="$$MODVERSION".1 go build ./...; \
+		GOTOOLCHAIN="$$MODVERSION".1 go build ./...; \
+	fi
 
 .PHONY: lint
 # useful to actually re-run to get output again.
@@ -288,11 +299,6 @@ lint: ## (re)run the linter
 # intentionally not re-making, it's clear when it's unnecessary
 fmt: $(BUILD)/fmt ## run goimports
 
-.PHONY: copyright
-# not identical to the intermediate target, but does provide the same codegen (or more).
-copyright: $(BIN)/copyright ## update copyright headers
-	$(BIN)/copyright
-	$Q touch $(BUILD)/copyright
 
 .PHONY: staticcheck
 staticcheck: $(BIN)/staticcheck $(BUILD)/fmt ## (re)run staticcheck
@@ -303,7 +309,8 @@ errcheck: $(BIN)/errcheck $(BUILD)/fmt ## (re)run errcheck
 	$(BIN)/errcheck ./...
 
 .PHONY: generate
-generate: $(BUILD)/generate ## run go-generate
+generate: ## run go-generate (build, lint, fmt, tests all do this for you if needed)
+	$(call remake,generate)
 
 .PHONY: tidy
 tidy:
@@ -372,7 +379,7 @@ UT_DIRS := $(filter-out $(INTEG_TEST_ROOT)%, $(sort $(dir $(filter %_test.go,$(A
 .PHONY: unit_test integ_test_sticky_off integ_test_sticky_on integ_test_grpc cover
 test: unit_test integ_test_sticky_off integ_test_sticky_on ## run all tests (requires a running cadence instance)
 
-unit_test: $(ALL_SRC) ## run all unit tests
+unit_test: $(BUILD)/fmt ## run all unit tests
 	$Q mkdir -p $(COVER_ROOT)
 	$Q echo "mode: atomic" > $(UT_COVER_FILE)
 	$Q FAIL=""; \
@@ -383,15 +390,15 @@ unit_test: $(ALL_SRC) ## run all unit tests
 	done; test -z "$$FAIL" || (echo "Failed packages; $$FAIL"; exit 1)
 	cat $(UT_COVER_FILE) > .build/cover.out;
 
-integ_test_sticky_off: $(ALL_SRC)
+integ_test_sticky_off: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=true go test $(TEST_ARG) ./test -coverprofile=$(INTEG_STICKY_OFF_COVER_FILE) -coverpkg=./...
 
-integ_test_sticky_on: $(ALL_SRC)
+integ_test_sticky_on: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=false go test $(TEST_ARG) ./test -coverprofile=$(INTEG_STICKY_ON_COVER_FILE) -coverpkg=./...
 
-integ_test_grpc: $(ALL_SRC)
+integ_test_grpc: $(BUILD)/fmt
 	$Q mkdir -p $(COVER_ROOT)
 	STICKY_OFF=false go test $(TEST_ARG) ./test -coverprofile=$(INTEG_GRPC_COVER_FILE) -coverpkg=./...
 
