@@ -856,3 +856,14 @@ func DescribeTaskListResponseMap(t map[string]*shared.DescribeTaskListResponse) 
 	}
 	return v
 }
+
+func Semaphore(t *shared.Semaphore) *apiv1.Semaphore {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.Semaphore{
+		SemaphoreName:  t.GetSemaphoreName(),
+		Capacity:       t.GetCapacity(),
+		BucketCapacity: t.GetBucketCapacity(),
+	}
+}

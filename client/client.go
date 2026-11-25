@@ -458,6 +458,9 @@ type (
 
 		// ScheduleClient returns a ScheduleClient scoped to this client's domain and connection.
 		ScheduleClient() ScheduleClient
+
+		// SemaphoreClient returns a SemaphoreClient scoped to this client's domain and connection.
+		SemaphoreClient() SemaphoreClient
 	}
 
 	// DomainClient is the client for managing operations on the domain.
@@ -556,6 +559,15 @@ type (
 
 	// ScheduleClient is the client for managing Cadence schedules within a domain.
 	ScheduleClient = internal.ScheduleClient
+
+	// SemaphoreClient is the client for managing Cadence semaphores within a domain.
+	SemaphoreClient = internal.SemaphoreClient
+
+	// CreateSemaphoreRequest is the request to SemaphoreClient.Create.
+	CreateSemaphoreRequest = internal.CreateSemaphoreRequest
+
+	// Semaphore is a semaphore returned by SemaphoreClient.
+	Semaphore = internal.Semaphore
 )
 
 const (

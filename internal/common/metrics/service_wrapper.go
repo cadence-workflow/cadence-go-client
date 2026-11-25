@@ -104,6 +104,8 @@ const (
 	scopeNamePauseSchedule                         = CadenceMetricsPrefix + "PauseSchedule"
 	scopeNameUnpauseSchedule                       = CadenceMetricsPrefix + "UnpauseSchedule"
 	scopeNameUpdateSchedule                        = CadenceMetricsPrefix + "UpdateSchedule"
+	scopeNameExportWorkflowExecution               = CadenceMetricsPrefix + "ExportWorkflowExecution"
+	scopeNameCreateSemaphore                       = CadenceMetricsPrefix + "CreateSemaphore"
 )
 
 // NewWorkflowServiceWrapper creates a new wrapper to WorkflowService that will emit metrics for each service call.
@@ -529,6 +531,20 @@ func (w *workflowServiceMetricsWrapper) UnpauseSchedule(ctx context.Context, Req
 func (w *workflowServiceMetricsWrapper) UpdateSchedule(ctx context.Context, Request *shared.UpdateScheduleRequest, opts ...yarpc.CallOption) (*shared.UpdateScheduleResponse, error) {
 	scope := w.getOperationScope(scopeNameUpdateSchedule)
 	result, err := w.service.UpdateSchedule(ctx, Request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) ExportWorkflowExecution(ctx context.Context, request *shared.ExportWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.ExportWorkflowExecutionResponse, error) {
+	scope := w.getOperationScope(scopeNameExportWorkflowExecution)
+	result, err := w.service.ExportWorkflowExecution(ctx, request, opts...)
+	scope.handleError(err)
+	return result, err
+}
+
+func (w *workflowServiceMetricsWrapper) CreateSemaphore(ctx context.Context, request *shared.CreateSemaphoreRequest, opts ...yarpc.CallOption) (*shared.CreateSemaphoreResponse, error) {
+	scope := w.getOperationScope(scopeNameCreateSemaphore)
+	result, err := w.service.CreateSemaphore(ctx, request, opts...)
 	scope.handleError(err)
 	return result, err
 }

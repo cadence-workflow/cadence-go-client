@@ -39,6 +39,7 @@ type thrift2protoAdapter struct {
 	worker     apiv1.WorkerAPIYARPCClient
 	visibility apiv1.VisibilityAPIYARPCClient
 	schedule   apiv1.ScheduleAPIYARPCClient
+	semaphore  apiv1.SemaphoreAPIYARPCClient
 }
 
 func NewThrift2ProtoAdapter(
@@ -47,8 +48,9 @@ func NewThrift2ProtoAdapter(
 	worker apiv1.WorkerAPIYARPCClient,
 	visibility apiv1.VisibilityAPIYARPCClient,
 	schedule apiv1.ScheduleAPIYARPCClient,
+	semaphore apiv1.SemaphoreAPIYARPCClient,
 ) workflowserviceclient.Interface {
-	return thrift2protoAdapter{domain, workflow, worker, visibility, schedule}
+	return thrift2protoAdapter{domain, workflow, worker, visibility, schedule, semaphore}
 }
 
 func (a thrift2protoAdapter) CountWorkflowExecutions(ctx context.Context, request *shared.CountWorkflowExecutionsRequest, opts ...yarpc.CallOption) (*shared.CountWorkflowExecutionsResponse, error) {
@@ -266,6 +268,10 @@ func (a thrift2protoAdapter) RefreshWorkflowTasks(ctx context.Context, request *
 	return thrift.Error(err)
 }
 
+func (a thrift2protoAdapter) ExportWorkflowExecution(ctx context.Context, request *shared.ExportWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.ExportWorkflowExecutionResponse, error) {
+	return nil, &shared.BadRequestError{Message: "ExportWorkflowExecution is not supported by this client yet"}
+}
+
 func (a thrift2protoAdapter) RestartWorkflowExecution(ctx context.Context, request *shared.RestartWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.RestartWorkflowExecutionResponse, error) {
 	response, err := a.workflow.RestartWorkflowExecution(ctx, proto.RestartWorkflowExecutionRequest(request), opts...)
 	return thrift.RestartWorkflowExecutionResponse(response), proto.Error(err)
@@ -352,6 +358,18 @@ func (a thrift2protoAdapter) UpdateSchedule(ctx context.Context, Request *shared
 	}
 	response, err := a.schedule.UpdateSchedule(ctx, proto.UpdateScheduleRequest(Request), opts...)
 	return thrift.UpdateScheduleResponse(response), thrift.Error(err)
+}
+
+var errSemaphoreClientNotConfigured = &shared.BadRequestError{
+	Message: "semaphore API not configured: provide a SemaphoreAPIYARPCClient when constructing the adapter",
+}
+
+func (a thrift2protoAdapter) CreateSemaphore(ctx context.Context, request *shared.CreateSemaphoreRequest, opts ...yarpc.CallOption) (*shared.CreateSemaphoreResponse, error) {
+	if a.semaphore == nil {
+		return nil, errSemaphoreClientNotConfigured
+	}
+	response, err := a.semaphore.CreateSemaphore(ctx, proto.CreateSemaphoreRequest(request), opts...)
+	return thrift.CreateSemaphoreResponse(response), thrift.Error(err)
 }
 
 type domainAPIthriftAdapter struct {

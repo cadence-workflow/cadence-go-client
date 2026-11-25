@@ -211,6 +211,10 @@ func DecisionTaskFailedCause(t apiv1.DecisionTaskFailedCause) *shared.DecisionTa
 		return shared.DecisionTaskFailedCauseScheduleActivityDuplicateID.Ptr()
 	case apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_SEARCH_ATTRIBUTES:
 		return shared.DecisionTaskFailedCauseBadSearchAttributes.Ptr()
+	case apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_ACQUIRE_SEMAPHORE_ATTRIBUTES:
+		return shared.DecisionTaskFailedCauseBadAcquireSemaphoreAttributes.Ptr()
+	case apiv1.DecisionTaskFailedCause_DECISION_TASK_FAILED_CAUSE_BAD_RELEASE_SEMAPHORE_ATTRIBUTES:
+		return shared.DecisionTaskFailedCauseBadReleaseSemaphoreAttributes.Ptr()
 	}
 	panic("unexpected enum value")
 }
@@ -421,4 +425,28 @@ func FailureCategory(t apiv1.FailureCategory) *shared.FailureCategory {
 		return shared.FailureCategoryFatal.Ptr()
 	}
 	return nil
+}
+
+func SemaphoreAcquireFailedCause(t apiv1.SemaphoreAcquireFailedCause) *shared.SemaphoreAcquireFailedCause {
+	switch t {
+	case apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_INVALID:
+		return nil
+	case apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_NOT_FOUND:
+		return shared.SemaphoreAcquireFailedCauseNotFound.Ptr()
+	case apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_TIMED_OUT:
+		return shared.SemaphoreAcquireFailedCauseTimedOut.Ptr()
+	}
+	panic("unexpected enum value")
+}
+
+func SemaphoreTokenLostCause(t apiv1.SemaphoreTokenLostCause) *shared.SemaphoreTokenLostCause {
+	switch t {
+	case apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_INVALID:
+		return nil
+	case apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_NOT_HELD:
+		return shared.SemaphoreTokenLostCauseNotHeld.Ptr()
+	case apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_RESET:
+		return shared.SemaphoreTokenLostCauseReset.Ptr()
+	}
+	panic("unexpected enum value")
 }

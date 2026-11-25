@@ -613,3 +613,21 @@ func (w *workflowServiceAuthWrapper) UpdateSchedule(ctx context.Context, Request
 	opts = append(opts, *tokenHeader)
 	return w.service.UpdateSchedule(ctx, Request, opts...)
 }
+
+func (w *workflowServiceAuthWrapper) ExportWorkflowExecution(ctx context.Context, request *shared.ExportWorkflowExecutionRequest, opts ...yarpc.CallOption) (*shared.ExportWorkflowExecutionResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.ExportWorkflowExecution(ctx, request, opts...)
+}
+
+func (w *workflowServiceAuthWrapper) CreateSemaphore(ctx context.Context, request *shared.CreateSemaphoreRequest, opts ...yarpc.CallOption) (*shared.CreateSemaphoreResponse, error) {
+	tokenHeader, err := w.getYarpcJWTHeader()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, *tokenHeader)
+	return w.service.CreateSemaphore(ctx, request, opts...)
+}

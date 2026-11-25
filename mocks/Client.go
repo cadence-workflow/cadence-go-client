@@ -643,6 +643,26 @@ func (_m *Client) ScheduleClient() internal.ScheduleClient {
 	return r0
 }
 
+// SemaphoreClient provides a mock function with no fields
+func (_m *Client) SemaphoreClient() internal.SemaphoreClient {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for SemaphoreClient")
+	}
+
+	var r0 internal.SemaphoreClient
+	if rf, ok := ret.Get(0).(func() internal.SemaphoreClient); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(internal.SemaphoreClient)
+		}
+	}
+
+	return r0
+}
+
 // SignalWithStartWorkflow provides a mock function with given fields: ctx, workflowID, signalName, signalArg, options, workflowFunc, workflowArgs
 func (_m *Client) SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{}, options internal.StartWorkflowOptions, workflowFunc interface{}, workflowArgs ...interface{}) (*internal.WorkflowExecution, error) {
 	var _ca []interface{}

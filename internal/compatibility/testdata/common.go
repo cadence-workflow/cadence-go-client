@@ -44,6 +44,7 @@ const (
 	TaskListName         = "TaskListName"
 	MarkerName           = "MarkerName"
 	SignalName           = "SignalName"
+	SemaphoreName        = "SemaphoreName"
 	QueryType            = "QueryType"
 	HostName             = "HostName"
 	Identity             = "Identity"

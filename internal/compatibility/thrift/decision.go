@@ -178,6 +178,19 @@ func Decision(d *apiv1.Decision) *shared.Decision {
 		decision.UpsertWorkflowSearchAttributesDecisionAttributes = &shared.UpsertWorkflowSearchAttributesDecisionAttributes{
 			SearchAttributes: SearchAttributes(a.SearchAttributes),
 		}
+	case *apiv1.Decision_AcquireSemaphoreDecisionAttributes:
+		decision.DecisionType = shared.DecisionTypeAcquireSemaphore.Ptr()
+		a := attr.AcquireSemaphoreDecisionAttributes
+		decision.AcquireSemaphoreDecisionAttributes = &shared.AcquireSemaphoreDecisionAttributes{
+			SemaphoreName:      &a.SemaphoreName,
+			WaitTimeoutSeconds: durationToSeconds(a.WaitTimeout),
+		}
+	case *apiv1.Decision_ReleaseSemaphoreDecisionAttributes:
+		decision.DecisionType = shared.DecisionTypeReleaseSemaphore.Ptr()
+		a := attr.ReleaseSemaphoreDecisionAttributes
+		decision.ReleaseSemaphoreDecisionAttributes = &shared.ReleaseSemaphoreDecisionAttributes{
+			InitiatedEventId: &a.InitiatedEventId,
+		}
 	default:
 		panic("unknown decision type")
 	}

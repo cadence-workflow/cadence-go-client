@@ -347,6 +347,9 @@ func TestDataBlob(t *testing.T) {
 		thrift.DataBlob,
 		proto.DataBlob,
 		FuzzOptions{
+			ExcludedFields: []string{
+				"Checksum", // [EXCLUDED] Not mapped yet; the server sets it only for ExportWorkflowExecution, which this client doesn't support yet
+			},
 			CustomFuncs: []interface{}{
 				func(e *apiv1.EncodingType, c fuzz.Continue) {
 					validValues := []apiv1.EncodingType{
@@ -1004,7 +1007,8 @@ func TestGetWorkflowExecutionHistoryResponse(t *testing.T) {
 				},
 			},
 			ExcludedFields: []string{
-				"History", // [NOT INVESTIGATED] Complex nested structure with HistoryEvent arrays that causes gofuzz issues - tested in TestHistory
+				"History",  // [NOT INVESTIGATED] Complex nested structure with HistoryEvent arrays that causes gofuzz issues - tested in TestHistory
+				"Checksum", // [EXCLUDED] Not mapped yet; the server sets it only for ExportWorkflowExecution, which this client doesn't support yet
 			},
 		},
 	)
@@ -2368,7 +2372,12 @@ func TestScheduleListEntry(t *testing.T) {
 	runFuzzTest(t,
 		thrift.ScheduleListEntry,
 		proto.ScheduleListEntry,
-		FuzzOptions{},
+		FuzzOptions{
+			ExcludedFields: []string{
+				"Memo",             // [EXCLUDED] Not mapped yet; ScheduleClient.List doesn't return it
+				"SearchAttributes", // [EXCLUDED] Not mapped yet; ScheduleClient.List doesn't return it
+			},
+		},
 	)
 }
 func TestScheduleAction(t *testing.T) {
@@ -3408,6 +3417,11 @@ func TestHistoryEvent(t *testing.T) {
 		&testdata.HistoryEvent_SignalExternalWorkflowExecutionFailed,
 		&testdata.HistoryEvent_ExternalWorkflowExecutionSignaled,
 		&testdata.HistoryEvent_UpsertWorkflowSearchAttributes,
+		&testdata.HistoryEvent_SemaphoreAcquireInitiated,
+		&testdata.HistoryEvent_SemaphoreAcquired,
+		&testdata.HistoryEvent_SemaphoreReleased,
+		&testdata.HistoryEvent_SemaphoreAcquireFailed,
+		&testdata.HistoryEvent_SemaphoreTokenLost,
 	}
 	for _, item := range historyEvents {
 		assert.Equal(t, item, proto.HistoryEvent(thrift.HistoryEvent(item)))
@@ -3435,6 +3449,8 @@ func TestDecision(t *testing.T) {
 		&testdata.Decision_StartChildWorkflowExecution,
 		&testdata.Decision_StartTimer,
 		&testdata.Decision_UpsertWorkflowSearchAttributes,
+		&testdata.Decision_AcquireSemaphore,
+		&testdata.Decision_ReleaseSemaphore,
 	}
 	for _, item := range decisions {
 		assert.Equal(t, item, proto.Decision(thrift.Decision(item)))
@@ -3632,4 +3648,110 @@ func clearProtobufAndExcludedFields(obj interface{}, excludedFields []string) {
 		// Clear if it's a protobuf internal field OR if it's in the excluded list
 		return strings.HasPrefix(fieldName, "XXX_") || excludedMap[fieldName]
 	})
+}
+
+func TestCreateSemaphoreRequest(t *testing.T) {
+	for _, item := range []*apiv1.CreateSemaphoreRequest{nil, {}, &testdata.CreateSemaphoreRequest} {
+		assert.Equal(t, item, proto.CreateSemaphoreRequest(thrift.CreateSemaphoreRequest(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.CreateSemaphoreRequest,
+		proto.CreateSemaphoreRequest,
+		FuzzOptions{},
+	)
+}
+
+func TestCreateSemaphoreResponse(t *testing.T) {
+	for _, item := range []*apiv1.CreateSemaphoreResponse{nil, {}, &testdata.CreateSemaphoreResponse} {
+		assert.Equal(t, item, proto.CreateSemaphoreResponse(thrift.CreateSemaphoreResponse(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.CreateSemaphoreResponse,
+		proto.CreateSemaphoreResponse,
+		FuzzOptions{},
+	)
+}
+
+func TestSemaphoreAcquireInitiatedEventAttributes(t *testing.T) {
+	for _, item := range []*apiv1.SemaphoreAcquireInitiatedEventAttributes{nil, {}, &testdata.SemaphoreAcquireInitiatedEventAttributes} {
+		assert.Equal(t, item, proto.SemaphoreAcquireInitiatedEventAttributes(thrift.SemaphoreAcquireInitiatedEventAttributes(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SemaphoreAcquireInitiatedEventAttributes,
+		proto.SemaphoreAcquireInitiatedEventAttributes,
+		FuzzOptions{},
+	)
+}
+
+func TestSemaphoreAcquiredEventAttributes(t *testing.T) {
+	for _, item := range []*apiv1.SemaphoreAcquiredEventAttributes{nil, {}, &testdata.SemaphoreAcquiredEventAttributes} {
+		assert.Equal(t, item, proto.SemaphoreAcquiredEventAttributes(thrift.SemaphoreAcquiredEventAttributes(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SemaphoreAcquiredEventAttributes,
+		proto.SemaphoreAcquiredEventAttributes,
+		FuzzOptions{},
+	)
+}
+
+func TestSemaphoreReleasedEventAttributes(t *testing.T) {
+	for _, item := range []*apiv1.SemaphoreReleasedEventAttributes{nil, {}, &testdata.SemaphoreReleasedEventAttributes} {
+		assert.Equal(t, item, proto.SemaphoreReleasedEventAttributes(thrift.SemaphoreReleasedEventAttributes(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SemaphoreReleasedEventAttributes,
+		proto.SemaphoreReleasedEventAttributes,
+		FuzzOptions{},
+	)
+}
+
+func TestSemaphoreAcquireFailedEventAttributes(t *testing.T) {
+	for _, item := range []*apiv1.SemaphoreAcquireFailedEventAttributes{nil, {}, &testdata.SemaphoreAcquireFailedEventAttributes} {
+		assert.Equal(t, item, proto.SemaphoreAcquireFailedEventAttributes(thrift.SemaphoreAcquireFailedEventAttributes(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SemaphoreAcquireFailedEventAttributes,
+		proto.SemaphoreAcquireFailedEventAttributes,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.SemaphoreAcquireFailedCause, c fuzz.Continue) {
+					validValues := []apiv1.SemaphoreAcquireFailedCause{
+						apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_INVALID,
+						apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_NOT_FOUND,
+						apiv1.SemaphoreAcquireFailedCause_SEMAPHORE_ACQUIRE_FAILED_CAUSE_TIMED_OUT,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
+		},
+	)
+}
+
+func TestSemaphoreTokenLostEventAttributes(t *testing.T) {
+	for _, item := range []*apiv1.SemaphoreTokenLostEventAttributes{nil, {}, &testdata.SemaphoreTokenLostEventAttributes} {
+		assert.Equal(t, item, proto.SemaphoreTokenLostEventAttributes(thrift.SemaphoreTokenLostEventAttributes(item)))
+	}
+
+	runFuzzTest(t,
+		thrift.SemaphoreTokenLostEventAttributes,
+		proto.SemaphoreTokenLostEventAttributes,
+		FuzzOptions{
+			CustomFuncs: []interface{}{
+				func(e *apiv1.SemaphoreTokenLostCause, c fuzz.Continue) {
+					validValues := []apiv1.SemaphoreTokenLostCause{
+						apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_INVALID,
+						apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_NOT_HELD,
+						apiv1.SemaphoreTokenLostCause_SEMAPHORE_TOKEN_LOST_CAUSE_RESET,
+					}
+					*e = validValues[c.Intn(len(validValues))]
+				},
+			},
+		},
+	)
 }

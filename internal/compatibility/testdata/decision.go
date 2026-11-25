@@ -39,6 +39,8 @@ var (
 		&Decision_StartChildWorkflowExecution,
 		&Decision_StartTimer,
 		&Decision_UpsertWorkflowSearchAttributes,
+		&Decision_AcquireSemaphore,
+		&Decision_ReleaseSemaphore,
 	}
 
 	Decision_CancelTimer = apiv1.Decision{Attributes: &apiv1.Decision_CancelTimerDecisionAttributes{
@@ -79,6 +81,12 @@ var (
 	}}
 	Decision_UpsertWorkflowSearchAttributes = apiv1.Decision{Attributes: &apiv1.Decision_UpsertWorkflowSearchAttributesDecisionAttributes{
 		UpsertWorkflowSearchAttributesDecisionAttributes: &UpsertWorkflowSearchAttributesDecisionAttributes,
+	}}
+	Decision_AcquireSemaphore = apiv1.Decision{Attributes: &apiv1.Decision_AcquireSemaphoreDecisionAttributes{
+		AcquireSemaphoreDecisionAttributes: &AcquireSemaphoreDecisionAttributes,
+	}}
+	Decision_ReleaseSemaphore = apiv1.Decision{Attributes: &apiv1.Decision_ReleaseSemaphoreDecisionAttributes{
+		ReleaseSemaphoreDecisionAttributes: &ReleaseSemaphoreDecisionAttributes,
 	}}
 
 	CancelTimerDecisionAttributes = apiv1.CancelTimerDecisionAttributes{
@@ -173,5 +181,12 @@ var (
 	}
 	UpsertWorkflowSearchAttributesDecisionAttributes = apiv1.UpsertWorkflowSearchAttributesDecisionAttributes{
 		SearchAttributes: &SearchAttributes,
+	}
+	AcquireSemaphoreDecisionAttributes = apiv1.AcquireSemaphoreDecisionAttributes{
+		SemaphoreName: SemaphoreName,
+		WaitTimeout:   Duration1,
+	}
+	ReleaseSemaphoreDecisionAttributes = apiv1.ReleaseSemaphoreDecisionAttributes{
+		InitiatedEventId: EventID1,
 	}
 )

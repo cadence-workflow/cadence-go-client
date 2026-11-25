@@ -647,3 +647,15 @@ func ListFailoverHistoryRequest(t *apiv1.ListFailoverHistoryRequest) *shared.Lis
 		Pagination: PaginationOptions(t.Pagination),
 	}
 }
+
+func CreateSemaphoreRequest(t *apiv1.CreateSemaphoreRequest) *shared.CreateSemaphoreRequest {
+	if t == nil {
+		return nil
+	}
+	return &shared.CreateSemaphoreRequest{
+		Domain:         &t.Domain,
+		SemaphoreName:  &t.SemaphoreName,
+		Capacity:       &t.Capacity,
+		BucketCapacity: &t.BucketCapacity,
+	}
+}

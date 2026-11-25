@@ -907,3 +907,19 @@ func (s *serviceWrapperSuite) TestUpdateScheduleInvalidToken() {
 	_, err := sw.UpdateSchedule(ctx, &shared.UpdateScheduleRequest{})
 	s.EqualError(err, "error")
 }
+
+func (s *serviceWrapperSuite) TestCreateSemaphoreValidToken() {
+	s.Service.EXPECT().CreateSemaphore(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.CreateSemaphore(ctx, &shared.CreateSemaphoreRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestCreateSemaphoreInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.CreateSemaphore(ctx, &shared.CreateSemaphoreRequest{})
+	s.EqualError(err, "error")
+}
