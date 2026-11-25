@@ -908,6 +908,22 @@ func (s *serviceWrapperSuite) TestUpdateScheduleInvalidToken() {
 	s.EqualError(err, "error")
 }
 
+func (s *serviceWrapperSuite) TestExportWorkflowExecutionValidToken() {
+	s.Service.EXPECT().ExportWorkflowExecution(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ExportWorkflowExecution(ctx, &shared.ExportWorkflowExecutionRequest{})
+	s.NoError(err)
+}
+
+func (s *serviceWrapperSuite) TestExportWorkflowExecutionInvalidToken() {
+	s.AuthProvider = newJWTAuthIncorrect()
+	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
+	ctx, _ := thrift.NewContext(time.Minute)
+	_, err := sw.ExportWorkflowExecution(ctx, &shared.ExportWorkflowExecutionRequest{})
+	s.EqualError(err, "error")
+}
+
 func (s *serviceWrapperSuite) TestCreateSemaphoreValidToken() {
 	s.Service.EXPECT().CreateSemaphore(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	sw := NewWorkflowServiceWrapper(s.Service, s.AuthProvider)
